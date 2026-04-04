@@ -1,0 +1,327 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("fleet_manager")
+  fleetId   String?
+  fleet     Fleet?   @relation(fields: [fleetId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Fleet {
+  id        String    @id @default(uuid())
+  name      String
+  operator  String
+  country   String
+  vessels   Vessel[]
+  users     User[]
+  createdAt DateTime  @default(now())
+}
+
+model Vessel {
+  id               String             @id @default(uuid())
+  name             String
+  imoNumber        String             @unique
+  type             String
+  flag             String
+  builtYear        Int
+  dwt              Float
+  engineType       String
+  enginePower      Float
+  maxSpeed         Float
+  designSpeed      Float
+  fuelCapacity     Float
+  fleetId          String
+  fleet            Fleet              @relation(fields: [fleetId], references: [id])
+  currentLat       Float              @default(0)
+  currentLon       Float              @default(0)
+  currentSpeed     Float              @default(0)
+  status           String             @default("active")
+  voyages          Voyage[]
+  equipment        Equipment[]
+  emissionLogs     EmissionLog[]
+  bunkerRecords    BunkerRecord[]
+  portCalls        PortCall[]
+  knowledgeDocs    KnowledgeDocument[]
+  defectReports    DefectReport[]
+  handoverReports  HandoverReport[]
+  sireDocuments    SireDocument[]
+  sireInspections  SireInspection[]
+  createdAt        DateTime           @default(now())
+}
+
+model Voyage {
+  id               String           @id @default(uuid())
+  vesselId         String
+  vessel           Vessel           @relation(fields: [vesselId], references: [id])
+  departurePort    String
+  destinationPort  String
+  departureLat     Float
+  departureLon     Float
+  destinationLat   Float
+  destinationLon   Float
+  departureDate    DateTime
+  arrivalDate      DateTime?
+  status           String           @default("planned")
+  cargoLoad        Float
+  plannedSpeed     Float
+  actualSpeed      Float?
+  plannedFuel      Float
+  actualFuel       Float?
+  plannedDistance  Float
+  actualDistance   Float?
+  co2Emissions     Float?
+  ciiImpact        Float?
+  savings          Float?
+  waypoints        VoyageWaypoint[]
+  agentMessages    AgentMessage[]
+  createdAt        DateTime         @default(now())
+}
+
+model VoyageWaypoint {
+  id          String   @id @default(uuid())
+  voyageId    String
+  voyage      Voyage   @relation(fields: [voyageId], references: [id])
+  lat         Float
+  lon         Float
+  order       Int
+  weather     Json?
+  eta         DateTime?
+  createdAt   DateTime @default(now())
+}
+
+model Equipment {
+  id              String             @id @default(uuid())
+  vesselId        String
+  vessel          Vessel             @relation(fields: [vesselId], references: [id])
+  name            String
+  type            String
+  maker           String?
+  model           String?
+  serialNumber    String?
+  installDate     DateTime?
+  lastMaintenance DateTime?
+  nextMaintenance DateTime?
+  healthScore     Float              @default(100)
+  status          String             @default("healthy")
+  sensorReadings  SensorReading[]
+  maintenanceAlerts MaintenanceAlert[]
+  workOrders      WorkOrder[]
+  createdAt       DateTime           @default(now())
+}
+
+model SensorReading {
+  id          String    @id @default(uuid())
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id])
+  timestamp   DateTime
+  parameter   String
+  value       Float
+  unit        String
+  isAnomaly   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+}
+
+model MaintenanceAlert {
+  id           String    @id @default(uuid())
+  equipmentId  String
+  equipment    Equipment @relation(fields: [equipmentId], references: [id])
+  type         String
+  severity     String
+  description  String
+  aiAnalysis   String?
+  daysToFailure Int?
+  status       String    @default("open")
+  createdAt    DateTime  @default(now())
+}
+
+model WorkOrder {
+  id           String    @id @default(uuid())
+  equipmentId  String
+  equipment    Equipment @relation(fields: [equipmentId], references: [id])
+  title        String
+  description  String
+  priority     String
+  assignedTo   String?
+  requiredParts String?
+  estimatedHours Float?
+  plannedDate  DateTime?
+  completedDate DateTime?
+  status       String    @default("open")
+  createdAt    DateTime  @default(now())
+}
+
+model EmissionLog {
+  id           String   @id @default(uuid())
+  vesselId     String
+  vessel       Vessel   @relation(fields: [vesselId], references: [id])
+  date         DateTime
+  route        String
+  fuelType     String
+  fuelConsumed Float
+  co2Tonnes    Float
+  soxTonnes    Float
+  noxTonnes    Float
+  voyageId     String?
+  createdAt    DateTime @default(now())
+}
+
+model BunkerRecord {
+  id           String   @id @default(uuid())
+  vesselId     String
+  vessel       Vessel   @relation(fields: [vesselId], references: [id])
+  date         DateTime
+  port         String
+  supplier     String
+  fuelGrade    String
+  quantity     Float
+  pricePerMt   Float
+  totalCost    Float
+  sulfurContent Float?
+  createdAt    DateTime @default(now())
+}
+
+model PortCall {
+  id            String   @id @default(uuid())
+  vesselId      String
+  vessel        Vessel   @relation(fields: [vesselId], references: [id])
+  portName      String
+  portCode      String
+  arrivalDate   DateTime?
+  departureDate DateTime?
+  status        String   @default("planned")
+  laytime       Float?
+  demurrageRate Float?
+  demurrageIncurred Float?
+  agentName     String?
+  agentEmail    String?
+  createdAt     DateTime @default(now())
+}
+
+model AgentMessage {
+  id        String   @id @default(uuid())
+  voyageId  String
+  voyage    Voyage   @relation(fields: [voyageId], references: [id])
+  type      String
+  recipient String
+  subject   String
+  body      String
+  sentAt    DateTime?
+  status    String   @default("draft")
+  createdAt DateTime @default(now())
+}
+
+model KnowledgeDocument {
+  id          String   @id @default(uuid())
+  vesselId    String
+  vessel      Vessel   @relation(fields: [vesselId], references: [id])
+  name        String
+  type        String
+  content     String?
+  fileUrl     String?
+  status      String   @default("processing")
+  uploadedAt  DateTime @default(now())
+}
+
+model DefectReport {
+  id               String   @id @default(uuid())
+  vesselId         String
+  vessel           Vessel   @relation(fields: [vesselId], references: [id])
+  equipment        String
+  description      String
+  symptoms         String
+  severity         String
+  aiAnalysis       String?
+  recommendedAction String?
+  partsRequired    String?
+  status           String   @default("open")
+  createdAt        DateTime @default(now())
+}
+
+model HandoverReport {
+  id           String   @id @default(uuid())
+  vesselId     String
+  vessel       Vessel   @relation(fields: [vesselId], references: [id])
+  watch        String
+  engineer     String
+  ongoingJobs  String
+  abnormalReadings String?
+  partsOnOrder String?
+  pendingOrders String?
+  aiSummary    String?
+  createdAt    DateTime @default(now())
+}
+
+model SireDocument {
+  id          String   @id @default(uuid())
+  vesselId    String
+  vessel      Vessel   @relation(fields: [vesselId], references: [id])
+  name        String
+  type        String
+  category    String
+  status      String   @default("valid")
+  expiryDate  DateTime?
+  fileUrl     String?
+  uploadedAt  DateTime @default(now())
+}
+
+model SireFinding {
+  id               String         @id @default(uuid())
+  inspectionId     String
+  inspection       SireInspection @relation(fields: [inspectionId], references: [id])
+  chapter          String
+  question         String
+  finding          String
+  severity         String
+  correctiveAction String?
+  status           String         @default("open")
+  dueDate          DateTime?
+  closedAt         DateTime?
+  createdAt        DateTime       @default(now())
+}
+
+model SireInspection {
+  id           String        @id @default(uuid())
+  vesselId     String
+  vessel       Vessel        @relation(fields: [vesselId], references: [id])
+  inspectorName String?
+  inspectionDate DateTime
+  location     String?
+  overallScore Float?
+  status       String        @default("completed")
+  findings     SireFinding[]
+  createdAt    DateTime      @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String?
+  vesselId  String?
+  type      String
+  title     String
+  message   String
+  severity  String   @default("info")
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  details   Json?
+  createdAt DateTime @default(now())
+}

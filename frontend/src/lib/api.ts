@@ -1,0 +1,285 @@
+/// <reference types="vite/client" />
+import axios from 'axios'
+import type {
+  AuthResponse,
+  User,
+  Fleet,
+  Vessel,
+  RouteOptimization,
+  Voyage,
+  Equipment,
+  SensorReading,
+  WorkOrder,
+  CIIData,
+  ETSData,
+  PortCongestion,
+  KnowledgeDocument,
+  DefectReport,
+  HandoverReport,
+  SireDocument,
+  SireFinding,
+  Notification,
+  MaintenanceAlert,
+  VoyageHistoryRecord,
+} from './types'
+
+const BASE_URL = (import.meta.env.VITE_API_URL as string) || '/api'
+
+const api = axios.create({
+  baseURL: BASE_URL,
+  headers: { 'Content-Type': 'application/json' },
+})
+
+// Request interceptor: attach token
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('vm_token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+// Response interceptor: handle 401
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('vm_token')
+      window.location.href = '/login'
+    }
+    return Promise.reject(error)
+  },
+)
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+export const authApi = {
+  login: async (email: string, password: string): Promise<AuthResponse> => {
+    const { data } = await api.post<AuthResponse>('/auth/login', { email, password })
+    return data
+  },
+  register: async (name: string, email: string, password: string, company: string): Promise<AuthResponse> => {
+    const { data } = await api.post<AuthResponse>('/auth/register', { name, email, password, company })
+    return data
+  },
+  getMe: async (): Promise<User> => {
+    const { data } = await api.get<User>('/auth/me')
+    return data
+  },
+}
+
+// ─── Fleet ────────────────────────────────────────────────────────────────────
+
+export const fleetApi = {
+  getFleet: async (): Promise<Fleet> => {
+    const { data } = await api.get<Fleet>('/fleet')
+    return data
+  },
+  getVessel: async (id: string): Promise<Vessel> => {
+    const { data } = await api.get<Vessel>(`/fleet/vessels/${id}`)
+    return data
+  },
+}
+
+// ─── Voyage ───────────────────────────────────────────────────────────────────
+
+export interface RouteOptimizeParams {
+  vesselId: string
+  departurePort: string
+  destinationPort: string
+  departureDate: string
+  cargoLoad: number
+  speedPreference: 'eco' | 'normal' | 'fast'
+}
+
+export const voyageApi = {
+  optimizeRoute: async (params: RouteOptimizeParams): Promise<RouteOptimization> => {
+    const { data } = await api.post<RouteOptimization>('/voyage/optimize', params)
+    return data
+  },
+  getHistory: async (vesselId: string): Promise<VoyageHistoryRecord[]> => {
+    const { data } = await api.get<VoyageHistoryRecord[]>(`/voyage/history/${vesselId}`)
+    return data
+  },
+  getActive: async (fleetId: string): Promise<Voyage[]> => {
+    const { data } = await api.get<Voyage[]>(`/voyage/active/${fleetId}`)
+    return data
+  },
+  predictEta: async (params: { vesselId: string; voyageId: string }) => {
+    const { data } = await api.post('/voyage/predict-eta', params)
+    return data
+  },
+  generateAgentMessage: async (params: {
+    portCallId: string
+    type: string
+    vesselId: string
+  }) => {
+    const { data } = await api.post('/voyage/agent-message', params)
+    return data
+  },
+}
+
+// ─── Maintenance ──────────────────────────────────────────────────────────────
+
+export const maintenanceApi = {
+  getEquipment: async (vesselId: string): Promise<Equipment[]> => {
+    const { data } = await api.get<Equipment[]>(`/maintenance/equipment/${vesselId}`)
+    return data
+  },
+  getSensorData: async (equipmentId: string, days: number): Promise<SensorReading[]> => {
+    const { data } = await api.get<SensorReading[]>(`/maintenance/sensors/${equipmentId}?days=${days}`)
+    return data
+  },
+  analyzeAnomaly: async (params: { equipmentId: string; vesselId: string }): Promise<{ analysis: string }> => {
+    const { data } = await api.post<{ analysis: string }>('/maintenance/analyze', params)
+    return data
+  },
+  createWorkOrder: async (params: Partial<WorkOrder>): Promise<WorkOrder> => {
+    const { data } = await api.post<WorkOrder>('/maintenance/work-orders', params)
+    return data
+  },
+  getWorkOrders: async (vesselId: string): Promise<WorkOrder[]> => {
+    const { data } = await api.get<WorkOrder[]>(`/maintenance/work-orders/${vesselId}`)
+    return data
+  },
+  getAlerts: async (vesselId: string): Promise<MaintenanceAlert[]> => {
+    const { data } = await api.get<MaintenanceAlert[]>(`/maintenance/alerts/${vesselId}`)
+    return data
+  },
+}
+
+// ─── Compliance ───────────────────────────────────────────────────────────────
+
+export const complianceApi = {
+  getCII: async (vesselId: string): Promise<CIIData> => {
+    const { data } = await api.get<CIIData>(`/compliance/cii/${vesselId}`)
+    return data
+  },
+  getETS: async (vesselId: string): Promise<ETSData> => {
+    const { data } = await api.get<ETSData>(`/compliance/ets/${vesselId}`)
+    return data
+  },
+  generateMRVReport: async (vesselId: string, year: number): Promise<{ reportUrl: string }> => {
+    const { data } = await api.post<{ reportUrl: string }>('/compliance/mrv', { vesselId, year })
+    return data
+  },
+}
+
+// ─── Ports ────────────────────────────────────────────────────────────────────
+
+export const portsApi = {
+  getCongestion: async (): Promise<PortCongestion[]> => {
+    const { data } = await api.get<PortCongestion[]>('/ports/congestion')
+    return data
+  },
+}
+
+// ─── Knowledge ────────────────────────────────────────────────────────────────
+
+export const knowledgeApi = {
+  generateDefectReport: async (params: {
+    vesselId: string
+    equipment: string
+    defectDescription: string
+    symptoms: string
+    conditions: string
+    severity: string
+  }): Promise<DefectReport> => {
+    const { data } = await api.post<DefectReport>('/knowledge/defect-report', params)
+    return data
+  },
+  getDocuments: async (vesselId: string): Promise<KnowledgeDocument[]> => {
+    const { data } = await api.get<KnowledgeDocument[]>(`/knowledge/documents/${vesselId}`)
+    return data
+  },
+  createHandover: async (params: {
+    vesselId: string
+    watch: string
+    engineerName: string
+    ongoingJobs: string
+    abnormalReadings: string
+    partsOnOrder: string
+    pendingWorkOrders: string
+  }): Promise<HandoverReport> => {
+    const { data } = await api.post<HandoverReport>('/knowledge/handover', params)
+    return data
+  },
+  uploadDocument: async (vesselId: string, file: File): Promise<KnowledgeDocument> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('vesselId', vesselId)
+    const { data } = await api.post<KnowledgeDocument>('/knowledge/documents/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return data
+  },
+  // Chat uses streaming fetch — not axios
+  chatStream: (params: { vesselId: string; message: string; history: { role: string; content: string }[] }) => {
+    const token = localStorage.getItem('vm_token')
+    return fetch(`${BASE_URL}/knowledge/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(params),
+    })
+  },
+}
+
+// ─── SIRE ─────────────────────────────────────────────────────────────────────
+
+export const sireApi = {
+  getReadinessScore: async (vesselId: string) => {
+    const { data } = await api.get(`/sire/readiness/${vesselId}`)
+    return data
+  },
+  generatePreInspectionReport: async (vesselId: string): Promise<{ report: string }> => {
+    const { data } = await api.post<{ report: string }>('/sire/pre-inspection', { vesselId })
+    return data
+  },
+  getDocuments: async (vesselId: string): Promise<SireDocument[]> => {
+    const { data } = await api.get<SireDocument[]>(`/sire/documents/${vesselId}`)
+    return data
+  },
+  getFindings: async (vesselId: string): Promise<SireFinding[]> => {
+    const { data } = await api.get<SireFinding[]>(`/sire/findings/${vesselId}`)
+    return data
+  },
+  inspectorChatStream: (params: { vesselId: string; message: string; history: { role: string; content: string }[] }) => {
+    const token = localStorage.getItem('vm_token')
+    return fetch(`${BASE_URL}/sire/inspector-chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(params),
+    })
+  },
+  complianceChatStream: (params: { vesselId: string; message: string; history: { role: string; content: string }[] }) => {
+    const token = localStorage.getItem('vm_token')
+    return fetch(`${BASE_URL}/compliance/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(params),
+    })
+  },
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export const notificationsApi = {
+  getNotifications: async (): Promise<Notification[]> => {
+    const { data } = await api.get<Notification[]>('/notifications')
+    return data
+  },
+  markRead: async (id: string): Promise<void> => {
+    await api.patch(`/notifications/${id}/read`)
+  },
+}
+
+export default api
