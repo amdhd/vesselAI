@@ -2,6 +2,14 @@ import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { MOCK_VESSELS } from '../mock/vessels';
 import { authenticate } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+import { aiLimiter } from '../middleware/rateLimiter';
+import {
+  KnowledgeChatSchema,
+  UploadDocumentSchema,
+  GenerateDefectReportSchema,
+  HandoverSchema,
+} from '../schemas';
 
 const router = Router();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -153,13 +161,8 @@ const MOCK_DOCUMENTS: {
 };
 
 // POST /api/knowledge/chat - STREAMING SSE
-router.post('/chat', authenticate, async (req: Request, res: Response): Promise<void> => {
+router.post('/chat', authenticate, aiLimiter, validate(KnowledgeChatSchema), async (req: Request, res: Response): Promise<void> => {
   const { message, vesselId, conversationHistory = [] } = req.body;
-
-  if (!message) {
-    res.status(400).json({ error: 'Message is required' });
-    return;
-  }
 
   const vessel = MOCK_VESSELS.find(v => v.id === vesselId) || MOCK_VESSELS[0];
   const vesselDocs = MOCK_DOCUMENTS[vessel.id] || [];
@@ -224,13 +227,8 @@ Vessel specifications:
 });
 
 // POST /api/knowledge/upload-document
-router.post('/upload-document', authenticate, (req: Request, res: Response) => {
+router.post('/upload-document', authenticate, validate(UploadDocumentSchema), (req: Request, res: Response) => {
   const { vesselId, name, type } = req.body;
-
-  if (!vesselId || !name) {
-    res.status(400).json({ error: 'vesselId and name are required' });
-    return;
-  }
 
   const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
   if (!vessel) {
@@ -281,13 +279,8 @@ router.get('/documents/:vesselId', authenticate, (req: Request, res: Response) =
 });
 
 // POST /api/knowledge/generate-defect-report
-router.post('/generate-defect-report', authenticate, async (req: Request, res: Response): Promise<void> => {
+router.post('/generate-defect-report', authenticate, aiLimiter, validate(GenerateDefectReportSchema), async (req: Request, res: Response): Promise<void> => {
   const { vesselId, equipment, description, symptoms, severity } = req.body;
-
-  if (!vesselId || !equipment || !description) {
-    res.status(400).json({ error: 'vesselId, equipment, and description are required' });
-    return;
-  }
 
   const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
   if (!vessel) {
@@ -375,13 +368,8 @@ Return JSON: {
 });
 
 // POST /api/knowledge/handover
-router.post('/handover', authenticate, async (req: Request, res: Response): Promise<void> => {
+router.post('/handover', authenticate, aiLimiter, validate(HandoverSchema), async (req: Request, res: Response): Promise<void> => {
   const { vesselId, watch, engineer, ongoingJobs, abnormalReadings, partsOnOrder } = req.body;
-
-  if (!vesselId || !watch || !engineer || !ongoingJobs) {
-    res.status(400).json({ error: 'vesselId, watch, engineer, and ongoingJobs are required' });
-    return;
-  }
 
   const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
   if (!vessel) {

@@ -4,12 +4,22 @@ import { MOCK_ACTIVE_VOYAGES, getVoyagesByVesselId } from '../mock/voyages';
 import { MOCK_VESSELS } from '../mock/vessels';
 import { MOCK_WEATHER_ROUTES, getRouteWeather } from '../mock/weatherRoutes';
 import { authenticate } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+import { aiLimiter } from '../middleware/rateLimiter';
+import {
+  OptimizeRouteSchema,
+  CalculateSpeedSchema,
+  FuelAnalysisSchema,
+  PredictEtaSchema,
+  GenerateAgentMessageSchema,
+} from '../schemas';
+import { computeFuelConsumption, buildSpeedPowerCurve, computeAdmiraltyCoefficient } from '../lib/fuelModel';
 
 const router = Router();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // POST /api/voyage/optimize-route
-router.post('/optimize-route', authenticate, async (req: Request, res: Response): Promise<void> => {
+router.post('/optimize-route', authenticate, aiLimiter, validate(OptimizeRouteSchema), async (req: Request, res: Response): Promise<void> => {
   const {
     vesselId,
     departurePort,
@@ -41,10 +51,12 @@ router.post('/optimize-route', authenticate, async (req: Request, res: Response)
   const directRouteDistance = weatherRoute.totalDistance;
   const directSpeed = speedPreference === 'fast' ? vessel.maxSpeed * 0.9 : vessel.designSpeed;
   const directHours = directRouteDistance / directSpeed;
-  const directFuelPerDay = vessel.enginePower * 0.0002 * 24;
-  const directFuel = Math.round((directHours / 24) * directFuelPerDay);
+
+  // Layer 2 + 3: compute fuel for direct route using Admiralty + speed-power model
+  const directFc = computeFuelConsumption(vessel, directSpeed, cargoLoad);
+  const directFuel = Math.round((directHours / 24) * directFc.fuelTonnesPerDay);
   const directCost = Math.round(directFuel * 620);
-  const directCo2 = Math.round(directFuel * 3.15);
+  const directCo2 = Math.round(directFuel * 3.151); // VLSFO CO2 factor per IMO MEPC.308(73)
   const directEta = new Date(Date.now() + directHours * 3600 * 1000).toISOString();
 
   const mockFallback = {
@@ -125,36 +137,22 @@ router.get('/history/:vesselId', authenticate, (req: Request, res: Response) => 
 });
 
 // POST /api/voyage/calculate-speed
-router.post('/calculate-speed', authenticate, (req: Request, res: Response) => {
-  const { vesselId, targetSpeed } = req.body;
+router.post('/calculate-speed', authenticate, validate(CalculateSpeedSchema), (req: Request, res: Response) => {
+  const { vesselId, targetSpeed, cargoLoad = 80, trimMetres = 0 } = req.body;
   const vessel = MOCK_VESSELS.find(v => v.id === vesselId) || MOCK_VESSELS[0];
 
-  const speeds = [];
-  const minSpeed = vessel.designSpeed * 0.5;
-  const maxSpeed = vessel.maxSpeed;
-
-  for (let speed = minSpeed; speed <= maxSpeed; speed += 0.5) {
-    const normalizedSpeed = speed / vessel.designSpeed;
-    // Admiralty coefficient: fuel consumption scales with speed^3
-    const fuelRatio = Math.pow(normalizedSpeed, 3);
-    const baseFuelPerDay = vessel.enginePower * 0.00018 * 24;
-    const fuelPerDay = baseFuelPerDay * fuelRatio;
-    const fuelPerNm = fuelPerDay / (speed * 24);
-
-    speeds.push({
-      speed: parseFloat(speed.toFixed(1)),
-      fuelPerDay: parseFloat(fuelPerDay.toFixed(1)),
-      fuelPerNm: parseFloat(fuelPerNm.toFixed(3)),
-      co2PerDay: parseFloat((fuelPerDay * 3.15).toFixed(1)),
-      costPerDay: parseFloat((fuelPerDay * 620).toFixed(0)),
-      isOptimal: Math.abs(speed - vessel.designSpeed) < 0.3,
-      isTarget: targetSpeed ? Math.abs(speed - targetSpeed) < 0.3 : false,
-    });
-  }
+  // Layer 2 + 3: build full speed-power curve using Admiralty Coefficient model
+  const speedCurve = buildSpeedPowerCurve(vessel, cargoLoad, trimMetres, targetSpeed);
 
   res.json({
-    vessel: { id: vessel.id, name: vessel.name, designSpeed: vessel.designSpeed },
-    speedCurve: speeds,
+    vessel: {
+      id: vessel.id,
+      name: vessel.name,
+      designSpeed: vessel.designSpeed,
+      admiraltyCoeff: Math.round(computeAdmiraltyCoefficient(vessel) * 10) / 10,
+    },
+    inputs: { cargoLoad, trimMetres },
+    speedCurve,
   });
 });
 
@@ -183,7 +181,7 @@ router.get('/active/:fleetId', authenticate, (req: Request, res: Response) => {
 });
 
 // POST /api/voyage/predict-eta
-router.post('/predict-eta', authenticate, async (req: Request, res: Response): Promise<void> => {
+router.post('/predict-eta', authenticate, aiLimiter, validate(PredictEtaSchema), async (req: Request, res: Response): Promise<void> => {
   const { vesselId, voyageId, currentSpeed, weatherConditions } = req.body;
 
   const vessel = MOCK_VESSELS.find(v => v.id === vesselId) || MOCK_VESSELS[0];
@@ -242,7 +240,7 @@ Return JSON: {"basicEta": "ISO", "aiEta": "ISO", "confidence": number, "factors"
 });
 
 // POST /api/voyage/generate-agent-message
-router.post('/generate-agent-message', authenticate, async (req: Request, res: Response): Promise<void> => {
+router.post('/generate-agent-message', authenticate, aiLimiter, validate(GenerateAgentMessageSchema), async (req: Request, res: Response): Promise<void> => {
   const { vesselId, voyageId, portName, messageType = 'pre-arrival', additionalInfo } = req.body;
 
   const vessel = MOCK_VESSELS.find(v => v.id === vesselId) || MOCK_VESSELS[0];
@@ -307,6 +305,40 @@ Return JSON: {"subject": "string", "body": "string"}`,
     console.error('Agent message generation error:', error);
     res.json(mockMessage);
   }
+});
+
+// POST /api/voyage/fuel-analysis
+// Returns the detailed Layer 2 + 3 breakdown for a single operating point.
+router.post('/fuel-analysis', authenticate, validate(FuelAnalysisSchema), (req: Request, res: Response) => {
+  const { vesselId, speedKnots, cargoLoad = 80, trimMetres = 0 } = req.body;
+  const vessel = MOCK_VESSELS.find(v => v.id === vesselId) || MOCK_VESSELS[0];
+
+  const result = computeFuelConsumption(vessel, speedKnots, cargoLoad, trimMetres);
+
+  res.json({
+    vessel: { id: vessel.id, name: vessel.name, type: vessel.type },
+    inputs: { speedKnots, cargoLoad, trimMetres },
+    layer2: {
+      admiraltyCoeff: result.admiraltyCoeff,
+      displacementTonnes: result.displacementTonnes,
+      idealShaftPowerKw: result.idealShaftPowerKw,
+    },
+    layer3: {
+      foulingFactor: result.foulingFactor,
+      trimFactor: result.trimFactor,
+      actualShaftPowerKw: result.actualShaftPowerKw,
+      powerLimited: result.powerLimited,
+      loadFactor: result.loadFactor,
+      sfocGPerKwh: result.sfocGPerKwh,
+    },
+    output: {
+      fuelTonnesPerHour: result.fuelTonnesPerHour,
+      fuelTonnesPerDay: result.fuelTonnesPerDay,
+      fuelTonnesPerNm: result.fuelTonnesPerNm,
+      co2TonnesPerDay: Math.round(result.fuelTonnesPerDay * 3.151 * 100) / 100,
+      costPerDayUsd: Math.round(result.fuelTonnesPerDay * 620),
+    },
+  });
 });
 
 export default router;

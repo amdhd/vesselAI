@@ -1,6 +1,7 @@
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import { ToastProvider } from '@/components/ui/Toast'
+import NetworkStatus from '@/components/NetworkStatus'
 
 interface MainLayoutProps {
   children: React.ReactNode
@@ -17,6 +18,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
             {children}
           </div>
         </main>
+        <NetworkStatus />
       </div>
     </ToastProvider>
   )

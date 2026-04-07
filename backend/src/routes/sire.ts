@@ -4,6 +4,9 @@ import { MOCK_VESSELS } from '../mock/vessels';
 import { getSireDocumentsByVesselId } from '../mock/sireDocuments';
 import { getFindingsByVesselId, getInspectionsByVesselId, getOpenFindings } from '../mock/findings';
 import { authenticate } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+import { aiLimiter } from '../middleware/rateLimiter';
+import { GeneratePreInspectionSchema, InspectorSimulationSchema } from '../schemas';
 
 const router = Router();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -155,13 +158,8 @@ router.get('/readiness-score/:vesselId', authenticate, (req: Request, res: Respo
 });
 
 // POST /api/sire/generate-pre-inspection-report
-router.post('/generate-pre-inspection-report', authenticate, async (req: Request, res: Response): Promise<void> => {
+router.post('/generate-pre-inspection-report', authenticate, aiLimiter, validate(GeneratePreInspectionSchema), async (req: Request, res: Response): Promise<void> => {
   const { vesselId, inspectionDate, inspectorCompany } = req.body;
-
-  if (!vesselId) {
-    res.status(400).json({ error: 'vesselId is required' });
-    return;
-  }
 
   const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
   if (!vessel) {
@@ -304,13 +302,8 @@ router.get('/documents/:vesselId', authenticate, (req: Request, res: Response) =
 });
 
 // POST /api/sire/inspector-simulation - STREAMING SSE
-router.post('/inspector-simulation', authenticate, async (req: Request, res: Response): Promise<void> => {
+router.post('/inspector-simulation', authenticate, aiLimiter, validate(InspectorSimulationSchema), async (req: Request, res: Response): Promise<void> => {
   const { message, vesselId, chapter, conversationHistory = [] } = req.body;
-
-  if (!message) {
-    res.status(400).json({ error: 'Message is required' });
-    return;
-  }
 
   const vessel = MOCK_VESSELS.find(v => v.id === vesselId) || MOCK_VESSELS[0];
   const readiness = SIRE_READINESS[vesselId || vessel.id];

@@ -16,6 +16,12 @@ export interface MockVessel {
   currentSpeed: number;
   status: string;
   fleetId: string;
+  /** Lightship (empty) weight in metric tonnes — used by the Admiralty Coefficient model */
+  lightshipTonnage: number;
+  /** Reference SFOC at 100 % MCR in g/kWh — used by the speed-power curve (Layer 3) */
+  sfocRefGPerKwh: number;
+  /** ISO date of last drydock — used to compute hull fouling penalty */
+  lastDrydockDate: string;
 }
 
 export interface MockFleet {
@@ -51,6 +57,10 @@ export const MOCK_VESSELS: MockVessel[] = [
     currentSpeed: 13.2,
     status: 'active',
     fleetId: 'fleet-001',
+    // Fuel model parameters (Layers 2 & 3)
+    lightshipTonnage: 42000,       // typical VLCC lightship ~14 % of DWT
+    sfocRefGPerKwh: 160,           // MAN B&W 6G80ME-C at MCR (g/kWh)
+    lastDrydockDate: '2024-10-15', // ~18 months ago → ~18 % fouling penalty
   },
   {
     id: 'vessel-002',
@@ -70,6 +80,10 @@ export const MOCK_VESSELS: MockVessel[] = [
     currentSpeed: 12.8,
     status: 'active',
     fleetId: 'fleet-001',
+    // Fuel model parameters (Layers 2 & 3)
+    lightshipTonnage: 15000,       // typical Aframax lightship ~13 % of DWT
+    sfocRefGPerKwh: 168,           // MAN B&W 6S60ME-C at MCR (g/kWh), slightly older engine
+    lastDrydockDate: '2023-11-01', // ~29 months ago → capped at 20 % fouling penalty
   },
   {
     id: 'vessel-003',
@@ -89,6 +103,10 @@ export const MOCK_VESSELS: MockVessel[] = [
     currentSpeed: 10.5,
     status: 'active',
     fleetId: 'fleet-001',
+    // Fuel model parameters (Layers 2 & 3)
+    lightshipTonnage: 1125,        // OSV lightship ~25 % of DWT
+    sfocRefGPerKwh: 210,           // Caterpillar 3516C medium-speed 4-stroke (g/kWh)
+    lastDrydockDate: '2025-08-20', // ~8 months ago → ~7.6 % fouling penalty
   },
 ];
 

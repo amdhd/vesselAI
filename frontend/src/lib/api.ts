@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import axios from 'axios'
+import { offlineQueue } from './offlineQueue'
 import type {
   AuthResponse,
   User,
@@ -135,6 +136,16 @@ export const maintenanceApi = {
     return data
   },
   createWorkOrder: async (params: Partial<WorkOrder>): Promise<WorkOrder> => {
+    if (!navigator.onLine) {
+      offlineQueue.add({
+        method: 'POST',
+        url: '/maintenance/work-orders',
+        data: params,
+        label: `Create work order: ${params.title || 'untitled'}`,
+      })
+      // Return an optimistic placeholder so the UI doesn't break
+      return { ...params, id: `offline-${Date.now()}`, status: 'open' } as WorkOrder
+    }
     const { data } = await api.post<WorkOrder>('/maintenance/work-orders', params)
     return data
   },
@@ -278,6 +289,10 @@ export const notificationsApi = {
     return data
   },
   markRead: async (id: string): Promise<void> => {
+    if (!navigator.onLine) {
+      offlineQueue.add({ method: 'PATCH', url: `/notifications/${id}/read`, label: 'Mark notification read' })
+      return
+    }
     await api.patch(`/notifications/${id}/read`)
   },
 }

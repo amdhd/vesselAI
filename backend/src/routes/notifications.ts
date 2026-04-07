@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+import { CreateNotificationSchema } from '../schemas';
 
 const router = Router();
 
@@ -112,13 +114,8 @@ router.post('/read-all', authenticate, (_req: Request, res: Response) => {
 });
 
 // POST /api/notifications - Create new notification
-router.post('/', authenticate, (req: Request, res: Response) => {
+router.post('/', authenticate, validate(CreateNotificationSchema), (req: Request, res: Response) => {
   const { vesselId, type, severity, title, message, link } = req.body;
-
-  if (!type || !title || !message) {
-    res.status(400).json({ error: 'type, title, and message are required' });
-    return;
-  }
 
   const newNotification = {
     id: `notif-${Date.now()}`,

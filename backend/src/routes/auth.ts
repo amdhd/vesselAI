@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+import { LoginSchema, RegisterSchema } from '../schemas';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -25,14 +27,9 @@ function generateToken(user: { id: string; email: string; role: string; fleetId?
 }
 
 // POST /api/auth/login
-router.post('/login', async (req: Request, res: Response): Promise<void> => {
+router.post('/login', validate(LoginSchema), async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
-
-    if (!email || !password) {
-      res.status(400).json({ error: 'Email and password are required' });
-      return;
-    }
 
     // Try to find user in DB first
     let user: { id: string; email: string; password: string; name: string; role: string; fleetId: string | null } | null = null;
@@ -82,25 +79,9 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 });
 
 // POST /api/auth/register
-router.post('/register', async (req: Request, res: Response): Promise<void> => {
+router.post('/register', validate(RegisterSchema), async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password, name, role, fleetId } = req.body;
-
-    if (!email || !password || !name) {
-      res.status(400).json({ error: 'Email, password, and name are required' });
-      return;
-    }
-
-    if (password.length < 6) {
-      res.status(400).json({ error: 'Password must be at least 6 characters' });
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      res.status(400).json({ error: 'Invalid email format' });
-      return;
-    }
 
     let existingUser: { id: string } | null = null;
     try {

@@ -8,6 +8,9 @@ import {
 } from '../mock/equipment';
 import { getSensorDataForEquipment } from '../mock/sensorData';
 import { authenticate } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+import { aiLimiter } from '../middleware/rateLimiter';
+import { AnalyzeAnomalySchema, WorkOrderSchema } from '../schemas';
 
 const router = Router();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -144,7 +147,7 @@ router.get('/sensor-data/:equipmentId', authenticate, (req: Request, res: Respon
 });
 
 // POST /api/maintenance/analyze-anomaly
-router.post('/analyze-anomaly', authenticate, async (req: Request, res: Response): Promise<void> => {
+router.post('/analyze-anomaly', authenticate, aiLimiter, validate(AnalyzeAnomalySchema), async (req: Request, res: Response): Promise<void> => {
   const { equipmentId, sensorStats, symptoms } = req.body;
 
   const equipment = getEquipmentById(equipmentId);
@@ -249,13 +252,8 @@ Return JSON: {
 });
 
 // POST /api/maintenance/work-order
-router.post('/work-order', authenticate, (req: Request, res: Response) => {
+router.post('/work-order', authenticate, validate(WorkOrderSchema), (req: Request, res: Response) => {
   const { equipmentId, vesselId, title, description, priority, assignedTo, requiredParts, estimatedHours, plannedDate } = req.body;
-
-  if (!equipmentId || !vesselId || !title || !description || !priority) {
-    res.status(400).json({ error: 'equipmentId, vesselId, title, description, and priority are required' });
-    return;
-  }
 
   const newWorkOrder = {
     id: `wo-${Date.now()}`,

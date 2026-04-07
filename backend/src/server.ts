@@ -1,8 +1,11 @@
 import express from 'express';
+import helmet from 'helmet';
+import compression from 'compression';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import dotenv from 'dotenv';
+import { apiLimiter, authLimiter } from './middleware/rateLimiter';
 import authRoutes from './routes/auth';
 import fleetRoutes from './routes/fleet';
 import voyageRoutes from './routes/voyage';
@@ -24,6 +27,9 @@ const io = new Server(httpServer, {
   },
 });
 
+app.use(helmet());
+app.use(apiLimiter);
+app.use(compression()); // gzip all responses — critical for satellite bandwidth
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true,
@@ -38,6 +44,8 @@ app.use((req: any, _res, next) => {
 });
 
 // Routes
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api', fleetRoutes);
 app.use('/api/voyage', voyageRoutes);

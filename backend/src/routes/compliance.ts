@@ -3,6 +3,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import { MOCK_VESSELS } from '../mock/vessels';
 import { MOCK_VOYAGES } from '../mock/voyages';
 import { authenticate } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+import { aiLimiter } from '../middleware/rateLimiter';
+import { GenerateMrvReportSchema, ComplianceChatSchema } from '../schemas';
 
 const router = Router();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -224,7 +227,7 @@ router.get('/ets/:vesselId', authenticate, (req: Request, res: Response) => {
 });
 
 // POST /api/compliance/generate-mrv-report
-router.post('/generate-mrv-report', authenticate, (req: Request, res: Response) => {
+router.post('/generate-mrv-report', authenticate, validate(GenerateMrvReportSchema), (req: Request, res: Response) => {
   const { vesselId, year = 2024 } = req.body;
 
   const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
@@ -272,13 +275,8 @@ router.post('/generate-mrv-report', authenticate, (req: Request, res: Response) 
 });
 
 // POST /api/compliance/chat - STREAMING SSE
-router.post('/chat', authenticate, async (req: Request, res: Response): Promise<void> => {
+router.post('/chat', authenticate, aiLimiter, validate(ComplianceChatSchema), async (req: Request, res: Response): Promise<void> => {
   const { message, vesselId, conversationHistory = [] } = req.body;
-
-  if (!message) {
-    res.status(400).json({ error: 'Message is required' });
-    return;
-  }
 
   const vessel = MOCK_VESSELS.find(v => v.id === vesselId) || MOCK_VESSELS[0];
   const ciiData = CII_DATA[vesselId || vessel.id];
