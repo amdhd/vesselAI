@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useFleet } from '../../context/FleetContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import { toBackendVesselId } from '../../lib/utils'
 import axios from 'axios'
 
 interface Chapter {
@@ -67,8 +68,8 @@ export default function ReadinessScore() {
   const { data, isLoading, error } = useQuery<ReadinessData>({
     queryKey: ['sire-readiness', selectedVessel?.id],
     queryFn: async () => {
-      const { data } = await axios.get(`/api/sire/readiness-score/${selectedVessel?.id || 'vessel-001'}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      const { data } = await axios.get(`/api/sire/readiness-score/${toBackendVesselId(selectedVessel?.id)}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('vm_token')}` }
       })
       return data
     },

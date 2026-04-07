@@ -3,6 +3,7 @@ import { FileText, Zap, CheckCircle, Download, AlertTriangle, Shield } from 'luc
 import { useFleet } from '../../context/FleetContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import { printAsPdf } from '../../lib/pdfExport'
+import { toBackendVesselId } from '../../lib/utils'
 import axios from 'axios'
 
 const STEPS = [
@@ -40,8 +41,8 @@ export default function PreInspectionReport() {
 
     try {
       const { data } = await axios.post('/api/sire/generate-pre-inspection-report', {
-        vesselId: selectedVessel?.id || 'vessel-001',
-      }, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+        vesselId: toBackendVesselId(selectedVessel?.id),
+      }, { headers: { Authorization: `Bearer ${localStorage.getItem('vm_token')}` } })
       setReport(data)
     } catch {
       setError('Failed to generate report. Please try again.')

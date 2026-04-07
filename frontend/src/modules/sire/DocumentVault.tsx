@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { FileText, Upload, AlertTriangle, CheckCircle, Clock, Filter } from 'lucide-react'
 import { useFleet } from '../../context/FleetContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
-import { formatDate } from '../../lib/utils'
+import { formatDate, toBackendVesselId } from '../../lib/utils'
 import axios from 'axios'
 
 interface SireDoc {
@@ -49,8 +49,8 @@ export default function DocumentVault() {
   const { data: docs = [], isLoading } = useQuery<SireDoc[]>({
     queryKey: ['sire-docs', selectedVessel?.id],
     queryFn: async () => {
-      const { data } = await axios.get(`/api/sire/documents/${selectedVessel?.id || 'vessel-001'}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      const { data } = await axios.get(`/api/sire/documents/${toBackendVesselId(selectedVessel?.id)}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('vm_token')}` }
       })
       return data
     },

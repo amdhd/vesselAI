@@ -3,6 +3,7 @@ import { FileText, Zap, Copy, Download, AlertTriangle } from 'lucide-react'
 import { useFleet } from '../../context/FleetContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import { printAsPdf } from '../../lib/pdfExport'
+import { toBackendVesselId } from '../../lib/utils'
 import axios from 'axios'
 
 const EQUIPMENT_LIST = [
@@ -49,10 +50,10 @@ export default function DefectReportGenerator() {
     setLoading(true)
     try {
       const { data } = await axios.post('/api/knowledge/generate-defect-report', {
-        vesselId: selectedVessel?.id || 'vessel-001',
+        vesselId: toBackendVesselId(selectedVessel?.id),
         ...form,
       }, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        headers: { Authorization: `Bearer ${localStorage.getItem('vm_token')}` }
       })
       setResult(data)
     } catch {

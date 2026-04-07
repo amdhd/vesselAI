@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Send, User, ClipboardList, Shield } from 'lucide-react'
 import { useFleet } from '../../context/FleetContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import { toBackendVesselId } from '../../lib/utils'
 
 interface Message {
   id: string
@@ -59,10 +60,10 @@ export default function InspectorSimulation() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${localStorage.getItem('vm_token')}`,
         },
         body: JSON.stringify({
-          vesselId: selectedVessel?.id || 'vessel-001',
+          vesselId: toBackendVesselId(selectedVessel?.id),
           message: content,
           history,
         }),

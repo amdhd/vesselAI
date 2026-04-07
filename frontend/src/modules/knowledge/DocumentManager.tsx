@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Upload, FileText, Search, CheckCircle, Clock, AlertCircle, Database } from 'lucide-react'
 import { useFleet } from '../../context/FleetContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
-import { formatDate } from '../../lib/utils'
+import { formatDate, toBackendVesselId } from '../../lib/utils'
 import axios from 'axios'
 
 interface KnowledgeDoc {
@@ -51,8 +51,8 @@ export default function DocumentManager() {
   const { data: docs = DEMO_DOCS, isLoading } = useQuery({
     queryKey: ['knowledge-docs', selectedVessel?.id],
     queryFn: async () => {
-      const { data } = await axios.get(`/api/knowledge/documents/${selectedVessel?.id || 'vessel-001'}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      const { data } = await axios.get(`/api/knowledge/documents/${toBackendVesselId(selectedVessel?.id)}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('vm_token')}` }
       })
       return data as KnowledgeDoc[]
     },

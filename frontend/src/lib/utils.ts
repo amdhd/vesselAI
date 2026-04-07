@@ -183,6 +183,19 @@ export function calculateCO2(fuelMT: number, fuelType: string): number {
   return fuelMT * factor
 }
 
+// ─── Vessel ID mapping ────────────────────────────────────────────────────────
+// Frontend mock uses 'v1/v2/v3'; backend routes use 'vessel-001/vessel-002/vessel-003'
+const VESSEL_ID_MAP: Record<string, string> = {
+  v1: 'vessel-001',
+  v2: 'vessel-002',
+  v3: 'vessel-003',
+}
+
+export function toBackendVesselId(id: string | undefined, fallback = 'vessel-001'): string {
+  if (!id) return fallback
+  return VESSEL_ID_MAP[id] ?? id
+}
+
 // ─── Misc ──────────────────────────────────────────────────────────────────────
 
 export function getGreeting(): string {

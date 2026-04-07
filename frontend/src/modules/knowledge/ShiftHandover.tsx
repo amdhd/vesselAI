@@ -5,6 +5,7 @@ import { useFleet } from '../../context/FleetContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import { formatDateTime } from '../../lib/utils'
 import { printAsPdf } from '../../lib/pdfExport'
+import { toBackendVesselId } from '../../lib/utils'
 import axios from 'axios'
 
 const WATCH_OPTIONS = ['00-04 / 12-16', '04-08 / 16-20', '08-12 / 20-24']
@@ -37,9 +38,9 @@ export default function ShiftHandover() {
     setLoading(true)
     try {
       const { data } = await axios.post('/api/knowledge/handover', {
-        vesselId: selectedVessel?.id || 'vessel-001',
+        vesselId: toBackendVesselId(selectedVessel?.id),
         ...form,
-      }, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+      }, { headers: { Authorization: `Bearer ${localStorage.getItem('vm_token')}` } })
       setResult(data)
     } catch {
       setResult({
