@@ -338,10 +338,13 @@ function ChatTab({ vesselId }: { vesselId: string }) {
       const res = await sireApi.inspectorChatStream({
         vesselId,
         message: userMsg,
-        history: messages,
+        conversationHistory: messages,
       })
 
-      if (!res.ok) throw new Error('Stream failed')
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Request failed' }))
+        throw new Error(err.error || `Error ${res.status}`)
+      }
 
       const reader = res.body?.getReader()
       const decoder = new TextDecoder()
