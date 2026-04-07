@@ -69,6 +69,10 @@ export default function InspectorSimulation() {
         }),
       })
 
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Request failed' }))
+        throw new Error(err.error || `Error ${response.status}`)
+      }
       if (!response.body) throw new Error('No response body')
       const reader = response.body.getReader()
       const decoder = new TextDecoder()

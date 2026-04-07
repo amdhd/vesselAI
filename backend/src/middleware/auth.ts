@@ -32,6 +32,20 @@ export const authenticate = (
   }
 
   const token = authHeader.split(' ')[1];
+
+  // Allow demo tokens (frontend fallback when backend was unreachable at login time)
+  if (token.startsWith('demo_token_')) {
+    req.user = {
+      id: 'user-001',
+      email: 'demo@petronas.com',
+      role: 'fleet_manager',
+      fleetId: 'fleet-001',
+      name: 'Captain Ahmad Fauzi',
+    };
+    next();
+    return;
+  }
+
   const secret = process.env.JWT_SECRET || 'vesselmind-secret-key-change-in-production';
 
   try {

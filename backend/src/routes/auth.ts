@@ -55,6 +55,19 @@ router.post('/login', validate(LoginSchema), async (req: Request, res: Response)
     }
 
     if (!user) {
+      // DB connected but not seeded — still allow demo credentials
+      if (email === 'demo@petronas.com' && password === 'demo123') {
+        const mockUser = {
+          id: 'user-001',
+          email: 'demo@petronas.com',
+          name: 'Captain Ahmad Fauzi',
+          role: 'fleet_manager',
+          fleetId: 'fleet-001',
+        };
+        const token = generateToken(mockUser);
+        res.json({ token, user: mockUser });
+        return;
+      }
       res.status(401).json({ error: 'Invalid email or password' });
       return;
     }
