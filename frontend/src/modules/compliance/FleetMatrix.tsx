@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { CheckCircle, XCircle, AlertCircle, Download, Grid } from 'lucide-react'
 import { MOCK_VESSELS } from '@/lib/mockData'
 import { getCIIBgColor } from '@/lib/utils'
+import { downloadCsv } from '@/lib/pdfExport'
 import type { CIIRating } from '@/lib/types'
 
 interface VesselCompliance {
@@ -93,9 +94,24 @@ export default function FleetMatrix() {
   const handleGenerateReport = () => {
     setGenerating(true)
     setTimeout(() => {
+      const header = ['Vessel', 'Type', 'IMO', 'CII Rating', 'ETS Status', 'MRV Filed', 'EEXI Valid', 'SOx Compliant']
+      const rows = FLEET_COMPLIANCE.map(v => {
+        const mv = MOCK_VESSELS.find(m => m.id === v.vesselId)
+        return [
+          v.vesselName,
+          mv?.type ?? '',
+          mv?.imo ?? '',
+          v.ciiRating,
+          v.etsStatus,
+          v.mrvFiled ? 'Yes' : 'No',
+          v.eexiValid ? 'Yes' : 'No',
+          v.soxCompliant ? 'Yes' : 'No',
+        ]
+      })
+      downloadCsv(`fleet-compliance-${new Date().toISOString().slice(0, 10)}.csv`, [header, ...rows])
       setGenerating(false)
       setGenerated(true)
-    }, 2000)
+    }, 800)
   }
 
   return (
@@ -209,7 +225,7 @@ export default function FleetMatrix() {
       {generated && (
         <div className="bg-green-900/30 border border-green-700 rounded-xl px-4 py-3 text-green-300 text-sm flex items-center gap-2">
           <CheckCircle className="w-4 h-4" />
-          Fleet compliance report generated successfully. Download will start shortly.
+          Fleet compliance report downloaded as CSV.
         </div>
       )}
     </div>

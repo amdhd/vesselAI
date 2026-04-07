@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ClipboardList, Zap, Copy, Clock } from 'lucide-react'
+import { ClipboardList, Zap, Copy, Clock, Download } from 'lucide-react'
 import { useFleet } from '../../context/FleetContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import { formatDateTime } from '../../lib/utils'
+import { printAsPdf } from '../../lib/pdfExport'
 import axios from 'axios'
 
 const WATCH_OPTIONS = ['00-04 / 12-16', '04-08 / 16-20', '08-12 / 20-24']
@@ -100,9 +101,20 @@ export default function ShiftHandover() {
           <div className="card">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-white">Handover Report</h3>
-              <button onClick={() => navigator.clipboard.writeText(result.reportText)} className="btn-secondary text-xs flex items-center gap-1 py-1.5">
-                <Copy size={12} /> Copy
-              </button>
+              <div className="flex gap-2">
+                <button onClick={() => navigator.clipboard.writeText(result.reportText)} className="btn-secondary text-xs flex items-center gap-1 py-1.5">
+                  <Copy size={12} /> Copy
+                </button>
+                <button
+                  onClick={() => printAsPdf(
+                    `Watch Handover Report — ${form.watch} — ${selectedVessel?.name || 'MV Merdeka Spirit'}`,
+                    result.reportText,
+                  )}
+                  className="btn-secondary text-xs flex items-center gap-1 py-1.5"
+                >
+                  <Download size={12} /> PDF
+                </button>
+              </div>
             </div>
             <div className="bg-teal-900/20 border border-teal-800 rounded-lg p-3 mb-3">
               <p className="text-teal-300 text-sm font-medium">Summary</p>

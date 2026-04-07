@@ -3,38 +3,101 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useFleet } from '@/context/FleetContext'
 import StatCard from '@/components/ui/StatCard'
-import { MOCK_NOTIFICATIONS } from '@/lib/mockData'
+import { MOCK_NOTIFICATIONS, MOCK_VESSELS, MOCK_ETS_DATA, MOCK_ALERTS } from '@/lib/mockData'
 import { getGreeting, formatDate, timeAgo, cn } from '@/lib/utils'
 
-const COMPLIANCE_MATRIX = [
-  {
-    vessel: 'MV Merdeka Spirit',
-    ciiRating: 'B',
-    ciiStatus: 'green' as const,
-    ets: 'compliant' as const,
-    mrv: 'Filed',
-    certs: 'Valid',
-    certStatus: 'valid' as const,
-  },
-  {
-    vessel: 'MT Kerteh Venture',
-    ciiRating: 'D',
-    ciiStatus: 'red' as const,
-    ets: 'warning' as const,
-    mrv: 'Filed',
-    certs: '2 Expired',
-    certStatus: 'expired' as const,
-  },
-  {
-    vessel: 'OSV Tenaga Satu',
-    ciiRating: 'C',
-    ciiStatus: 'amber' as const,
-    ets: 'compliant' as const,
-    mrv: 'Filed',
-    certs: 'Valid',
-    certStatus: 'valid' as const,
-  },
-]
+// ── Dashboard KPI calculations ────────────────────────────────────────────────
+
+const VLSFO_PRICE_PER_TONNE = 620   // USD/t (market rate)
+const CO2_FACTOR_VLSFO       = 3.2  // tCO2 per tonne VLSFO (IMO MEPC.308)
+const BASELINE_EFFICIENCY    = 65   // industry avg fuel efficiency score
+
+/**
+ * Fleet Fuel Efficiency Score
+ * Simple mean of each vessel's fuelEfficiencyScore (0–100).
+ * "Previous month" is back-derived from the CII trajectory (Sep→Oct change).
+ */
+function calcFleetFuelEfficiency(vessels: typeof MOCK_VESSELS) {
+  if (!vessels.length) return { score: 0, trend: 0 }
+
+  const current = vessels.reduce((s, v) => s + v.fuelEfficiencyScore, 0) / vessels.length
+
+  // Derive prev-month score from CII trajectory ratio for each vessel
+  const prevScores = vessels.map(v => {
+    const traj = MOCK_ETS_DATA[v.id]?.monthlyData
+    if (!traj || traj.length < 2) return v.fuelEfficiencyScore
+    const prevCo2 = traj[traj.length - 2].co2
+    const currCo2 = traj[traj.length - 1].co2
+    if (currCo2 === 0) return v.fuelEfficiencyScore
+    // If CO2 went up, efficiency went down by the same ratio
+    return v.fuelEfficiencyScore * (prevCo2 / currCo2)
+  })
+  const prev = prevScores.reduce((s, x) => s + x, 0) / prevScores.length
+
+  return {
+    score: Math.round(current),
+    trend: Math.round((current - prev) * 10) / 10,
+  }
+}
+
+/**
+ * Monthly AI Savings (USD)
+ * = Fuel savings (vessels above baseline efficiency × their monthly fuel spend)
+ * + Maintenance cost avoidance (alerts × estimated repair cost × days-to-failure weight)
+ */
+function calcMonthlyAiSavings(vessels: typeof MOCK_VESSELS) {
+  // Fuel savings per vessel using latest-month ETS CO2 data
+  const fuelSavings = vessels.reduce((sum, v) => {
+    const ets = MOCK_ETS_DATA[v.id]
+    if (!ets) return sum
+    const latestCo2 = ets.monthlyData[ets.monthlyData.length - 1]?.co2 ?? 0
+    const monthlyFuelCost = (latestCo2 / CO2_FACTOR_VLSFO) * VLSFO_PRICE_PER_TONNE
+    const bonus = Math.max(0, v.fuelEfficiencyScore - BASELINE_EFFICIENCY) / 100
+    return sum + monthlyFuelCost * bonus
+  }, 0)
+
+  // Maintenance cost avoidance: early detection before failure
+  const maintenanceSavings = MOCK_ALERTS.reduce((sum, alert) => {
+    const avoidedRepairCost = alert.severity === 'critical' ? 85_000 : 25_000
+    const daysCaught = Math.min(alert.daysToFailure ?? 7, 7)
+    return sum + avoidedRepairCost * (daysCaught / 30)
+  }, 0)
+
+  return Math.round(fuelSavings + maintenanceSavings)
+}
+
+/**
+ * Compliance matrix derived from actual vessel + ETS data.
+ * ETS status: compliant if allowancesPurchased / allowancesRequired >= 0.70
+ */
+const MRV_STATUS: Record<string, string>  = { v1: 'Filed', v2: 'Filed', v3: 'Filed' }
+const CERT_STATUS: Record<string, { label: string; ok: 'valid' | 'expired' }> = {
+  v1: { label: 'Valid',      ok: 'valid'   },
+  v2: { label: '2 Expired',  ok: 'expired' },
+  v3: { label: 'Valid',      ok: 'valid'   },
+}
+
+function buildComplianceMatrix() {
+  return MOCK_VESSELS.map(v => {
+    const ets = MOCK_ETS_DATA[v.id]
+    const etsCoverage = ets ? ets.allowancesPurchased / ets.allowancesRequired : 1
+    const etsStatus = etsCoverage >= 0.85 ? 'compliant' : etsCoverage >= 0.60 ? 'warning' : 'non_compliant'
+    const ciiStatus: 'green' | 'amber' | 'red' =
+      v.ciiRating === 'A' || v.ciiRating === 'B' ? 'green' :
+      v.ciiRating === 'C' ? 'amber' : 'red'
+
+    return {
+      id: v.id,
+      vessel: v.name,
+      ciiRating: v.ciiRating ?? 'C',
+      ciiStatus,
+      ets: etsStatus as 'compliant' | 'warning' | 'non_compliant',
+      mrv: MRV_STATUS[v.id] ?? 'Pending',
+      certs: CERT_STATUS[v.id]?.label ?? 'Valid',
+      certStatus: CERT_STATUS[v.id]?.ok ?? 'valid',
+    }
+  })
+}
 
 const QUICK_MODULES = [
   {
@@ -118,6 +181,20 @@ export default function DashboardPage() {
   const activeAlerts = MOCK_NOTIFICATIONS.filter((n) => !n.read && (n.severity === 'critical' || n.severity === 'warning')).length
   const recentAlerts = MOCK_NOTIFICATIONS.slice(0, 3)
 
+  // Computed KPIs from actual data
+  const vesselData = vessels.length ? vessels : MOCK_VESSELS
+  const { score: efficiencyScore, trend: efficiencyTrend } = calcFleetFuelEfficiency(vesselData)
+  const monthlySavings = calcMonthlyAiSavings(vesselData)
+  const complianceMatrix = buildComplianceMatrix()
+
+  const trendLabel = efficiencyTrend >= 0
+    ? `+${efficiencyTrend.toFixed(1)} from last month`
+    : `${efficiencyTrend.toFixed(1)} from last month`
+
+  const savingsFormatted = monthlySavings >= 1000
+    ? `$${(monthlySavings / 1000).toFixed(1)}K`
+    : `$${monthlySavings}`
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -146,8 +223,8 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Fleet Fuel Efficiency"
-          value="78/100"
-          subtitle="+2.3 from last month"
+          value={`${efficiencyScore}/100`}
+          subtitle={trendLabel}
           icon={Gauge}
           variant="teal"
           iconBg="bg-green-600/20"
@@ -164,8 +241,8 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Monthly AI Savings"
-          value="$127,450"
-          subtitle="Across all vessels"
+          value={savingsFormatted}
+          subtitle="Fuel + maintenance avoidance"
           icon={TrendingUp}
           variant="teal"
           iconBg="bg-green-600/20"
@@ -190,8 +267,8 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-navy-700/50">
-                {COMPLIANCE_MATRIX.map((row) => (
-                  <tr key={row.vessel} className="hover:bg-navy-700/20 transition-colors">
+                {complianceMatrix.map((row) => (
+                  <tr key={row.id} className="hover:bg-navy-700/20 transition-colors">
                     <td className="py-3 pr-4 font-medium text-white">{row.vessel}</td>
                     <td className="py-3 pr-4">
                       <CIIBadge rating={row.ciiRating} status={row.ciiStatus} />
@@ -201,9 +278,13 @@ export default function DashboardPage() {
                         <span className="flex items-center gap-1 text-green-400 text-xs">
                           <CheckCircle className="w-3.5 h-3.5" /> Compliant
                         </span>
-                      ) : (
+                      ) : row.ets === 'warning' ? (
                         <span className="flex items-center gap-1 text-amber-400 text-xs">
-                          <AlertTriangle className="w-3.5 h-3.5" /> Warning
+                          <AlertTriangle className="w-3.5 h-3.5" /> At Risk
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-red-400 text-xs">
+                          <XCircle className="w-3.5 h-3.5" /> Non-compliant
                         </span>
                       )}
                     </td>

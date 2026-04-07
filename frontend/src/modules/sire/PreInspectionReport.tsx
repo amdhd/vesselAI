@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { FileText, Zap, CheckCircle, Download, AlertTriangle, Shield } from 'lucide-react'
 import { useFleet } from '../../context/FleetContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import { printAsPdf } from '../../lib/pdfExport'
 import axios from 'axios'
 
 const STEPS = [
@@ -118,7 +119,13 @@ export default function PreInspectionReport() {
               </div>
               <div className="flex items-center gap-3">
                 <span className={`text-sm font-bold ${readinessColor}`}>{report.overallReadiness}</span>
-                <button className="btn-secondary text-xs flex items-center gap-1.5 py-1.5">
+                <button
+                  onClick={() => printAsPdf(
+                    `SIRE Pre-Inspection Report — ${selectedVessel?.name || 'MV Merdeka Spirit'}`,
+                    report.reportText,
+                  )}
+                  className="btn-secondary text-xs flex items-center gap-1.5 py-1.5"
+                >
                   <Download size={12} /> Download PDF
                 </button>
               </div>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { FileText, Zap, Copy, Download, AlertTriangle } from 'lucide-react'
 import { useFleet } from '../../context/FleetContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import { printAsPdf } from '../../lib/pdfExport'
 import axios from 'axios'
 
 const EQUIPMENT_LIST = [
@@ -171,7 +172,13 @@ export default function DefectReportGenerator() {
                   <button onClick={copyReport} className="btn-secondary text-xs flex items-center gap-1.5 py-1.5">
                     <Copy size={12} /> Copy
                   </button>
-                  <button className="btn-secondary text-xs flex items-center gap-1.5 py-1.5">
+                  <button
+                    onClick={() => printAsPdf(
+                      `Defect Report — ${form.equipment} — ${selectedVessel?.name || 'MV Merdeka Spirit'}`,
+                      result.reportText,
+                    )}
+                    className="btn-secondary text-xs flex items-center gap-1.5 py-1.5"
+                  >
                     <Download size={12} /> PDF
                   </button>
                 </div>
