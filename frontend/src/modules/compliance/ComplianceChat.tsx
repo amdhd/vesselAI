@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Send, Bot, User, Loader2 } from 'lucide-react'
 import { useFleet } from '@/context/FleetContext'
 import { sireApi } from '@/lib/api'
+import { toBackendVesselId } from '@/lib/utils'
 
 interface ChatMessage {
   id: string
@@ -41,9 +42,9 @@ export default function ComplianceChat() {
 
     try {
       const response = await sireApi.complianceChatStream({
-        vesselId: selectedVessel?.id ?? 'v1',
+        vesselId: toBackendVesselId(selectedVessel?.id),
         message: content,
-        history: messages.slice(-6).map((m) => ({ role: m.role, content: m.content })),
+        conversationHistory: messages.slice(-6).map((m) => ({ role: m.role, content: m.content })),
       })
 
       if (!response.body) throw new Error('No response body')

@@ -65,7 +65,7 @@ export default function InspectorSimulation() {
         body: JSON.stringify({
           vesselId: toBackendVesselId(selectedVessel?.id),
           message: content,
-          history,
+          conversationHistory: history,
         }),
       })
 

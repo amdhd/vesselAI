@@ -29,7 +29,14 @@ const io = new Server(httpServer, {
 
 app.use(helmet());
 app.use(apiLimiter);
-app.use(compression()); // gzip all responses — critical for satellite bandwidth
+app.use(compression({
+  // Skip SSE streams — compression buffers responses and breaks streaming
+  filter: (_req, res) => {
+    const ct = res.getHeader('Content-Type') as string | undefined;
+    if (ct && ct.includes('text/event-stream')) return false;
+    return compression.filter(_req, res);
+  },
+}));
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true,

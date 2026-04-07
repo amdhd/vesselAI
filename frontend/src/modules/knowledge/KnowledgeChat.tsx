@@ -50,7 +50,7 @@ export default function KnowledgeChat() {
         body: JSON.stringify({
           vesselId: toBackendVesselId(selectedVessel?.id),
           message: content,
-          history: messages.slice(-6).map(m => ({ role: m.role, content: m.content })),
+          conversationHistory: messages.slice(-6).map(m => ({ role: m.role, content: m.content })),
         }),
       })
 

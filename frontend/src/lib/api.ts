@@ -225,7 +225,7 @@ export const knowledgeApi = {
     return data
   },
   // Chat uses streaming fetch — not axios
-  chatStream: (params: { vesselId: string; message: string; history: { role: string; content: string }[] }) => {
+  chatStream: (params: { vesselId: string; message: string; conversationHistory: { role: string; content: string }[] }) => {
     const token = localStorage.getItem('vm_token')
     return fetch(`${BASE_URL}/knowledge/chat`, {
       method: 'POST',
@@ -257,9 +257,9 @@ export const sireApi = {
     const { data } = await api.get<SireFinding[]>(`/sire/findings/${vesselId}`)
     return data
   },
-  inspectorChatStream: (params: { vesselId: string; message: string; history: { role: string; content: string }[] }) => {
+  inspectorChatStream: (params: { vesselId: string; message: string; conversationHistory: { role: string; content: string }[] }) => {
     const token = localStorage.getItem('vm_token')
-    return fetch(`${BASE_URL}/sire/inspector-chat`, {
+    return fetch(`${BASE_URL}/sire/inspector-simulation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -268,7 +268,7 @@ export const sireApi = {
       body: JSON.stringify(params),
     })
   },
-  complianceChatStream: (params: { vesselId: string; message: string; history: { role: string; content: string }[] }) => {
+  complianceChatStream: (params: { vesselId: string; message: string; conversationHistory: { role: string; content: string }[] }) => {
     const token = localStorage.getItem('vm_token')
     return fetch(`${BASE_URL}/compliance/chat`, {
       method: 'POST',
