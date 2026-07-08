@@ -6,6 +6,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import dotenv from 'dotenv';
 import { apiLimiter, authLimiter } from './middleware/rateLimiter';
+import { errorHandler, notFound } from './middleware/errorHandler';
 import authRoutes from './routes/auth';
 import fleetRoutes from './routes/fleet';
 import voyageRoutes from './routes/voyage';
@@ -66,6 +67,13 @@ app.use('/api/notifications', notificationRoutes);
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Unmatched API routes → structured 404 (must come after all routes)
+app.use('/api', notFound);
+
+// Central error handler — must be the last middleware registered so thrown
+// errors and next(err) calls are serialised consistently (no stack leaks in prod)
+app.use(errorHandler);
 
 // Socket.io for real-time vessel tracking
 io.on('connection', (socket) => {
