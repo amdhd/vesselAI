@@ -8,6 +8,7 @@ const conversationHistory = z
       content: z.string().max(5000),
     })
   )
+  .max(20) // bound client-supplied history: injection surface + token/cost DoS
   .optional();
 
 // ── Auth ─────────────────────────────────────────────────────────────────────

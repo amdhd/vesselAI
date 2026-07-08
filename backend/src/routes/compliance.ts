@@ -5,6 +5,7 @@ import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
 import { requireVessel, resolveFleetVessel } from '../lib/tenant';
+import { SYSTEM_GUARDRAILS } from '../lib/aiGuard';
 import { GenerateMrvReportSchema, ComplianceChatSchema } from '../schemas';
 
 const router = Router();
@@ -296,7 +297,7 @@ You have expertise in:
 - EEXI (Energy Efficiency Existing Ship Index)
 - Speed optimization and fuel efficiency strategies
 
-Provide specific, actionable advice. Reference regulation numbers when relevant (e.g., MARPOL Annex VI Regulation 28).`;
+Provide specific, actionable advice. Reference regulation numbers when relevant (e.g., MARPOL Annex VI Regulation 28).${SYSTEM_GUARDRAILS}`;
 
   const messages: { role: 'user' | 'assistant'; content: string }[] = [
     ...conversationHistory,

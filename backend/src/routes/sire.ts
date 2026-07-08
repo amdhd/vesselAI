@@ -6,6 +6,7 @@ import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
 import { requireVessel, resolveFleetVessel } from '../lib/tenant';
+import { SYSTEM_GUARDRAILS } from '../lib/aiGuard';
 import { GeneratePreInspectionSchema, InspectorSimulationSchema } from '../schemas';
 
 const router = Router();
@@ -333,7 +334,7 @@ Be realistic — ask about:
 - Safety equipment
 - Navigation systems
 
-Respond as the inspector would in an actual inspection — direct, professional, and systematic.`;
+Respond as the inspector would in an actual inspection — direct, professional, and systematic.${SYSTEM_GUARDRAILS}`;
 
   const messages: { role: 'user' | 'assistant'; content: string }[] = [
     ...conversationHistory,

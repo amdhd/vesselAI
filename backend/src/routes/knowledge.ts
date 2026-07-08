@@ -4,6 +4,7 @@ import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
 import { requireVessel, resolveFleetVessel } from '../lib/tenant';
+import { SYSTEM_GUARDRAILS } from '../lib/aiGuard';
 import {
   KnowledgeChatSchema,
   UploadDocumentSchema,
@@ -197,7 +198,7 @@ Vessel specifications:
 - Engine: ${vessel.engineType} (${vessel.enginePower} kW)
 - Design Speed: ${vessel.designSpeed} knots
 - Max Speed: ${vessel.maxSpeed} knots
-- Built: ${vessel.builtYear}`;
+- Built: ${vessel.builtYear}${SYSTEM_GUARDRAILS}`;
 
   const messages: { role: 'user' | 'assistant'; content: string }[] = [
     ...conversationHistory,
