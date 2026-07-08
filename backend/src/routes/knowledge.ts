@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
-import { MOCK_VESSELS } from '../mock/vessels';
-import { authenticate } from '../middleware/auth';
+import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
+import { requireVessel, resolveFleetVessel } from '../lib/tenant';
+import { SYSTEM_GUARDRAILS } from '../lib/aiGuard';
 import {
   KnowledgeChatSchema,
   UploadDocumentSchema,
@@ -161,10 +162,14 @@ const MOCK_DOCUMENTS: {
 };
 
 // POST /api/knowledge/chat - STREAMING SSE
-router.post('/chat', authenticate, aiLimiter, validate(KnowledgeChatSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/chat', authenticate, aiLimiter, validate(KnowledgeChatSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { message, vesselId, conversationHistory = [] } = req.body;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId) || MOCK_VESSELS[0];
+  const vessel = resolveFleetVessel(req, vesselId);
+  if (!vessel) {
+    res.status(403).json({ error: 'No accessible vessel for your fleet' });
+    return;
+  }
   const vesselDocs = MOCK_DOCUMENTS[vessel.id] || [];
   const docNames = vesselDocs.map(d => d.name).join(', ');
 
@@ -193,7 +198,7 @@ Vessel specifications:
 - Engine: ${vessel.engineType} (${vessel.enginePower} kW)
 - Design Speed: ${vessel.designSpeed} knots
 - Max Speed: ${vessel.maxSpeed} knots
-- Built: ${vessel.builtYear}`;
+- Built: ${vessel.builtYear}${SYSTEM_GUARDRAILS}`;
 
   const messages: { role: 'user' | 'assistant'; content: string }[] = [
     ...conversationHistory,
@@ -227,14 +232,10 @@ Vessel specifications:
 });
 
 // POST /api/knowledge/upload-document
-router.post('/upload-document', authenticate, validate(UploadDocumentSchema), (req: Request, res: Response) => {
+router.post('/upload-document', authenticate, validate(UploadDocumentSchema), (req: AuthenticatedRequest, res: Response) => {
   const { vesselId, name, type } = req.body;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
-  if (!vessel) {
-    res.status(404).json({ error: 'Vessel not found' });
-    return;
-  }
+  if (!requireVessel(req, res, vesselId)) return;
 
   const mockDocument = {
     id: `kdoc-${Date.now()}`,
@@ -255,14 +256,11 @@ router.post('/upload-document', authenticate, validate(UploadDocumentSchema), (r
 });
 
 // GET /api/knowledge/documents/:vesselId
-router.get('/documents/:vesselId', authenticate, (req: Request, res: Response) => {
+router.get('/documents/:vesselId', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { vesselId } = req.params;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
-  if (!vessel) {
-    res.status(404).json({ error: 'Vessel not found' });
-    return;
-  }
+  const vessel = requireVessel(req, res, vesselId);
+  if (!vessel) return;
 
   const docs = MOCK_DOCUMENTS[vesselId] || [];
 
@@ -279,14 +277,11 @@ router.get('/documents/:vesselId', authenticate, (req: Request, res: Response) =
 });
 
 // POST /api/knowledge/generate-defect-report
-router.post('/generate-defect-report', authenticate, aiLimiter, validate(GenerateDefectReportSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/generate-defect-report', authenticate, aiLimiter, validate(GenerateDefectReportSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { vesselId, equipment, description, symptoms, severity } = req.body;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
-  if (!vessel) {
-    res.status(404).json({ error: 'Vessel not found' });
-    return;
-  }
+  const vessel = requireVessel(req, res, vesselId);
+  if (!vessel) return;
 
   const mockReport = {
     reportText: `DEFECT REPORT
@@ -368,14 +363,11 @@ Return JSON: {
 });
 
 // POST /api/knowledge/handover
-router.post('/handover', authenticate, aiLimiter, validate(HandoverSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/handover', authenticate, aiLimiter, validate(HandoverSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { vesselId, watch, engineer, ongoingJobs, abnormalReadings, partsOnOrder } = req.body;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
-  if (!vessel) {
-    res.status(404).json({ error: 'Vessel not found' });
-    return;
-  }
+  const vessel = requireVessel(req, res, vesselId);
+  if (!vessel) return;
 
   const mockHandover = {
     reportText: `ENGINEERING WATCH HANDOVER REPORT

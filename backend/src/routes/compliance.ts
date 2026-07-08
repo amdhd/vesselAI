@@ -1,10 +1,11 @@
 import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
-import { MOCK_VESSELS } from '../mock/vessels';
 import { MOCK_VOYAGES } from '../mock/voyages';
-import { authenticate } from '../middleware/auth';
+import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
+import { requireVessel, resolveFleetVessel } from '../lib/tenant';
+import { SYSTEM_GUARDRAILS } from '../lib/aiGuard';
 import { GenerateMrvReportSchema, ComplianceChatSchema } from '../schemas';
 
 const router = Router();
@@ -95,14 +96,11 @@ const CII_DATA: {
 };
 
 // GET /api/compliance/cii/:vesselId
-router.get('/cii/:vesselId', authenticate, (req: Request, res: Response) => {
+router.get('/cii/:vesselId', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { vesselId } = req.params;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
-  if (!vessel) {
-    res.status(404).json({ error: 'Vessel not found' });
-    return;
-  }
+  const vessel = requireVessel(req, res, vesselId);
+  if (!vessel) return;
 
   const ciiData = CII_DATA[vesselId];
   if (!ciiData) {
@@ -179,14 +177,11 @@ router.get('/cii/:vesselId', authenticate, (req: Request, res: Response) => {
 });
 
 // GET /api/compliance/ets/:vesselId
-router.get('/ets/:vesselId', authenticate, (req: Request, res: Response) => {
+router.get('/ets/:vesselId', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { vesselId } = req.params;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
-  if (!vessel) {
-    res.status(404).json({ error: 'Vessel not found' });
-    return;
-  }
+  const vessel = requireVessel(req, res, vesselId);
+  if (!vessel) return;
 
   const ciiData = CII_DATA[vesselId];
   const euVoyagePercent = vesselId === 'vessel-001' ? 0.45 : vesselId === 'vessel-002' ? 0.38 : 0.12;
@@ -227,14 +222,11 @@ router.get('/ets/:vesselId', authenticate, (req: Request, res: Response) => {
 });
 
 // POST /api/compliance/generate-mrv-report
-router.post('/generate-mrv-report', authenticate, validate(GenerateMrvReportSchema), (req: Request, res: Response) => {
+router.post('/generate-mrv-report', authenticate, validate(GenerateMrvReportSchema), (req: AuthenticatedRequest, res: Response) => {
   const { vesselId, year = 2024 } = req.body;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
-  if (!vessel) {
-    res.status(404).json({ error: 'Vessel not found' });
-    return;
-  }
+  const vessel = requireVessel(req, res, vesselId);
+  if (!vessel) return;
 
   const ciiData = CII_DATA[vesselId];
   const voyages = MOCK_VOYAGES.filter(v => v.vesselId === vesselId && v.status === 'completed');
@@ -275,11 +267,15 @@ router.post('/generate-mrv-report', authenticate, validate(GenerateMrvReportSche
 });
 
 // POST /api/compliance/chat - STREAMING SSE
-router.post('/chat', authenticate, aiLimiter, validate(ComplianceChatSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/chat', authenticate, aiLimiter, validate(ComplianceChatSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { message, vesselId, conversationHistory = [] } = req.body;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId) || MOCK_VESSELS[0];
-  const ciiData = CII_DATA[vesselId || vessel.id];
+  const vessel = resolveFleetVessel(req, vesselId);
+  if (!vessel) {
+    res.status(403).json({ error: 'No accessible vessel for your fleet' });
+    return;
+  }
+  const ciiData = CII_DATA[vessel.id];
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -301,7 +297,7 @@ You have expertise in:
 - EEXI (Energy Efficiency Existing Ship Index)
 - Speed optimization and fuel efficiency strategies
 
-Provide specific, actionable advice. Reference regulation numbers when relevant (e.g., MARPOL Annex VI Regulation 28).`;
+Provide specific, actionable advice. Reference regulation numbers when relevant (e.g., MARPOL Annex VI Regulation 28).${SYSTEM_GUARDRAILS}`;
 
   const messages: { role: 'user' | 'assistant'; content: string }[] = [
     ...conversationHistory,

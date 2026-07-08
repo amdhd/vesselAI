@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { AuthenticatedRequest } from './auth';
 
 // General API — broad abuse protection
@@ -31,6 +31,9 @@ export const aiLimiter = rateLimit({
   message: { error: 'AI request limit reached, please wait before sending more' },
   keyGenerator: (req) => {
     const authReq = req as AuthenticatedRequest;
-    return authReq.user?.id ?? req.ip ?? 'anonymous';
+    if (authReq.user?.id) return authReq.user.id;
+    // Fall back to IP, normalised via the helper so IPv6 clients (which get a
+    // fresh address per request) can't trivially bypass the per-key limit.
+    return ipKeyGenerator(req.ip ?? '');
   },
 });
