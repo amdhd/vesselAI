@@ -1,6 +1,7 @@
-import { Router, Request, Response } from 'express';
-import { authenticate } from '../middleware/auth';
+import { Router, Response } from 'express';
+import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { validate } from '../middleware/validate';
+import { requireVessel, canAccessVessel } from '../lib/tenant';
 import { CreateNotificationSchema } from '../schemas';
 
 const router = Router();
@@ -55,11 +56,17 @@ const NOTIFICATIONS: {
   },
 ];
 
+// A notification is visible to the caller when it is system-wide (no vesselId)
+// or its vessel belongs to the caller's fleet. Prevents cross-tenant leakage.
+function visibleToUser(req: AuthenticatedRequest, n: { vesselId: string | null }): boolean {
+  return !n.vesselId || canAccessVessel(req, n.vesselId);
+}
+
 // GET /api/notifications
-router.get('/', authenticate, (req: Request, res: Response) => {
+router.get('/', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { read, vesselId, type, severity } = req.query;
 
-  let filtered = [...NOTIFICATIONS];
+  let filtered = NOTIFICATIONS.filter(n => visibleToUser(req, n));
 
   if (read !== undefined) {
     filtered = filtered.filter(n => n.read === (read === 'true'));
@@ -92,11 +99,11 @@ router.get('/', authenticate, (req: Request, res: Response) => {
 });
 
 // POST /api/notifications/:id/read
-router.post('/:id/read', authenticate, (req: Request, res: Response) => {
+router.post('/:id/read', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
 
   const notification = NOTIFICATIONS.find(n => n.id === id);
-  if (!notification) {
+  if (!notification || !visibleToUser(req, notification)) {
     res.status(404).json({ error: 'Notification not found' });
     return;
   }
@@ -106,16 +113,23 @@ router.post('/:id/read', authenticate, (req: Request, res: Response) => {
 });
 
 // POST /api/notifications/read-all
-router.post('/read-all', authenticate, (_req: Request, res: Response) => {
+router.post('/read-all', authenticate, (req: AuthenticatedRequest, res: Response) => {
+  let markedRead = 0;
   NOTIFICATIONS.forEach(n => {
-    n.read = true;
+    if (visibleToUser(req, n)) {
+      n.read = true;
+      markedRead++;
+    }
   });
-  res.json({ success: true, markedRead: NOTIFICATIONS.length });
+  res.json({ success: true, markedRead });
 });
 
 // POST /api/notifications - Create new notification
-router.post('/', authenticate, validate(CreateNotificationSchema), (req: Request, res: Response) => {
+router.post('/', authenticate, validate(CreateNotificationSchema), (req: AuthenticatedRequest, res: Response) => {
   const { vesselId, type, severity, title, message, link } = req.body;
+
+  // A vessel-scoped notification may only target a vessel in the caller's fleet.
+  if (vesselId && !requireVessel(req, res, vesselId)) return;
 
   const newNotification = {
     id: `notif-${Date.now()}`,
@@ -134,16 +148,16 @@ router.post('/', authenticate, validate(CreateNotificationSchema), (req: Request
 });
 
 // DELETE /api/notifications/:id
-router.delete('/:id', authenticate, (req: Request, res: Response) => {
+router.delete('/:id', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
-  const index = NOTIFICATIONS.findIndex(n => n.id === id);
+  const notification = NOTIFICATIONS.find(n => n.id === id);
 
-  if (index === -1) {
+  if (!notification || !visibleToUser(req, notification)) {
     res.status(404).json({ error: 'Notification not found' });
     return;
   }
 
-  NOTIFICATIONS.splice(index, 1);
+  NOTIFICATIONS.splice(NOTIFICATIONS.indexOf(notification), 1);
   res.json({ success: true });
 });
 

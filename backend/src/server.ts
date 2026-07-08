@@ -20,6 +20,20 @@ import notificationRoutes from './routes/notifications';
 dotenv.config();
 
 const app = express();
+
+// Trust proxy configuration. When deployed behind a reverse proxy / load
+// balancer, set TRUST_PROXY to the number of proxy hops (e.g. 1) so req.ip
+// reflects the real client for rate limiting. Left OFF by default: trusting
+// X-Forwarded-For when NOT behind a proxy would let clients spoof their IP and
+// bypass IP-based limits. Accepts a hop count or 'true'/'false'.
+const trustProxyEnv = process.env.TRUST_PROXY;
+if (trustProxyEnv !== undefined) {
+  const asNumber = Number(trustProxyEnv);
+  app.set('trust proxy', Number.isNaN(asNumber) ? trustProxyEnv === 'true' : asNumber);
+} else {
+  app.set('trust proxy', false);
+}
+
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
