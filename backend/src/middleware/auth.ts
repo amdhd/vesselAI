@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { JWT_SECRET } from '../lib/jwtConfig';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -33,23 +34,8 @@ export const authenticate = (
 
   const token = authHeader.split(' ')[1];
 
-  // Allow demo tokens (frontend fallback when backend was unreachable at login time)
-  if (token.startsWith('demo_token_')) {
-    req.user = {
-      id: 'user-001',
-      email: 'demo@petronas.com',
-      role: 'fleet_manager',
-      fleetId: 'fleet-001',
-      name: 'Captain Ahmad Fauzi',
-    };
-    next();
-    return;
-  }
-
-  const secret = process.env.JWT_SECRET || 'vesselmind-secret-key-change-in-production';
-
   try {
-    const decoded = jwt.verify(token, secret) as JwtPayload;
+    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
     req.user = {
       id: decoded.id,
       email: decoded.email,

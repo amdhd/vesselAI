@@ -1,16 +1,18 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { LoginSchema, RegisterSchema } from '../schemas';
+import { JWT_SECRET, JWT_EXPIRES_IN, DEMO_LOGIN_ENABLED } from '../lib/jwtConfig';
 
 const router = Router();
 const prisma = new PrismaClient();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'vesselmind-secret-key-change-in-production';
-const JWT_EXPIRES_IN = '7d';
+// Roles a self-service registrant is permitted to request. Privileged roles
+// (e.g. admin) must never be assignable from a public signup payload.
+const SELF_REGISTER_ROLES = new Set(['fleet_manager', 'engineer', 'viewer']);
 
 function generateToken(user: { id: string; email: string; role: string; fleetId?: string | null; name: string }): string {
   return jwt.sign(
@@ -22,7 +24,7 @@ function generateToken(user: { id: string; email: string; role: string; fleetId?
       name: user.name,
     },
     JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN }
+    { expiresIn: JWT_EXPIRES_IN } as SignOptions
   );
 }
 
@@ -37,8 +39,8 @@ router.post('/login', validate(LoginSchema), async (req: Request, res: Response)
     try {
       user = await prisma.user.findUnique({ where: { email } });
     } catch {
-      // DB not connected - use demo fallback
-      if (email === 'demo@petronas.com' && password === 'demo123') {
+      // DB not connected - use demo fallback (non-production only)
+      if (DEMO_LOGIN_ENABLED && email === 'demo@petronas.com' && password === 'demo123') {
         const mockUser = {
           id: 'user-001',
           email: 'demo@petronas.com',
@@ -55,8 +57,8 @@ router.post('/login', validate(LoginSchema), async (req: Request, res: Response)
     }
 
     if (!user) {
-      // DB connected but not seeded — still allow demo credentials
-      if (email === 'demo@petronas.com' && password === 'demo123') {
+      // DB connected but not seeded — still allow demo credentials (non-production only)
+      if (DEMO_LOGIN_ENABLED && email === 'demo@petronas.com' && password === 'demo123') {
         const mockUser = {
           id: 'user-001',
           email: 'demo@petronas.com',
@@ -109,6 +111,10 @@ router.post('/register', validate(RegisterSchema), async (req: Request, res: Res
       return;
     }
 
+    // Never trust a client-supplied privileged role. Only allow-listed,
+    // non-privileged roles may be self-assigned; everything else defaults.
+    const safeRole = SELF_REGISTER_ROLES.has(role) ? role : 'fleet_manager';
+
     const hashedPassword = await bcrypt.hash(password, 12);
 
     const user = await prisma.user.create({
@@ -116,7 +122,7 @@ router.post('/register', validate(RegisterSchema), async (req: Request, res: Res
         email,
         password: hashedPassword,
         name,
-        role: role || 'fleet_manager',
+        role: safeRole,
         fleetId: fleetId || null,
       },
     });
