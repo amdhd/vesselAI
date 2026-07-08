@@ -3,9 +3,10 @@ import Anthropic from '@anthropic-ai/sdk';
 import { MOCK_ACTIVE_VOYAGES, getVoyagesByVesselId } from '../mock/voyages';
 import { MOCK_VESSELS } from '../mock/vessels';
 import { MOCK_WEATHER_ROUTES, getRouteWeather } from '../mock/weatherRoutes';
-import { authenticate } from '../middleware/auth';
+import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
+import { requireVessel, resolveFleetVessel, requireFleetAccess, canAccessVessel } from '../lib/tenant';
 import {
   OptimizeRouteSchema,
   CalculateSpeedSchema,
@@ -19,7 +20,7 @@ const router = Router();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // POST /api/voyage/optimize-route
-router.post('/optimize-route', authenticate, aiLimiter, validate(OptimizeRouteSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/optimize-route', authenticate, aiLimiter, validate(OptimizeRouteSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const {
     vesselId,
     departurePort,
@@ -28,7 +29,11 @@ router.post('/optimize-route', authenticate, aiLimiter, validate(OptimizeRouteSc
     speedPreference = 'economic',
   } = req.body;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId) || MOCK_VESSELS[0];
+  const vessel = resolveFleetVessel(req, vesselId);
+  if (!vessel) {
+    res.status(403).json({ error: 'No accessible vessel for your fleet' });
+    return;
+  }
   const weatherRoute = getRouteWeather(departurePort, destinationPort) ||
     MOCK_WEATHER_ROUTES.find(r =>
       r.from.toLowerCase().includes((departurePort || '').toLowerCase()) ||
@@ -130,16 +135,21 @@ Respond with JSON only (no markdown): {
 });
 
 // GET /api/voyage/history/:vesselId
-router.get('/history/:vesselId', authenticate, (req: Request, res: Response) => {
+router.get('/history/:vesselId', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { vesselId } = req.params;
+  if (!requireVessel(req, res, vesselId)) return;
   const voyages = getVoyagesByVesselId(vesselId);
   res.json(voyages);
 });
 
 // POST /api/voyage/calculate-speed
-router.post('/calculate-speed', authenticate, validate(CalculateSpeedSchema), (req: Request, res: Response) => {
+router.post('/calculate-speed', authenticate, validate(CalculateSpeedSchema), (req: AuthenticatedRequest, res: Response) => {
   const { vesselId, targetSpeed, cargoLoad = 80, trimMetres = 0 } = req.body;
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId) || MOCK_VESSELS[0];
+  const vessel = resolveFleetVessel(req, vesselId);
+  if (!vessel) {
+    res.status(403).json({ error: 'No accessible vessel for your fleet' });
+    return;
+  }
 
   // Layer 2 + 3: build full speed-power curve using Admiralty Coefficient model
   const speedCurve = buildSpeedPowerCurve(vessel, cargoLoad, trimMetres, targetSpeed);
@@ -157,10 +167,13 @@ router.post('/calculate-speed', authenticate, validate(CalculateSpeedSchema), (r
 });
 
 // GET /api/voyage/active/:fleetId
-router.get('/active/:fleetId', authenticate, (req: Request, res: Response) => {
+router.get('/active/:fleetId', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { fleetId } = req.params;
+  if (!requireFleetAccess(req, res, fleetId)) return;
 
-  const activeVoyages = MOCK_ACTIVE_VOYAGES.map(voyage => {
+  const activeVoyages = MOCK_ACTIVE_VOYAGES
+    .filter(voyage => canAccessVessel(req, voyage.vesselId))
+    .map(voyage => {
     const vessel = MOCK_VESSELS.find(v => v.id === voyage.vesselId);
     return {
       ...voyage,
@@ -181,11 +194,18 @@ router.get('/active/:fleetId', authenticate, (req: Request, res: Response) => {
 });
 
 // POST /api/voyage/predict-eta
-router.post('/predict-eta', authenticate, aiLimiter, validate(PredictEtaSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/predict-eta', authenticate, aiLimiter, validate(PredictEtaSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { vesselId, voyageId, currentSpeed, weatherConditions } = req.body;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId) || MOCK_VESSELS[0];
-  const voyage = MOCK_ACTIVE_VOYAGES.find(v => v.id === voyageId) || MOCK_ACTIVE_VOYAGES[0];
+  const vessel = resolveFleetVessel(req, vesselId);
+  if (!vessel) {
+    res.status(403).json({ error: 'No accessible vessel for your fleet' });
+    return;
+  }
+  // Only consider voyages belonging to a vessel in the caller's fleet.
+  const voyage =
+    MOCK_ACTIVE_VOYAGES.find(v => v.id === voyageId && canAccessVessel(req, v.vesselId)) ||
+    MOCK_ACTIVE_VOYAGES.find(v => canAccessVessel(req, v.vesselId));
 
   if (!voyage) {
     res.status(404).json({ error: 'Active voyage not found' });
@@ -240,11 +260,17 @@ Return JSON: {"basicEta": "ISO", "aiEta": "ISO", "confidence": number, "factors"
 });
 
 // POST /api/voyage/generate-agent-message
-router.post('/generate-agent-message', authenticate, aiLimiter, validate(GenerateAgentMessageSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/generate-agent-message', authenticate, aiLimiter, validate(GenerateAgentMessageSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { vesselId, voyageId, portName, messageType = 'pre-arrival', additionalInfo } = req.body;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId) || MOCK_VESSELS[0];
-  const voyage = MOCK_ACTIVE_VOYAGES.find(v => v.id === voyageId) || MOCK_ACTIVE_VOYAGES[0];
+  const vessel = resolveFleetVessel(req, vesselId);
+  if (!vessel) {
+    res.status(403).json({ error: 'No accessible vessel for your fleet' });
+    return;
+  }
+  const voyage =
+    MOCK_ACTIVE_VOYAGES.find(v => v.id === voyageId && canAccessVessel(req, v.vesselId)) ||
+    MOCK_ACTIVE_VOYAGES.find(v => canAccessVessel(req, v.vesselId));
 
   const mockMessage = {
     subject: `PRE-ARRIVAL NOTIFICATION - ${vessel.name} - ${portName || 'Port Fujairah'}`,
@@ -309,9 +335,13 @@ Return JSON: {"subject": "string", "body": "string"}`,
 
 // POST /api/voyage/fuel-analysis
 // Returns the detailed Layer 2 + 3 breakdown for a single operating point.
-router.post('/fuel-analysis', authenticate, validate(FuelAnalysisSchema), (req: Request, res: Response) => {
+router.post('/fuel-analysis', authenticate, validate(FuelAnalysisSchema), (req: AuthenticatedRequest, res: Response) => {
   const { vesselId, speedKnots, cargoLoad = 80, trimMetres = 0 } = req.body;
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId) || MOCK_VESSELS[0];
+  const vessel = resolveFleetVessel(req, vesselId);
+  if (!vessel) {
+    res.status(403).json({ error: 'No accessible vessel for your fleet' });
+    return;
+  }
 
   const result = computeFuelConsumption(vessel, speedKnots, cargoLoad, trimMetres);
 

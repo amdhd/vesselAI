@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { MOCK_PORTS } from '../mock/ports';
-import { MOCK_VESSELS } from '../mock/vessels';
 import { MOCK_ACTIVE_VOYAGES } from '../mock/voyages';
-import { authenticate } from '../middleware/auth';
+import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { requireVessel } from '../lib/tenant';
 
 const router = Router();
 
@@ -12,14 +12,11 @@ router.get('/congestion', authenticate, (_req: Request, res: Response) => {
 });
 
 // GET /api/ports/demurrage/:vesselId
-router.get('/demurrage/:vesselId', authenticate, (req: Request, res: Response) => {
+router.get('/demurrage/:vesselId', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { vesselId } = req.params;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
-  if (!vessel) {
-    res.status(404).json({ error: 'Vessel not found' });
-    return;
-  }
+  const vessel = requireVessel(req, res, vesselId);
+  if (!vessel) return;
 
   const activeVoyage = MOCK_ACTIVE_VOYAGES.find(v => v.vesselId === vesselId);
 

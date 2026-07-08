@@ -7,9 +7,10 @@ import {
   getAlertsByVesselId,
 } from '../mock/equipment';
 import { getSensorDataForEquipment } from '../mock/sensorData';
-import { authenticate } from '../middleware/auth';
+import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
+import { requireVessel, canAccessVessel } from '../lib/tenant';
 import { AnalyzeAnomalySchema, WorkOrderSchema } from '../schemas';
 
 const router = Router();
@@ -62,8 +63,9 @@ const workOrdersStore: {
 ];
 
 // GET /api/maintenance/equipment/:vesselId
-router.get('/equipment/:vesselId', authenticate, (req: Request, res: Response) => {
+router.get('/equipment/:vesselId', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { vesselId } = req.params;
+  if (!requireVessel(req, res, vesselId)) return;
   const equipment = getEquipmentByVesselId(vesselId);
   const alerts = getAlertsByVesselId(vesselId);
 
@@ -90,13 +92,17 @@ router.get('/equipment/:vesselId', authenticate, (req: Request, res: Response) =
 });
 
 // GET /api/maintenance/sensor-data/:equipmentId
-router.get('/sensor-data/:equipmentId', authenticate, (req: Request, res: Response) => {
+router.get('/sensor-data/:equipmentId', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { equipmentId } = req.params;
   const { days = '7', parameter } = req.query;
 
   const equipment = getEquipmentById(equipmentId);
   if (!equipment) {
     res.status(404).json({ error: 'Equipment not found' });
+    return;
+  }
+  if (!canAccessVessel(req, equipment.vesselId)) {
+    res.status(403).json({ error: 'Access to this equipment is not permitted' });
     return;
   }
 
@@ -147,12 +153,16 @@ router.get('/sensor-data/:equipmentId', authenticate, (req: Request, res: Respon
 });
 
 // POST /api/maintenance/analyze-anomaly
-router.post('/analyze-anomaly', authenticate, aiLimiter, validate(AnalyzeAnomalySchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/analyze-anomaly', authenticate, aiLimiter, validate(AnalyzeAnomalySchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { equipmentId, sensorStats, symptoms } = req.body;
 
   const equipment = getEquipmentById(equipmentId);
   if (!equipment) {
     res.status(404).json({ error: 'Equipment not found' });
+    return;
+  }
+  if (!canAccessVessel(req, equipment.vesselId)) {
+    res.status(403).json({ error: 'Access to this equipment is not permitted' });
     return;
   }
 
@@ -252,8 +262,17 @@ Return JSON: {
 });
 
 // POST /api/maintenance/work-order
-router.post('/work-order', authenticate, validate(WorkOrderSchema), (req: Request, res: Response) => {
+router.post('/work-order', authenticate, validate(WorkOrderSchema), (req: AuthenticatedRequest, res: Response) => {
   const { equipmentId, vesselId, title, description, priority, assignedTo, requiredParts, estimatedHours, plannedDate } = req.body;
+
+  if (!requireVessel(req, res, vesselId)) return;
+
+  // The equipment, if it exists, must belong to the target vessel.
+  const equipment = getEquipmentById(equipmentId);
+  if (equipment && equipment.vesselId !== vesselId) {
+    res.status(400).json({ error: 'Equipment does not belong to the specified vessel' });
+    return;
+  }
 
   const newWorkOrder = {
     id: `wo-${Date.now()}`,
@@ -276,9 +295,11 @@ router.post('/work-order', authenticate, validate(WorkOrderSchema), (req: Reques
 });
 
 // GET /api/maintenance/work-orders/:vesselId
-router.get('/work-orders/:vesselId', authenticate, (req: Request, res: Response) => {
+router.get('/work-orders/:vesselId', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { vesselId } = req.params;
   const { status } = req.query;
+
+  if (!requireVessel(req, res, vesselId)) return;
 
   let orders = workOrdersStore.filter(wo => wo.vesselId === vesselId);
 
@@ -310,8 +331,9 @@ router.get('/work-orders/:vesselId', authenticate, (req: Request, res: Response)
 });
 
 // GET /api/maintenance/alerts/:vesselId
-router.get('/alerts/:vesselId', authenticate, (req: Request, res: Response) => {
+router.get('/alerts/:vesselId', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { vesselId } = req.params;
+  if (!requireVessel(req, res, vesselId)) return;
   const alerts = getAlertsByVesselId(vesselId);
   res.json(alerts);
 });

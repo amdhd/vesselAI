@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
-import { MOCK_VESSELS } from '../mock/vessels';
 import { getSireDocumentsByVesselId } from '../mock/sireDocuments';
 import { getFindingsByVesselId, getInspectionsByVesselId, getOpenFindings } from '../mock/findings';
-import { authenticate } from '../middleware/auth';
+import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
+import { requireVessel, resolveFleetVessel } from '../lib/tenant';
 import { GeneratePreInspectionSchema, InspectorSimulationSchema } from '../schemas';
 
 const router = Router();
@@ -84,14 +84,11 @@ const SIRE_READINESS: {
 };
 
 // GET /api/sire/readiness-score/:vesselId
-router.get('/readiness-score/:vesselId', authenticate, (req: Request, res: Response) => {
+router.get('/readiness-score/:vesselId', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { vesselId } = req.params;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
-  if (!vessel) {
-    res.status(404).json({ error: 'Vessel not found' });
-    return;
-  }
+  const vessel = requireVessel(req, res, vesselId);
+  if (!vessel) return;
 
   const readiness = SIRE_READINESS[vesselId];
   if (!readiness) {
@@ -158,14 +155,11 @@ router.get('/readiness-score/:vesselId', authenticate, (req: Request, res: Respo
 });
 
 // POST /api/sire/generate-pre-inspection-report
-router.post('/generate-pre-inspection-report', authenticate, aiLimiter, validate(GeneratePreInspectionSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/generate-pre-inspection-report', authenticate, aiLimiter, validate(GeneratePreInspectionSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { vesselId, inspectionDate, inspectorCompany } = req.body;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
-  if (!vessel) {
-    res.status(404).json({ error: 'Vessel not found' });
-    return;
-  }
+  const vessel = requireVessel(req, res, vesselId);
+  if (!vessel) return;
 
   const readiness = SIRE_READINESS[vesselId];
   const openFindings = getOpenFindings(vesselId);
@@ -265,14 +259,11 @@ Return JSON: {
 });
 
 // GET /api/sire/documents/:vesselId
-router.get('/documents/:vesselId', authenticate, (req: Request, res: Response) => {
+router.get('/documents/:vesselId', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { vesselId } = req.params;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
-  if (!vessel) {
-    res.status(404).json({ error: 'Vessel not found' });
-    return;
-  }
+  const vessel = requireVessel(req, res, vesselId);
+  if (!vessel) return;
 
   const documents = getSireDocumentsByVesselId(vesselId);
 
@@ -302,11 +293,15 @@ router.get('/documents/:vesselId', authenticate, (req: Request, res: Response) =
 });
 
 // POST /api/sire/inspector-simulation - STREAMING SSE
-router.post('/inspector-simulation', authenticate, aiLimiter, validate(InspectorSimulationSchema), async (req: Request, res: Response): Promise<void> => {
+router.post('/inspector-simulation', authenticate, aiLimiter, validate(InspectorSimulationSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { message, vesselId, chapter, conversationHistory = [] } = req.body;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId) || MOCK_VESSELS[0];
-  const readiness = SIRE_READINESS[vesselId || vessel.id];
+  const vessel = resolveFleetVessel(req, vesselId);
+  if (!vessel) {
+    res.status(403).json({ error: 'No accessible vessel for your fleet' });
+    return;
+  }
+  const readiness = SIRE_READINESS[vessel.id];
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -372,15 +367,12 @@ Respond as the inspector would in an actual inspection — direct, professional,
 });
 
 // GET /api/sire/findings/:vesselId
-router.get('/findings/:vesselId', authenticate, (req: Request, res: Response) => {
+router.get('/findings/:vesselId', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { vesselId } = req.params;
   const { status } = req.query;
 
-  const vessel = MOCK_VESSELS.find(v => v.id === vesselId);
-  if (!vessel) {
-    res.status(404).json({ error: 'Vessel not found' });
-    return;
-  }
+  const vessel = requireVessel(req, res, vesselId);
+  if (!vessel) return;
 
   let findings = getFindingsByVesselId(vesselId);
 
