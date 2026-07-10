@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import Anthropic from '@anthropic-ai/sdk';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
@@ -11,9 +10,9 @@ import {
   GenerateDefectReportSchema,
   HandoverSchema,
 } from '../schemas';
+import { generateJson, streamChatResponse } from '../services/aiService';
 
 const router = Router();
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Mock documents per vessel
 const MOCK_DOCUMENTS: {
@@ -173,11 +172,6 @@ router.post('/chat', authenticate, aiLimiter, validate(KnowledgeChatSchema), asy
   const vesselDocs = MOCK_DOCUMENTS[vessel.id] || [];
   const docNames = vesselDocs.map(d => d.name).join(', ');
 
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
   const systemPrompt = `You are VesselMind, an expert maritime engineer assistant for vessel ${vessel.name} (${vessel.type}, built ${vessel.builtYear}, ${vessel.engineType} main engine).
 
 You have access to the vessel's documentation library including: ${docNames || 'Main Engine Manual, Class Survey Report, SMS, Cargo Operations Manual'}.
@@ -205,30 +199,12 @@ Vessel specifications:
     { role: 'user', content: message },
   ];
 
-  try {
-    const stream = anthropic.messages.stream({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2048,
-      system: systemPrompt,
-      messages,
-    });
-
-    for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-        res.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`);
-      }
-    }
-  } catch (error) {
-    console.error('Knowledge chat streaming error:', error);
-    res.write(
-      `data: ${JSON.stringify({
-        text: `I apologize, the AI service is temporarily unavailable. For technical questions about ${vessel.name}, please refer to the vessel's onboard documentation or contact the technical superintendent.`,
-      })}\n\n`
-    );
-  }
-
-  res.write('data: [DONE]\n\n');
-  res.end();
+  await streamChatResponse(res, {
+    system: systemPrompt,
+    messages,
+    fallbackText: `I apologize, the AI service is temporarily unavailable. For technical questions about ${vessel.name}, please refer to the vessel's onboard documentation or contact the technical superintendent.`,
+    onError: (error) => console.error('Knowledge chat streaming error:', error),
+  });
 });
 
 // POST /api/knowledge/upload-document
@@ -319,15 +295,9 @@ URGENCY: ${severity === 'critical' ? 'IMMEDIATE - arrange port call within 48 ho
     createdAt: new Date().toISOString(),
   };
 
-  try {
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
-      system: `You are a maritime technical superintendent. Generate a formal defect report for vessel ${vessel.name} (${vessel.type}, IMO: ${vessel.imoNumber}). Return valid JSON only.`,
-      messages: [
-        {
-          role: 'user',
-          content: `Generate a defect report for:
+  const result = await generateJson(res, {
+    system: `You are a maritime technical superintendent. Generate a formal defect report for vessel ${vessel.name} (${vessel.type}, IMO: ${vessel.imoNumber}). Return valid JSON only.`,
+    prompt: `Generate a defect report for:
 Equipment: ${equipment}
 Description: ${description}
 Symptoms: ${symptoms || 'Not specified'}
@@ -341,25 +311,18 @@ Return JSON: {
   "partsRequired": "string",
   "urgency": "IMMEDIATE|HIGH|ROUTINE"
 }`,
-        },
-      ],
-    });
-
-    const rawContent = message.content[0].type === 'text' ? message.content[0].text : '';
-    const jsonText = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(jsonText);
-    res.json({
-      ...parsed,
-      reportId: `DR-${vessel.imoNumber}-${Date.now()}`,
-      vesselId,
-      equipment,
-      severity: severity || 'medium',
-      createdAt: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('Defect report generation error:', error);
-    res.json(mockReport);
-  }
+    maxTokens: 1500,
+    fallback: mockReport,
+    onError: (error) => console.error('Defect report generation error:', error),
+  });
+  res.json({
+    ...result,
+    reportId: `DR-${vessel.imoNumber}-${Date.now()}`,
+    vesselId,
+    equipment,
+    severity: severity || 'medium',
+    createdAt: new Date().toISOString(),
+  });
 });
 
 // POST /api/knowledge/handover
@@ -402,15 +365,9 @@ Signature: ${engineer}
     createdAt: new Date().toISOString(),
   };
 
-  try {
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
-      system: `You are a maritime chief engineer assistant. Format a professional engineering watch handover report for vessel ${vessel.name}. Return valid JSON only.`,
-      messages: [
-        {
-          role: 'user',
-          content: `Format handover report:
+  const result = await generateJson(res, {
+    system: `You are a maritime chief engineer assistant. Format a professional engineering watch handover report for vessel ${vessel.name}. Return valid JSON only.`,
+    prompt: `Format handover report:
 Watch: ${watch}
 Engineer: ${engineer}
 Ongoing Jobs: ${ongoingJobs}
@@ -418,25 +375,18 @@ Abnormal Readings: ${abnormalReadings || 'None'}
 Parts on Order: ${partsOnOrder || 'None'}
 
 Return JSON: {"reportText": "full formatted handover report", "summary": "brief 1-2 sentence summary"}`,
-        },
-      ],
-    });
-
-    const rawContent = message.content[0].type === 'text' ? message.content[0].text : '';
-    const jsonText = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(jsonText);
-    res.json({
-      ...parsed,
-      reportId: `HO-${vessel.imoNumber}-${Date.now()}`,
-      vesselId,
-      watch,
-      engineer,
-      createdAt: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('Handover report generation error:', error);
-    res.json(mockHandover);
-  }
+    maxTokens: 1500,
+    fallback: mockHandover,
+    onError: (error) => console.error('Handover report generation error:', error),
+  });
+  res.json({
+    ...result,
+    reportId: `HO-${vessel.imoNumber}-${Date.now()}`,
+    vesselId,
+    watch,
+    engineer,
+    createdAt: new Date().toISOString(),
+  });
 });
 
 export default router;

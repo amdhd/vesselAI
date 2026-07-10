@@ -93,9 +93,21 @@ export interface RouteOptimizeParams {
   speedPreference: 'eco' | 'normal' | 'fast'
 }
 
+// UI speed preference labels don't match the backend's OptimizeRouteSchema enum
+// ('economic' | 'fast' | 'optimal') — translate at the API boundary rather than
+// changing the user-facing copy.
+const SPEED_PREFERENCE_TO_BACKEND = {
+  eco: 'economic',
+  normal: 'optimal',
+  fast: 'fast',
+} as const
+
 export const voyageApi = {
   optimizeRoute: async (params: RouteOptimizeParams): Promise<RouteOptimization> => {
-    const { data } = await api.post<RouteOptimization>('/voyage/optimize', params)
+    const { data } = await api.post<RouteOptimization>('/voyage/optimize-route', {
+      ...params,
+      speedPreference: SPEED_PREFERENCE_TO_BACKEND[params.speedPreference],
+    })
     return data
   },
   getHistory: async (vesselId: string): Promise<VoyageHistoryRecord[]> => {
@@ -115,7 +127,7 @@ export const voyageApi = {
     type: string
     vesselId: string
   }) => {
-    const { data } = await api.post('/voyage/agent-message', params)
+    const { data } = await api.post('/voyage/generate-agent-message', params)
     return data
   },
 }
@@ -128,25 +140,25 @@ export const maintenanceApi = {
     return data
   },
   getSensorData: async (equipmentId: string, days: number): Promise<SensorReading[]> => {
-    const { data } = await api.get<SensorReading[]>(`/maintenance/sensors/${equipmentId}?days=${days}`)
+    const { data } = await api.get<SensorReading[]>(`/maintenance/sensor-data/${equipmentId}?days=${days}`)
     return data
   },
   analyzeAnomaly: async (params: { equipmentId: string; vesselId: string }): Promise<{ analysis: string }> => {
-    const { data } = await api.post<{ analysis: string }>('/maintenance/analyze', params)
+    const { data } = await api.post<{ analysis: string }>('/maintenance/analyze-anomaly', params)
     return data
   },
   createWorkOrder: async (params: Partial<WorkOrder>): Promise<WorkOrder> => {
     if (!navigator.onLine) {
       offlineQueue.add({
         method: 'POST',
-        url: '/maintenance/work-orders',
+        url: '/maintenance/work-order',
         data: params,
         label: `Create work order: ${params.title || 'untitled'}`,
       })
       // Return an optimistic placeholder so the UI doesn't break
       return { ...params, id: `offline-${Date.now()}`, status: 'open' } as WorkOrder
     }
-    const { data } = await api.post<WorkOrder>('/maintenance/work-orders', params)
+    const { data } = await api.post<WorkOrder>('/maintenance/work-order', params)
     return data
   },
   getWorkOrders: async (vesselId: string): Promise<WorkOrder[]> => {
@@ -171,7 +183,7 @@ export const complianceApi = {
     return data
   },
   generateMRVReport: async (vesselId: string, year: number): Promise<{ reportUrl: string }> => {
-    const { data } = await api.post<{ reportUrl: string }>('/compliance/mrv', { vesselId, year })
+    const { data } = await api.post<{ reportUrl: string }>('/compliance/generate-mrv-report', { vesselId, year })
     return data
   },
 }
@@ -196,7 +208,7 @@ export const knowledgeApi = {
     conditions: string
     severity: string
   }): Promise<DefectReport> => {
-    const { data } = await api.post<DefectReport>('/knowledge/defect-report', params)
+    const { data } = await api.post<DefectReport>('/knowledge/generate-defect-report', params)
     return data
   },
   getDocuments: async (vesselId: string): Promise<KnowledgeDocument[]> => {
@@ -219,7 +231,7 @@ export const knowledgeApi = {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('vesselId', vesselId)
-    const { data } = await api.post<KnowledgeDocument>('/knowledge/documents/upload', formData, {
+    const { data } = await api.post<KnowledgeDocument>('/knowledge/upload-document', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     return data
@@ -242,11 +254,11 @@ export const knowledgeApi = {
 
 export const sireApi = {
   getReadinessScore: async (vesselId: string) => {
-    const { data } = await api.get(`/sire/readiness/${vesselId}`)
+    const { data } = await api.get(`/sire/readiness-score/${vesselId}`)
     return data
   },
   generatePreInspectionReport: async (vesselId: string): Promise<{ report: string }> => {
-    const { data } = await api.post<{ report: string }>('/sire/pre-inspection', { vesselId })
+    const { data } = await api.post<{ report: string }>('/sire/generate-pre-inspection-report', { vesselId })
     return data
   },
   getDocuments: async (vesselId: string): Promise<SireDocument[]> => {
@@ -290,10 +302,10 @@ export const notificationsApi = {
   },
   markRead: async (id: string): Promise<void> => {
     if (!navigator.onLine) {
-      offlineQueue.add({ method: 'PATCH', url: `/notifications/${id}/read`, label: 'Mark notification read' })
+      offlineQueue.add({ method: 'POST', url: `/notifications/${id}/read`, label: 'Mark notification read' })
       return
     }
-    await api.patch(`/notifications/${id}/read`)
+    await api.post(`/notifications/${id}/read`)
   },
 }
 
