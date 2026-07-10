@@ -15,6 +15,38 @@ import { generateJson } from '../services/aiService';
 
 const router = Router();
 
+// Frontend EquipmentDetail expects each equipment item to carry a `sensors`
+// summary (id/name/unit/currentValue/normalRange/warningRange) so it can
+// render a chart per parameter. Derive it from the actual generated 30-day
+// time series rather than hand-maintaining a second set of ranges that could
+// drift from what generateSensorTimeSeries() produces.
+function buildSensorSummaries(equipmentId: string) {
+  const readings = getSensorDataForEquipment(equipmentId, 30);
+  const byParam = new Map<string, { value: number; unit: string; timestamp: string }[]>();
+  for (const r of readings) {
+    if (!byParam.has(r.parameter)) byParam.set(r.parameter, []);
+    byParam.get(r.parameter)!.push(r);
+  }
+  return [...byParam.entries()].map(([parameter, series]) => {
+    const values = series.map(s => s.value);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || Math.abs(max) * 0.1 || 1;
+    const latest = series[series.length - 1];
+    return {
+      id: `${equipmentId}-${parameter}`,
+      name: parameter,
+      unit: latest.unit,
+      currentValue: latest.value,
+      normalRange: [Number(min.toFixed(2)), Number(max.toFixed(2))] as [number, number],
+      warningRange: [
+        Number((min - range * 0.15).toFixed(2)),
+        Number((max + range * 0.15).toFixed(2)),
+      ] as [number, number],
+    };
+  });
+}
+
 // In-memory work orders store for demo
 const workOrdersStore: {
   id: string;
@@ -74,7 +106,7 @@ router.get('/equipment/:vesselId', authenticate, (req: AuthenticatedRequest, res
     // the mock fixtures use `maker` and treat running hours as optional.
     manufacturer: e.maker,
     runningHours: e.runningHours ?? 0,
-    sensors: [],
+    sensors: buildSensorSummaries(e.id),
     activeAlerts: alerts.filter(a => a.equipmentId === e.id && a.status === 'open'),
   }));
 

@@ -146,9 +146,12 @@ export const maintenanceApi = {
     const { data } = await api.get<{ equipment: Equipment[] }>(`/maintenance/equipment/${vesselId}`)
     return data.equipment
   },
-  getSensorData: async (equipmentId: string, days: number): Promise<SensorReading[]> => {
+  getSensorData: async (equipmentId: string, days: number, parameter?: string): Promise<SensorReading[]> => {
     // Backend wraps the list in { equipmentId, equipment, sensorData, ... }, not a bare array.
-    const { data } = await api.get<{ sensorData: SensorReading[] }>(`/maintenance/sensor-data/${equipmentId}?days=${days}`)
+    // Without `parameter`, the backend returns every sensor for this equipment mixed
+    // together (RPM, exhaust temps, pressures...) in one array.
+    const query = parameter ? `?days=${days}&parameter=${encodeURIComponent(parameter)}` : `?days=${days}`
+    const { data } = await api.get<{ sensorData: SensorReading[] }>(`/maintenance/sensor-data/${equipmentId}${query}`)
     return data.sensorData
   },
   analyzeAnomaly: async (params: { equipmentId: string; vesselId: string }): Promise<{ analysis: string }> => {

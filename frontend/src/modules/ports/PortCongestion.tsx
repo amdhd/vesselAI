@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { BarChart, Bar, ResponsiveContainer, Tooltip, Cell } from 'recharts'
 import { AlertTriangle, Anchor } from 'lucide-react'
 import { portsApi } from '@/lib/api'
 import { MOCK_PORT_CONGESTION } from '@/lib/mockData'
@@ -130,25 +129,25 @@ export default function PortCongestion() {
                 </div>
               </div>
 
-              {/* 7-day mini chart */}
+              {/* 7-day mini chart — hand-rolled SVG. Recharts' Bar+YAxis scale
+                  computed a ~0 height for every bar regardless of value in
+                  this small a container, so draw it directly instead. */}
               <div>
                 <p className="text-xs text-gray-400 mb-1">7-Day Forecast</p>
-                <ResponsiveContainer width="100%" height={48}>
-                  <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#112654', border: '1px solid #1e3a6e', borderRadius: '6px', fontSize: '11px', color: '#fff' }}
-                      formatter={(value: number) => {
-                        const labels = ['', 'Low', 'Medium', 'High', 'Congested']
-                        return [labels[value] ?? value, 'Level']
-                      }}
-                    />
-                    <Bar dataKey="level" radius={[2, 2, 0, 0]}>
-                      {chartData.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                <svg viewBox="0 0 374 48" width="100%" height={48} preserveAspectRatio="none">
+                  {chartData.map((entry, i) => {
+                    const barWidth = 374 / chartData.length - 6
+                    const x = i * (374 / chartData.length) + 3
+                    const barHeight = Math.max((entry.level / 4) * 44, 4)
+                    const y = 48 - barHeight
+                    const labels = ['', 'Low', 'Medium', 'High', 'Congested']
+                    return (
+                      <rect key={entry.day} x={x} y={y} width={barWidth} height={barHeight} rx={2} ry={2} fill={entry.color}>
+                        <title>{`${entry.day}: ${labels[entry.level]}`}</title>
+                      </rect>
+                    )
+                  })}
+                </svg>
               </div>
             </div>
           )
