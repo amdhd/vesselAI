@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import Anthropic from '@anthropic-ai/sdk';
 import { MOCK_VOYAGES } from '../mock/voyages';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { validate } from '../middleware/validate';
@@ -7,9 +6,9 @@ import { aiLimiter } from '../middleware/rateLimiter';
 import { requireVessel, resolveFleetVessel } from '../lib/tenant';
 import { SYSTEM_GUARDRAILS } from '../lib/aiGuard';
 import { GenerateMrvReportSchema, ComplianceChatSchema } from '../schemas';
+import { streamChatResponse } from '../services/aiService';
 
 const router = Router();
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // CII data per vessel
 const CII_DATA: {
@@ -277,11 +276,6 @@ router.post('/chat', authenticate, aiLimiter, validate(ComplianceChatSchema), as
   }
   const ciiData = CII_DATA[vessel.id];
 
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
   const systemPrompt = `You are VesselMind Compliance AI, an expert in maritime environmental regulations. You assist fleet managers with CII, MARPOL, EU ETS, and MRV compliance.
 
 Current vessel context:
@@ -304,30 +298,12 @@ Provide specific, actionable advice. Reference regulation numbers when relevant 
     { role: 'user', content: message },
   ];
 
-  try {
-    const stream = anthropic.messages.stream({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2048,
-      system: systemPrompt,
-      messages,
-    });
-
-    for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-        res.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`);
-      }
-    }
-  } catch (error) {
-    console.error('Compliance chat streaming error:', error);
-    res.write(
-      `data: ${JSON.stringify({
-        text: 'I apologize, the AI service is temporarily unavailable. For CII compliance, I recommend reviewing your vessel speed profile and considering weather routing optimization to reduce fuel consumption and improve your carbon intensity rating.',
-      })}\n\n`
-    );
-  }
-
-  res.write('data: [DONE]\n\n');
-  res.end();
+  await streamChatResponse(res, {
+    system: systemPrompt,
+    messages,
+    fallbackText: 'I apologize, the AI service is temporarily unavailable. For CII compliance, I recommend reviewing your vessel speed profile and considering weather routing optimization to reduce fuel consumption and improve your carbon intensity rating.',
+    onError: (error) => console.error('Compliance chat streaming error:', error),
+  });
 });
 
 export default router;

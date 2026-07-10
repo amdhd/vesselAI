@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import Anthropic from '@anthropic-ai/sdk';
 import { MOCK_ACTIVE_VOYAGES, getVoyagesByVesselId } from '../mock/voyages';
 import { MOCK_VESSELS } from '../mock/vessels';
 import { MOCK_WEATHER_ROUTES, getRouteWeather } from '../mock/weatherRoutes';
@@ -15,9 +14,9 @@ import {
   GenerateAgentMessageSchema,
 } from '../schemas';
 import { computeFuelConsumption, buildSpeedPowerCurve, computeAdmiraltyCoefficient } from '../lib/fuelModel';
+import { generateJson } from '../services/aiService';
 
 const router = Router();
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // POST /api/voyage/optimize-route
 router.post('/optimize-route', authenticate, aiLimiter, validate(OptimizeRouteSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
@@ -63,50 +62,50 @@ router.post('/optimize-route', authenticate, aiLimiter, validate(OptimizeRouteSc
   const directCost = Math.round(directFuel * 620);
   const directCo2 = Math.round(directFuel * 3.151); // VLSFO CO2 factor per IMO MEPC.308(73)
   const directEta = new Date(Date.now() + directHours * 3600 * 1000).toISOString();
+  const aiHours = directHours * 1.06;
+  const aiEta = new Date(Date.now() + aiHours * 3600 * 1000).toISOString();
 
-  const mockFallback = {
-    directRoute: {
-      distance: directRouteDistance,
-      fuel: directFuel,
-      cost: directCost,
-      co2: directCo2,
-      eta: directEta,
-      hours: Math.round(directHours),
-    },
+  // Waypoint geodata (lat/lng/weather) comes from the vetted weather-route
+  // fixtures, never from the LLM — coordinates are the kind of thing a model
+  // can plausibly hallucinate, and the frontend map needs them to be real.
+  const buildWaypoints = (source: typeof weatherRoute.waypoints, totalHours: number) =>
+    source.map((w, i) => ({
+      id: `wp-${i}`,
+      lat: w.lat,
+      lng: w.lon,
+      name: w.name,
+      eta: new Date(Date.now() + (totalHours * (i + 1)) / source.length * 3600 * 1000).toISOString(),
+      weather: {
+        windSpeed: w.windSpeed,
+        waveHeight: w.waveHeight,
+        current: w.currentSpeed,
+        description: w.weatherCondition,
+      },
+    }));
+  const directWaypoints = buildWaypoints(weatherRoute.waypoints, directHours);
+  const aiWaypoints = buildWaypoints(weatherRoute.waypoints.slice(0, 5), aiHours);
+
+  const fallbackCore = {
+    directRoute: { distance: directRouteDistance, fuel: directFuel, cost: directCost, co2: directCo2, eta: directEta },
     aiRoute: {
       distance: Math.round(directRouteDistance * 1.04),
       fuel: Math.round(directFuel * 0.88),
       cost: Math.round(directCost * 0.88),
       co2: Math.round(directCo2 * 0.88),
-      eta: new Date(Date.now() + directHours * 3600 * 1000 * 1.06).toISOString(),
-      hours: Math.round(directHours * 1.06),
-      waypoints: weatherRoute.waypoints.slice(0, 5).map(w => ({
-        lat: w.lat,
-        lon: w.lon,
-        weather: w.weatherCondition,
-      })),
+      eta: aiEta,
+      savings: Math.round(directFuel * 0.12),
+      costSavings: Math.round(directCost * 0.12),
+      reasoning:
+        `AI route optimization for ${vessel.name} (${vessel.type}) recommends a slightly longer southern deviation to avoid the active storm system near Sri Lanka, resulting in 12% fuel savings. ` +
+        `Weather routing analysis detected Beaufort Force 8-9 conditions along the direct route. ` +
+        `The optimized path reduces crew fatigue risk, avoids potential cargo shifting, and improves arrival reliability. ` +
+        `Total voyage cost is reduced by $${Math.round(directCost * 0.12).toLocaleString()} despite the additional distance.`,
     },
-    savings: {
-      fuel: Math.round(directFuel * 0.12),
-      cost: Math.round(directCost * 0.12),
-      co2: Math.round(directCo2 * 0.12),
-    },
-    explanation:
-      `AI route optimization for ${vessel.name} (${vessel.type}) recommends a slightly longer southern deviation to avoid the active storm system near Sri Lanka, resulting in 12% fuel savings. ` +
-      `Weather routing analysis detected Beaufort Force 8-9 conditions along the direct route. ` +
-      `The optimized path reduces crew fatigue risk, avoids potential cargo shifting, and improves arrival reliability. ` +
-      `Total voyage cost is reduced by $${Math.round(directCost * 0.12).toLocaleString()} despite the additional distance.`,
   };
 
-  try {
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
-      system: `You are a maritime route optimization AI for VesselMind. Analyze vessel data and weather to recommend optimal routes. Always respond with valid JSON only, no markdown.`,
-      messages: [
-        {
-          role: 'user',
-          content: `Optimize route for vessel: ${vessel.name} (${vessel.type}, ${vessel.dwt} DWT)
+  const core = await generateJson(res, {
+    system: `You are a maritime route optimization AI for VesselMind. Analyze vessel data and weather to recommend optimal routes. Always respond with valid JSON only, no markdown.`,
+    prompt: `Optimize route for vessel: ${vessel.name} (${vessel.type}, ${vessel.dwt} DWT)
 From: ${departurePort || weatherRoute.from} to ${destinationPort || weatherRoute.to}
 Cargo load: ${cargoLoad}%
 Speed preference: ${speedPreference}
@@ -114,24 +113,17 @@ Direct route distance: ${directRouteDistance} nm
 Weather along route: ${JSON.stringify(weatherSummary)}
 
 Respond with JSON only (no markdown): {
-  "directRoute": {"distance": number, "fuel": number, "cost": number, "co2": number, "eta": "ISO date string", "hours": number},
-  "aiRoute": {"distance": number, "fuel": number, "cost": number, "co2": number, "eta": "ISO date string", "hours": number, "waypoints": [{"lat": number, "lon": number, "weather": string}]},
-  "savings": {"fuel": number, "cost": number, "co2": number},
-  "explanation": "3-4 sentences explaining the AI recommendation"
+  "directRoute": {"distance": number, "fuel": number, "cost": number, "co2": number, "eta": "ISO date string"},
+  "aiRoute": {"distance": number, "fuel": number, "cost": number, "co2": number, "eta": "ISO date string", "savings": number, "costSavings": number, "reasoning": "3-4 sentences explaining the AI recommendation"}
 }`,
-        },
-      ],
-    });
+    fallback: fallbackCore,
+    onError: (error) => console.error('Route optimization Claude error:', error),
+  });
 
-    const rawContent = message.content[0].type === 'text' ? message.content[0].text : '';
-    // Strip potential markdown code fences
-    const jsonText = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(jsonText);
-    res.json(parsed);
-  } catch (error) {
-    console.error('Route optimization Claude error:', error);
-    res.json(mockFallback);
-  }
+  res.json({
+    directRoute: { ...core.directRoute, waypoints: directWaypoints },
+    aiRoute: { ...core.aiRoute, waypoints: aiWaypoints },
+  });
 });
 
 // GET /api/voyage/history/:vesselId
@@ -230,33 +222,20 @@ router.post('/predict-eta', authenticate, aiLimiter, validate(PredictEtaSchema),
     recommendation: 'Maintain current speed to achieve optimal berth window. Reduce to 12 knots near destination to avoid demurrage.',
   };
 
-  try {
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 800,
-      system: 'You are a maritime voyage optimization AI. Predict ETA based on voyage data. Respond with valid JSON only.',
-      messages: [
-        {
-          role: 'user',
-          content: `Predict ETA for vessel ${vessel.name}:
+  const result = await generateJson(res, {
+    system: 'You are a maritime voyage optimization AI. Predict ETA based on voyage data. Respond with valid JSON only.',
+    prompt: `Predict ETA for vessel ${vessel.name}:
 Current speed: ${speed} knots
 Remaining distance: ~${remainingDistance} nm
 Current conditions: ${JSON.stringify(weatherConditions || { risk: 'MEDIUM' })}
 Basic ETA: ${etaBasic}
 
 Return JSON: {"basicEta": "ISO", "aiEta": "ISO", "confidence": number, "factors": ["string"], "recommendation": "string"}`,
-        },
-      ],
-    });
-
-    const rawContent = message.content[0].type === 'text' ? message.content[0].text : '';
-    const jsonText = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(jsonText);
-    res.json(parsed);
-  } catch (error) {
-    console.error('ETA prediction error:', error);
-    res.json(mockEta);
-  }
+    maxTokens: 800,
+    fallback: mockEta,
+    onError: (error) => console.error('ETA prediction error:', error),
+  });
+  res.json(result);
 });
 
 // POST /api/voyage/generate-agent-message
@@ -307,30 +286,17 @@ Petronas Marine Sdn Bhd`,
     type: messageType,
   };
 
-  try {
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      system: 'You are a maritime operations assistant. Draft professional port agent communications for tanker vessels. Return JSON with subject and body fields only.',
-      messages: [
-        {
-          role: 'user',
-          content: `Draft a ${messageType} message for vessel ${vessel.name} (${vessel.type}, ${vessel.dwt} DWT, IMO: ${vessel.imoNumber}) arriving at ${portName || 'Port Fujairah'}.
+  const result = await generateJson(res, {
+    system: 'You are a maritime operations assistant. Draft professional port agent communications for tanker vessels. Return JSON with subject and body fields only.',
+    prompt: `Draft a ${messageType} message for vessel ${vessel.name} (${vessel.type}, ${vessel.dwt} DWT, IMO: ${vessel.imoNumber}) arriving at ${portName || 'Port Fujairah'}.
 Cargo: ${voyage?.cargoLoad || 285000} MT crude oil from ${voyage?.departurePort || 'Singapore'}.
 ${additionalInfo ? `Additional info: ${additionalInfo}` : ''}
 Return JSON: {"subject": "string", "body": "string"}`,
-        },
-      ],
-    });
-
-    const rawContent = message.content[0].type === 'text' ? message.content[0].text : '';
-    const jsonText = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(jsonText);
-    res.json({ ...parsed, type: messageType, recipient: 'Port Agent' });
-  } catch (error) {
-    console.error('Agent message generation error:', error);
-    res.json(mockMessage);
-  }
+    maxTokens: 1000,
+    fallback: mockMessage,
+    onError: (error) => console.error('Agent message generation error:', error),
+  });
+  res.json({ ...result, type: messageType, recipient: 'Port Agent' });
 });
 
 // POST /api/voyage/fuel-analysis

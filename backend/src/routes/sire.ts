@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import Anthropic from '@anthropic-ai/sdk';
 import { getSireDocumentsByVesselId } from '../mock/sireDocuments';
 import { getFindingsByVesselId, getInspectionsByVesselId, getOpenFindings } from '../mock/findings';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
@@ -8,9 +7,9 @@ import { aiLimiter } from '../middleware/rateLimiter';
 import { requireVessel, resolveFleetVessel } from '../lib/tenant';
 import { SYSTEM_GUARDRAILS } from '../lib/aiGuard';
 import { GeneratePreInspectionSchema, InspectorSimulationSchema } from '../schemas';
+import { generateJson, streamChatResponse } from '../services/aiService';
 
 const router = Router();
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // SIRE readiness scores per vessel
 const SIRE_READINESS: {
@@ -216,15 +215,9 @@ Report prepared by VesselMind AI`,
     generatedAt: new Date().toISOString(),
   };
 
-  try {
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      system: 'You are a SIRE inspection preparation specialist with 20 years of OCIMF inspection experience. Generate comprehensive pre-inspection reports. Return valid JSON only.',
-      messages: [
-        {
-          role: 'user',
-          content: `Generate a SIRE pre-inspection preparation report for:
+  const result = await generateJson(res, {
+    system: 'You are a SIRE inspection preparation specialist with 20 years of OCIMF inspection experience. Generate comprehensive pre-inspection reports. Return valid JSON only.',
+    prompt: `Generate a SIRE pre-inspection preparation report for:
 Vessel: ${vessel.name} (${vessel.type}, ${vessel.flag} flag, IMO: ${vessel.imoNumber})
 Built: ${vessel.builtYear}
 Overall Readiness: ${readiness?.overall || 70}/100
@@ -240,23 +233,16 @@ Return JSON: {
   "priorityActions": ["action1", "action2", ...],
   "overallReadiness": number
 }`,
-        },
-      ],
-    });
-
-    const rawContent = message.content[0].type === 'text' ? message.content[0].text : '';
-    const jsonText = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(jsonText);
-    res.json({
-      ...parsed,
-      reportId: `SIRE-PREP-${vessel.imoNumber}-${Date.now()}`,
-      vesselId,
-      generatedAt: new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('SIRE report generation error:', error);
-    res.json(mockReport);
-  }
+    maxTokens: 2000,
+    fallback: mockReport,
+    onError: (error) => console.error('SIRE report generation error:', error),
+  });
+  res.json({
+    ...result,
+    reportId: `SIRE-PREP-${vessel.imoNumber}-${Date.now()}`,
+    vesselId,
+    generatedAt: new Date().toISOString(),
+  });
 });
 
 // GET /api/sire/documents/:vesselId
@@ -304,11 +290,6 @@ router.post('/inspector-simulation', authenticate, aiLimiter, validate(Inspector
   }
   const readiness = SIRE_READINESS[vessel.id];
 
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
   const systemPrompt = `You are Captain James Mitchell, an experienced SIRE inspector with 15 years of experience conducting vessel inspections for major oil companies (Shell, BP, Total, ExxonMobil).
 
 You are conducting a SIRE (Ship Inspection Report Programme) inspection of ${vessel.name} (${vessel.type}, IMO: ${vessel.imoNumber}, built ${vessel.builtYear}).
@@ -341,30 +322,12 @@ Respond as the inspector would in an actual inspection — direct, professional,
     { role: 'user', content: message },
   ];
 
-  try {
-    const stream = anthropic.messages.stream({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2048,
-      system: systemPrompt,
-      messages,
-    });
-
-    for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-        res.write(`data: ${JSON.stringify({ text: chunk.delta.text })}\n\n`);
-      }
-    }
-  } catch (error) {
-    console.error('Inspector simulation streaming error:', error);
-    res.write(
-      `data: ${JSON.stringify({
-        text: 'I apologize for the interruption. As Inspector Mitchell, I would like to continue reviewing your Oil Record Book. Please have it ready for the next session.',
-      })}\n\n`
-    );
-  }
-
-  res.write('data: [DONE]\n\n');
-  res.end();
+  await streamChatResponse(res, {
+    system: systemPrompt,
+    messages,
+    fallbackText: 'I apologize for the interruption. As Inspector Mitchell, I would like to continue reviewing your Oil Record Book. Please have it ready for the next session.',
+    onError: (error) => console.error('Inspector simulation streaming error:', error),
+  });
 });
 
 // GET /api/sire/findings/:vesselId

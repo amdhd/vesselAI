@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import Anthropic from '@anthropic-ai/sdk';
 import {
   MOCK_MAINTENANCE_ALERTS,
   getEquipmentByVesselId,
@@ -12,9 +11,9 @@ import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
 import { requireVessel, canAccessVessel } from '../lib/tenant';
 import { AnalyzeAnomalySchema, WorkOrderSchema } from '../schemas';
+import { generateJson } from '../services/aiService';
 
 const router = Router();
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // In-memory work orders store for demo
 const workOrdersStore: {
@@ -216,14 +215,9 @@ router.post('/analyze-anomaly', authenticate, aiLimiter, validate(AnalyzeAnomaly
       return paramStats;
     })();
 
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
+    const analysis = await generateJson(res, {
       system: 'You are a predictive maintenance AI for maritime vessels. Analyze sensor anomalies and provide actionable recommendations. Respond with valid JSON only.',
-      messages: [
-        {
-          role: 'user',
-          content: `Analyze equipment anomaly:
+      prompt: `Analyze equipment anomaly:
 Equipment: ${equipment.name} (${equipment.type}) on vessel ${equipment.vesselId}
 Maker: ${equipment.maker}, Model: ${equipment.model}
 Health Score: ${equipment.healthScore}/100
@@ -242,21 +236,18 @@ Return JSON: {
   "recommendedActions": ["string"],
   "urgency": "IMMEDIATE|HIGH|ROUTINE"
 }`,
-        },
-      ],
+      maxTokens: 1000,
+      fallback: mockAnalysis.analysis,
+      onError: (error) => console.error('Anomaly analysis Claude error:', error),
     });
-
-    const rawContent = message.content[0].type === 'text' ? message.content[0].text : '';
-    const jsonText = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(jsonText);
     res.json({
       equipmentId,
       equipment: { id: equipment.id, name: equipment.name, type: equipment.type },
-      analysis: parsed,
+      analysis,
       anomalySummary: mockAnalysis.anomalySummary,
     });
   } catch (error) {
-    console.error('Anomaly analysis Claude error:', error);
+    console.error('Anomaly analysis error:', error);
     res.json(mockAnalysis);
   }
 });

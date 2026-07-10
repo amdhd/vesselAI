@@ -213,10 +213,10 @@ vercel deploy
 ├── backend/                # Express API
 │   ├── src/
 │   │   ├── routes/         # Express routers
-│   │   ├── services/       # Business logic
-│   │   ├── ai/             # Claude API integration
+│   │   ├── services/       # Claude API integration (shared prompt/JSON helpers)
+│   │   ├── lib/            # Tenant isolation, fuel model, JWT config, prompt-injection guardrails
 │   │   ├── middleware/     # Auth, error handling
-│   │   └── mock/           # Mock data files
+│   │   └── mock/           # Mock data files (fleet/vessels are backed by Postgres when seeded; other domains are fixtures)
 │   └── prisma/
 │       ├── schema.prisma
 │       └── seed.ts
