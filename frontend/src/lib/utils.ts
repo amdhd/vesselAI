@@ -80,23 +80,23 @@ export function formatFuel(mt: number): string {
 
 export function getCIIColor(rating: CIIRating): string {
   switch (rating) {
-    case 'A': return 'text-green-400'
-    case 'B': return 'text-teal-400'
-    case 'C': return 'text-yellow-400'
-    case 'D': return 'text-amber-500'
-    case 'E': return 'text-red-400'
+    case 'A':
+    case 'B': return 'text-status-green'
+    case 'C': return 'text-status-amber'
+    case 'D':
+    case 'E': return 'text-status-red'
     default: return 'text-gray-400'
   }
 }
 
 export function getCIIBgColor(rating: CIIRating): string {
   switch (rating) {
-    case 'A': return 'bg-green-900/50 border-green-700 text-green-400'
-    case 'B': return 'bg-teal-900/50 border-teal-700 text-teal-400'
-    case 'C': return 'bg-yellow-900/50 border-yellow-700 text-yellow-400'
-    case 'D': return 'bg-amber-900/50 border-amber-700 text-amber-400'
-    case 'E': return 'bg-red-900/50 border-red-700 text-red-400'
-    default: return 'bg-gray-900/50 border-gray-700 text-gray-400'
+    case 'A':
+    case 'B': return 'bg-transparent border-status-green text-status-green'
+    case 'C': return 'bg-transparent border-status-amber text-status-amber'
+    case 'D':
+    case 'E': return 'bg-transparent border-status-red text-status-red'
+    default: return 'bg-transparent border-navy-700 text-gray-400'
   }
 }
 
@@ -106,20 +106,20 @@ export function getStatusColor(status: string): string {
     case 'underway':
     case 'on_schedule':
     case 'active':
-      return 'text-green-400'
+      return 'text-status-green'
     case 'warning':
     case 'at_anchor':
     case 'at_risk':
-      return 'text-amber-400'
+      return 'text-status-amber'
     case 'critical':
     case 'delayed':
     case 'expired':
-      return 'text-red-400'
+      return 'text-status-red'
     case 'offline':
     case 'off_hire':
       return 'text-gray-400'
     case 'in_port':
-      return 'text-blue-400'
+      return 'text-teal-400'
     default:
       return 'text-gray-400'
   }
@@ -146,17 +146,15 @@ export function getStatusBadgeClass(status: string): string {
 }
 
 export function getHealthColor(score: number): string {
-  if (score >= 80) return 'text-green-400'
-  if (score >= 60) return 'text-yellow-400'
-  if (score >= 40) return 'text-amber-400'
-  return 'text-red-400'
+  if (score >= 80) return 'text-status-green'
+  if (score >= 60) return 'text-status-amber'
+  return 'text-status-red'
 }
 
 export function getHealthBg(score: number): string {
-  if (score >= 80) return '#22c55e'
-  if (score >= 60) return '#eab308'
-  if (score >= 40) return '#d97706'
-  return '#ef4444'
+  if (score >= 80) return '#4a9d6f'
+  if (score >= 60) return '#c99a54'
+  return '#a8443b'
 }
 
 export function getCongestionColor(level: string): string {

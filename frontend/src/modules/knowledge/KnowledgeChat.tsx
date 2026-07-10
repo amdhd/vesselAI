@@ -104,9 +104,9 @@ export default function KnowledgeChat() {
   return (
     <div className="flex flex-col h-full" style={{ height: 'calc(100vh - 200px)' }}>
       {/* Context banner */}
-      <div className="bg-teal-900/30 border border-teal-800 rounded-lg p-3 mb-4 flex items-center gap-2">
+      <div className="bg-navy-800 border border-teal-600/50 rounded-[2px] p-3 mb-4 flex items-center gap-2">
         <Anchor size={16} className="text-teal-400 shrink-0" />
-        <span className="text-sm text-teal-300">
+        <span className="text-sm text-teal-400">
           Vessel context loaded:{' '}
           <span className="font-semibold text-white">
             {selectedVessel?.name || 'MV Merdeka Spirit'}
@@ -132,7 +132,7 @@ export default function KnowledgeChat() {
                 <button
                   key={i}
                   onClick={() => sendMessage(prompt)}
-                  className="text-left p-3 bg-navy-800 border border-navy-700 rounded-lg hover:border-teal-600 hover:bg-navy-700 transition-colors text-sm text-gray-300"
+                  className="text-left p-3 bg-navy-800 border border-navy-700 rounded-[2px] hover:border-teal-600 hover:bg-navy-700 transition-colors text-sm text-gray-300"
                 >
                   {prompt}
                 </button>
@@ -147,7 +147,7 @@ export default function KnowledgeChat() {
               }`}>
                 {msg.role === 'user' ? <User size={16} className="text-white" /> : <Bot size={16} className="text-teal-400" />}
               </div>
-              <div className={`max-w-[80%] rounded-xl px-4 py-3 text-sm leading-relaxed ${
+              <div className={`max-w-[80%] rounded-[2px] px-4 py-3 text-sm leading-relaxed ${
                 msg.role === 'user'
                   ? 'bg-teal-700 text-white'
                   : 'bg-navy-800 border border-navy-700 text-gray-200'
@@ -183,12 +183,12 @@ export default function KnowledgeChat() {
             placeholder="Ask about engine procedures, troubleshooting, safety protocols..."
             rows={2}
             disabled={isStreaming}
-            className="flex-1 bg-navy-800 border border-navy-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 resize-none focus:outline-none focus:border-teal-600 text-sm disabled:opacity-60"
+            className="flex-1 bg-navy-800 border border-navy-700 rounded-[2px] px-4 py-3 text-white placeholder-gray-500 resize-none focus:outline-none focus:border-teal-600 text-sm disabled:opacity-60"
           />
           <button
             onClick={() => sendMessage(input)}
             disabled={!input.trim() || isStreaming}
-            className="btn-primary p-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary p-3 rounded-[2px] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send size={18} />
           </button>

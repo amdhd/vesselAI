@@ -97,8 +97,8 @@ export default function AgentHub() {
               <button
                 key={pc.id}
                 onClick={() => { setSelectedPortCall(pc); setGeneratedMsg(null) }}
-                className={`w-full text-left card hover:border-teal-700 transition-all ${
-                  selectedPortCall?.id === pc.id ? 'border-teal-600 bg-teal-900/10' : ''
+                className={`w-full text-left card hover:border-teal-700 transition-colors ${
+                  selectedPortCall?.id === pc.id ? 'border-teal-600' : ''
                 }`}
               >
                 <div className="flex items-start justify-between">
@@ -142,10 +142,10 @@ export default function AgentHub() {
                       <button
                         key={type}
                         onClick={() => setMessageType(type)}
-                        className={`text-sm px-3 py-2 rounded-lg text-left transition-all ${
+                        className={`text-sm px-3 py-2 rounded-[2px] text-left transition-colors border ${
                           messageType === type
-                            ? 'bg-teal-700 text-white border border-teal-500'
-                            : 'bg-navy-700 text-gray-300 border border-navy-600 hover:border-navy-500'
+                            ? 'bg-teal-600/15 text-teal-400 border-teal-600'
+                            : 'bg-[#12161a] text-gray-300 border-white/[0.1] hover:border-white/20'
                         }`}
                       >
                         {MESSAGE_TYPE_LABELS[type]}
@@ -182,7 +182,7 @@ export default function AgentHub() {
                         onClick={handleCopy}
                         className="btn-secondary text-xs flex items-center gap-1 py-1.5 px-3"
                       >
-                        {copied ? <CheckCircle className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                        {copied ? <CheckCircle className="w-3 h-3 text-status-green" /> : <Copy className="w-3 h-3" />}
                         {copied ? 'Copied!' : 'Copy'}
                       </button>
                       <button
@@ -195,10 +195,10 @@ export default function AgentHub() {
                     </div>
                   </div>
 
-                  <div className="bg-navy-900 rounded-lg p-4 space-y-3 border border-navy-700">
+                  <div className="bg-navy-900 rounded-[2px] p-4 space-y-3 border border-navy-700">
                     <div className="flex gap-2 text-sm">
                       <span className="text-gray-400 w-16 flex-shrink-0">To:</span>
-                      <span className="text-teal-300">{generatedMsg.to}</span>
+                      <span className="text-teal-400">{generatedMsg.to}</span>
                     </div>
                     <div className="flex gap-2 text-sm">
                       <span className="text-gray-400 w-16 flex-shrink-0">Subject:</span>
@@ -212,7 +212,7 @@ export default function AgentHub() {
                   </div>
 
                   {markedSent && (
-                    <div className="flex items-center gap-2 text-green-400 text-sm">
+                    <div className="flex items-center gap-2 text-status-green text-sm">
                       <CheckCircle className="w-4 h-4" />
                       Message marked as sent successfully.
                     </div>

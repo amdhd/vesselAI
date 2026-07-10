@@ -1,8 +1,8 @@
-import { Ship, Gauge, AlertTriangle, TrendingUp, CheckCircle, XCircle, AlertCircle, ArrowRight } from 'lucide-react'
+import { AlertTriangle, CheckCircle, XCircle, AlertCircle, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useFleet } from '@/context/FleetContext'
-import StatCard from '@/components/ui/StatCard'
+import Badge from '@/components/ui/Badge'
 import { MOCK_NOTIFICATIONS, MOCK_VESSELS, MOCK_ETS_DATA, MOCK_ALERTS } from '@/lib/mockData'
 import { getGreeting, formatDate, timeAgo, cn } from '@/lib/utils'
 
@@ -82,9 +82,9 @@ function buildComplianceMatrix() {
     const ets = MOCK_ETS_DATA[v.id]
     const etsCoverage = ets ? ets.allowancesPurchased / ets.allowancesRequired : 1
     const etsStatus = etsCoverage >= 0.85 ? 'compliant' : etsCoverage >= 0.60 ? 'warning' : 'non_compliant'
-    const ciiStatus: 'green' | 'amber' | 'red' =
-      v.ciiRating === 'A' || v.ciiRating === 'B' ? 'green' :
-      v.ciiRating === 'C' ? 'amber' : 'red'
+    const ciiStatus: 'healthy' | 'warning' | 'critical' =
+      v.ciiRating === 'A' || v.ciiRating === 'B' ? 'healthy' :
+      v.ciiRating === 'C' ? 'warning' : 'critical'
 
     return {
       id: v.id,
@@ -105,71 +105,71 @@ const QUICK_MODULES = [
     name: 'Voyage Optimizer',
     description: 'AI route planning, speed optimization and voyage history tracking',
     link: '/voyage',
-    color: 'from-teal-900/40 to-teal-800/20 border-teal-800',
   },
   {
     icon: '🔧',
     name: 'Maintenance AI',
     description: 'Equipment health monitoring, predictive maintenance and work orders',
     link: '/maintenance',
-    color: 'from-blue-900/40 to-blue-800/20 border-blue-800',
   },
   {
     icon: '📊',
     name: 'Compliance Hub',
     description: 'CII ratings, EU ETS tracking and MRV data reporting',
     link: '/compliance',
-    color: 'from-purple-900/40 to-purple-800/20 border-purple-800',
   },
   {
     icon: '⚓',
     name: 'Port Intelligence',
     description: 'Real-time congestion data, demurrage monitoring and agent comms',
     link: '/ports',
-    color: 'from-amber-900/40 to-amber-800/20 border-amber-800',
   },
   {
     icon: '📚',
     name: 'Knowledge Base',
     description: 'AI-powered vessel documents, defect reports and handover reports',
     link: '/knowledge',
-    color: 'from-green-900/40 to-green-800/20 border-green-800',
   },
   {
     icon: '🔍',
     name: 'SIRE Readiness',
     description: 'Inspection readiness scoring, findings tracking and compliance chat',
     link: '/sire',
-    color: 'from-red-900/40 to-red-800/20 border-red-800',
   },
 ]
 
-function CIIBadge({ rating, status }: { rating: string; status: 'green' | 'amber' | 'red' }) {
-  const colors = {
-    green: 'text-green-400 bg-green-900/30',
-    amber: 'text-yellow-400 bg-yellow-900/30',
-    red: 'text-red-400 bg-red-900/30',
-  }
-  return (
-    <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold', colors[status])}>
-      {rating}
-      <span className="w-2 h-2 rounded-full" style={{ background: status === 'green' ? '#22c55e' : status === 'amber' ? '#eab308' : '#ef4444' }} />
-    </span>
-  )
-}
-
 function SeverityIcon({ severity }: { severity: string }) {
-  if (severity === 'critical') return <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-  if (severity === 'warning') return <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-  if (severity === 'success') return <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />
-  return <AlertCircle className="w-4 h-4 text-blue-400 shrink-0" />
+  if (severity === 'critical') return <AlertCircle className="w-4 h-4 text-status-red shrink-0" />
+  if (severity === 'warning') return <AlertTriangle className="w-4 h-4 text-status-amber shrink-0" />
+  if (severity === 'success') return <CheckCircle className="w-4 h-4 text-status-green shrink-0" />
+  return <AlertCircle className="w-4 h-4 text-teal-400 shrink-0" />
 }
 
-function severityBadgeClass(severity: string) {
-  if (severity === 'critical') return 'badge-critical'
-  if (severity === 'warning') return 'badge-warning'
-  if (severity === 'success') return 'badge-healthy'
-  return 'badge-info'
+function severityVariant(severity: string): 'healthy' | 'warning' | 'critical' | 'info' {
+  if (severity === 'critical') return 'critical'
+  if (severity === 'warning') return 'warning'
+  if (severity === 'success') return 'healthy'
+  return 'info'
+}
+
+function KPIStrip({
+  items,
+}: {
+  items: { label: string; value: React.ReactNode; sub?: string; subColor?: string }[]
+}) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-px bg-navy-700 border border-navy-700">
+      {items.map((item) => (
+        <div key={item.label} className="bg-navy-800 p-5">
+          <p className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-[#5c6470] mb-3.5">
+            {item.label}
+          </p>
+          <p className="font-mono text-[26px] font-semibold text-[#f0f1f3] leading-none">{item.value}</p>
+          {item.sub && <p className={cn('text-xs mt-1.5', item.subColor ?? 'text-gray-500')}>{item.sub}</p>}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export default function DashboardPage() {
@@ -200,104 +200,91 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">
+          <h1 className="text-[23px] font-semibold text-[#f0f1f3] tracking-[-0.01em]">
             {greeting}, Captain {firstName}
           </h1>
-          <p className="text-gray-400 text-sm mt-0.5">{today} — Fleet Overview</p>
+          <p className="text-[#767d88] text-[13px] mt-[5px]">{today} — Fleet Overview</p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-navy-800 border border-navy-700 rounded-lg text-xs text-gray-400">
-          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+        <div className="flex items-center gap-[7px] px-[13px] py-[7px] bg-[#12161a] border border-white/[0.09] text-xs text-[#a8adb5]">
+          <div className="w-1.5 h-1.5 bg-status-green" />
           {vessels.length} vessel{vessels.length !== 1 ? 's' : ''} tracked
         </div>
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard
-          title="Total Vessels"
-          value={vessels.length || 3}
-          subtitle="Petronas Marine Fleet"
-          icon={Ship}
-          iconBg="bg-teal-600/20"
-          iconColor="text-teal-400"
-        />
-        <StatCard
-          title="Fleet Fuel Efficiency"
-          value={`${efficiencyScore}/100`}
-          subtitle={trendLabel}
-          icon={Gauge}
-          variant="teal"
-          iconBg="bg-green-600/20"
-          iconColor="text-green-400"
-        />
-        <StatCard
-          title="Active Alerts"
-          value={activeAlerts}
-          subtitle={activeAlerts > 0 ? 'Requires attention' : 'All clear'}
-          icon={AlertTriangle}
-          variant={activeAlerts > 0 ? 'amber' : 'default'}
-          iconBg={activeAlerts > 0 ? 'bg-amber-600/20' : 'bg-navy-700'}
-          iconColor={activeAlerts > 0 ? 'text-amber-400' : 'text-gray-400'}
-        />
-        <StatCard
-          title="Monthly AI Savings"
-          value={savingsFormatted}
-          subtitle="Fuel + maintenance avoidance"
-          icon={TrendingUp}
-          variant="teal"
-          iconBg="bg-green-600/20"
-          iconColor="text-green-400"
-        />
-      </div>
+      <KPIStrip
+        items={[
+          { label: 'Total Vessels', value: vessels.length || 3, sub: 'Petronas Marine Fleet' },
+          {
+            label: 'Fleet Fuel Efficiency',
+            value: (
+              <>
+                {efficiencyScore}
+                <span className="text-base text-[#5c6470]">/100</span>
+              </>
+            ),
+            sub: trendLabel,
+          },
+          {
+            label: 'Active Alerts',
+            value: activeAlerts,
+            sub: activeAlerts > 0 ? 'Requires attention' : 'All clear',
+            subColor: activeAlerts > 0 ? 'text-status-amber' : 'text-gray-500',
+          },
+          { label: 'Monthly AI Savings', value: savingsFormatted, sub: 'Fuel + maintenance avoidance' },
+        ]}
+      />
 
       {/* Fleet Compliance Matrix + Recent Alerts */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         {/* Compliance Matrix */}
-        <div className="xl:col-span-2 card">
-          <h2 className="text-base font-semibold text-white mb-4">Fleet Compliance Matrix</h2>
+        <div className="xl:col-span-2 border border-navy-700 bg-navy-800">
+          <h2 className="text-[14px] font-semibold text-[#e2e4e7] px-5 py-4 border-b border-navy-700">
+            Fleet Compliance Matrix
+          </h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-navy-700">
-                  <th className="text-left text-gray-400 font-medium pb-3 pr-4">Vessel</th>
-                  <th className="text-left text-gray-400 font-medium pb-3 pr-4">CII</th>
-                  <th className="text-left text-gray-400 font-medium pb-3 pr-4">ETS</th>
-                  <th className="text-left text-gray-400 font-medium pb-3 pr-4">MRV</th>
-                  <th className="text-left text-gray-400 font-medium pb-3">Certificates</th>
+                  <th className="text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470] py-[11px] pl-5 pr-4">Vessel</th>
+                  <th className="text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470] py-[11px] pr-4">CII</th>
+                  <th className="text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470] py-[11px] pr-4">ETS</th>
+                  <th className="text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470] py-[11px] pr-4">MRV</th>
+                  <th className="text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470] py-[11px] pr-5">Certificates</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-navy-700/50">
+              <tbody className="divide-y divide-navy-700/60">
                 {complianceMatrix.map((row) => (
-                  <tr key={row.id} className="hover:bg-navy-700/20 transition-colors">
-                    <td className="py-3 pr-4 font-medium text-white">{row.vessel}</td>
-                    <td className="py-3 pr-4">
-                      <CIIBadge rating={row.ciiRating} status={row.ciiStatus} />
+                  <tr key={row.id}>
+                    <td className="py-[15px] pl-5 pr-4 font-medium text-[#e2e4e7]">{row.vessel}</td>
+                    <td className="py-[15px] pr-4">
+                      <Badge variant={row.ciiStatus} className="font-mono">{row.ciiRating}</Badge>
                     </td>
-                    <td className="py-3 pr-4">
+                    <td className="py-[15px] pr-4">
                       {row.ets === 'compliant' ? (
-                        <span className="flex items-center gap-1 text-green-400 text-xs">
+                        <span className="flex items-center gap-1 text-status-green text-xs">
                           <CheckCircle className="w-3.5 h-3.5" /> Compliant
                         </span>
                       ) : row.ets === 'warning' ? (
-                        <span className="flex items-center gap-1 text-amber-400 text-xs">
+                        <span className="flex items-center gap-1 text-status-amber text-xs">
                           <AlertTriangle className="w-3.5 h-3.5" /> At Risk
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1 text-red-400 text-xs">
+                        <span className="flex items-center gap-1 text-status-red text-xs">
                           <XCircle className="w-3.5 h-3.5" /> Non-compliant
                         </span>
                       )}
                     </td>
-                    <td className="py-3 pr-4">
-                      <span className="text-gray-300 text-xs">{row.mrv}</span>
+                    <td className="py-[15px] pr-4">
+                      <span className="text-[#a8adb5] text-xs">{row.mrv}</span>
                     </td>
-                    <td className="py-3">
+                    <td className="py-[15px] pr-5">
                       {row.certStatus === 'valid' ? (
-                        <span className="flex items-center gap-1 text-green-400 text-xs">
+                        <span className="flex items-center gap-1 text-status-green text-xs">
                           <CheckCircle className="w-3.5 h-3.5" /> {row.certs}
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1 text-red-400 text-xs">
+                        <span className="flex items-center gap-1 text-status-red text-xs">
                           <XCircle className="w-3.5 h-3.5" /> {row.certs}
                         </span>
                       )}
@@ -307,35 +294,35 @@ export default function DashboardPage() {
               </tbody>
             </table>
           </div>
-          <div className="mt-4 pt-4 border-t border-navy-700">
-            <Link to="/compliance" className="text-teal-400 hover:text-teal-300 text-xs flex items-center gap-1 transition-colors">
+          <div className="px-5 py-3.5">
+            <Link to="/compliance" className="text-teal-400 hover:text-teal-300 text-xs flex items-center gap-1 transition-colors w-fit">
               View full compliance report <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
         </div>
 
         {/* Recent Alerts */}
-        <div className="card">
-          <h2 className="text-base font-semibold text-white mb-4">Recent Alerts</h2>
-          <div className="space-y-3">
+        <div className="border border-navy-700 bg-navy-800">
+          <h2 className="text-[14px] font-semibold text-[#e2e4e7] px-5 py-4 border-b border-navy-700">Recent Alerts</h2>
+          <div className="divide-y divide-navy-700/60">
             {recentAlerts.map((alert) => (
-              <div key={alert.id} className="flex gap-3 p-3 bg-navy-700/40 rounded-lg border border-navy-700/50">
+              <div key={alert.id} className="flex gap-2.5 px-5 py-[15px]">
                 <SeverityIcon severity={alert.severity} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-white text-xs font-medium leading-snug">{alert.title}</p>
-                    <span className={cn(severityBadgeClass(alert.severity), 'shrink-0')}>{alert.severity}</span>
+                    <p className="text-[#e2e4e7] text-xs font-semibold leading-snug">{alert.title}</p>
+                    <Badge variant={severityVariant(alert.severity)} className="shrink-0">{alert.severity}</Badge>
                   </div>
                   {alert.vesselName && (
-                    <p className="text-gray-500 text-xs mt-0.5">{alert.vesselName}</p>
+                    <p className="text-[#767d88] text-xs mt-0.5">{alert.vesselName}</p>
                   )}
-                  <p className="text-gray-500 text-xs mt-1">{timeAgo(alert.createdAt)}</p>
+                  <p className="text-[#767d88] text-xs mt-1">{timeAgo(alert.createdAt)}</p>
                 </div>
               </div>
             ))}
           </div>
-          <div className="mt-4 pt-4 border-t border-navy-700">
-            <Link to="/maintenance" className="text-teal-400 hover:text-teal-300 text-xs flex items-center gap-1 transition-colors">
+          <div className="px-5 py-3.5">
+            <Link to="/maintenance" className="text-teal-400 hover:text-teal-300 text-xs flex items-center gap-1 transition-colors w-fit">
               View all alerts <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
@@ -344,23 +331,20 @@ export default function DashboardPage() {
 
       {/* Quick Navigation */}
       <div>
-        <h2 className="text-base font-semibold text-white mb-4">Fleet Modules</h2>
+        <h2 className="text-[14px] font-semibold text-[#e2e4e7] mb-4">Fleet Modules</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {QUICK_MODULES.map((mod) => (
             <Link
               key={mod.link}
               to={mod.link}
-              className={cn(
-                'card bg-gradient-to-br border hover:scale-[1.01] transition-transform group',
-                mod.color
-              )}
+              className="bg-navy-800 border border-navy-700 rounded-[2px] p-5 hover:border-teal-600/50 hover:bg-white/[0.015] transition-colors group"
             >
               <div className="flex items-start justify-between">
                 <span className="text-2xl">{mod.icon}</span>
                 <ArrowRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
               </div>
-              <h3 className="text-white font-semibold mt-3">{mod.name}</h3>
-              <p className="text-gray-400 text-xs mt-1 leading-relaxed">{mod.description}</p>
+              <h3 className="text-[#e2e4e7] font-semibold mt-3 text-[13.5px]">{mod.name}</h3>
+              <p className="text-[#767d88] text-xs mt-1 leading-relaxed">{mod.description}</p>
               <p className="text-teal-400 text-xs mt-3 font-medium group-hover:text-teal-300 transition-colors">
                 Go to Module →
               </p>

@@ -5,6 +5,7 @@ import { voyageApi } from '@/lib/api'
 import { MOCK_VOYAGE_HISTORY } from '@/lib/mockData'
 import type { VoyageHistoryRecord } from '@/lib/types'
 import { formatDate, formatFuel, cn } from '@/lib/utils'
+import Badge from '@/components/ui/Badge'
 
 function SkeletonRow() {
   return (
@@ -18,19 +19,10 @@ function SkeletonRow() {
   )
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const isCompleted = status === 'completed'
-  return (
-    <span className={cn('text-xs px-2 py-0.5 rounded-full border', isCompleted ? 'badge-healthy' : 'badge-info')}>
-      {status}
-    </span>
-  )
-}
-
 function SavingsCell({ savings }: { savings: number }) {
   const isPositive = savings > 0
   return (
-    <span className={cn('flex items-center gap-1 font-medium text-sm', isPositive ? 'text-green-400' : 'text-red-400')}>
+    <span className={cn('flex items-center gap-1 font-mono font-medium text-sm', isPositive ? 'text-status-green' : 'text-status-red')}>
       {isPositive ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
       {isPositive ? '+' : ''}${Math.abs(savings * 650).toLocaleString()}
     </span>
@@ -40,7 +32,7 @@ function SavingsCell({ savings }: { savings: number }) {
 function CIIImpactCell({ impact }: { impact: number }) {
   const isPositive = impact < 0
   return (
-    <span className={cn('text-sm font-medium', isPositive ? 'text-green-400' : 'text-red-400')}>
+    <span className={cn('font-mono text-sm font-medium', isPositive ? 'text-status-green' : 'text-status-red')}>
       {impact > 0 ? '+' : ''}{impact.toFixed(2)}
     </span>
   )
@@ -67,7 +59,7 @@ export default function VoyageHistory() {
   if (isError) {
     return (
       <div className="card text-center py-10">
-        <p className="text-red-400">Failed to load voyage history</p>
+        <p className="text-status-red">Failed to load voyage history</p>
       </div>
     )
   }
@@ -87,7 +79,7 @@ export default function VoyageHistory() {
             <thead>
               <tr className="border-b border-navy-700">
                 {['Departure', 'Route', 'Distance', 'Planned Fuel', 'Actual Fuel', 'Savings ($)', 'CII Impact', 'Status'].map((h) => (
-                  <th key={h} className="text-left text-gray-400 font-medium pb-3 px-4 first:pl-0 last:pr-0 whitespace-nowrap">
+                  <th key={h} className="text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470] pb-3 px-4 first:pl-0 last:pr-0 whitespace-nowrap">
                     {h}
                   </th>
                 ))}
@@ -109,7 +101,7 @@ export default function VoyageHistory() {
                   const distance = Math.round(800 + Math.random() * 400)
                   return (
                     <tr key={voyage.id} className="hover:bg-navy-700/20 transition-colors">
-                      <td className="py-3 px-4 pl-0 text-gray-300 whitespace-nowrap">{formatDate(voyage.departureDate)}</td>
+                      <td className="py-3 px-4 pl-0 text-gray-300 font-mono whitespace-nowrap">{formatDate(voyage.departureDate)}</td>
                       <td className="py-3 px-4 text-white whitespace-nowrap">
                         <span className="flex items-center gap-1">
                           {voyage.route.split(' → ')[0]}
@@ -117,9 +109,9 @@ export default function VoyageHistory() {
                           {voyage.route.split(' → ')[1]}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-gray-300">{distance} nm</td>
-                      <td className="py-3 px-4 text-gray-300">{formatFuel(voyage.plannedFuel)}</td>
-                      <td className="py-3 px-4 text-gray-300">{formatFuel(voyage.actualFuel)}</td>
+                      <td className="py-3 px-4 text-gray-300 font-mono">{distance} nm</td>
+                      <td className="py-3 px-4 text-gray-300 font-mono">{formatFuel(voyage.plannedFuel)}</td>
+                      <td className="py-3 px-4 text-gray-300 font-mono">{formatFuel(voyage.actualFuel)}</td>
                       <td className="py-3 px-4">
                         <SavingsCell savings={voyage.savings} />
                       </td>
@@ -127,7 +119,7 @@ export default function VoyageHistory() {
                         <CIIImpactCell impact={voyage.ciiImpact} />
                       </td>
                       <td className="py-3 px-4 pr-0">
-                        <StatusBadge status="completed" />
+                        <Badge variant="healthy">completed</Badge>
                       </td>
                     </tr>
                   )
@@ -141,9 +133,9 @@ export default function VoyageHistory() {
         {history && history.length > 0 && (
           <div className="mt-5 pt-4 border-t border-navy-700 flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm">
-              <TrendingUp className="w-4 h-4 text-green-400" />
+              <TrendingUp className="w-4 h-4 text-status-green" />
               <span className="text-gray-400">Total savings this month:</span>
-              <span className="text-green-400 font-bold">${totalSavings.toLocaleString()}</span>
+              <span className="text-status-green font-mono font-semibold">${totalSavings.toLocaleString()}</span>
             </div>
             <span className="text-gray-500 text-xs">{history.length} voyages</span>
           </div>

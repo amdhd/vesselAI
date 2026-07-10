@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Shield, BarChart2, FileText, MessageSquare, Grid } from 'lucide-react'
+import Tabs from '@/components/ui/Tabs'
 import CIITracker from './CIITracker'
 import ETSTracker from './ETSTracker'
 import EmissionsLog from './EmissionsLog'
@@ -8,12 +9,12 @@ import FleetMatrix from './FleetMatrix'
 
 type Tab = 'cii' | 'ets' | 'emissions' | 'chat' | 'matrix'
 
-const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'cii', label: 'CII Tracker', icon: <BarChart2 className="w-4 h-4" /> },
-  { id: 'ets', label: 'EU ETS', icon: <Shield className="w-4 h-4" /> },
-  { id: 'emissions', label: 'Emissions Log', icon: <FileText className="w-4 h-4" /> },
-  { id: 'chat', label: 'Compliance Chat', icon: <MessageSquare className="w-4 h-4" /> },
-  { id: 'matrix', label: 'Fleet Matrix', icon: <Grid className="w-4 h-4" /> },
+const TABS = [
+  { id: 'cii' as Tab, label: 'CII Tracker', icon: BarChart2 },
+  { id: 'ets' as Tab, label: 'EU ETS', icon: Shield },
+  { id: 'emissions' as Tab, label: 'Emissions Log', icon: FileText },
+  { id: 'chat' as Tab, label: 'Compliance Chat', icon: MessageSquare },
+  { id: 'matrix' as Tab, label: 'Fleet Matrix', icon: Grid },
 ]
 
 export default function CompliancePage() {
@@ -22,26 +23,11 @@ export default function CompliancePage() {
   return (
     <div className="flex flex-col h-full">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white">Compliance</h1>
-        <p className="text-gray-400 text-sm mt-1">CII, EU ETS, Emissions monitoring and MARPOL compliance</p>
+        <h1 className="text-[23px] font-semibold text-[#f0f1f3] tracking-[-0.01em]">Compliance</h1>
+        <p className="text-[#767d88] text-[13px] mt-[5px]">CII, EU ETS, Emissions monitoring and MARPOL compliance</p>
       </div>
 
-      <div className="flex gap-1 bg-navy-800 p-1 rounded-xl border border-navy-700 mb-6 flex-shrink-0 overflow-x-auto">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-              activeTab === tab.id
-                ? 'bg-teal-600 text-white shadow-sm'
-                : 'text-gray-400 hover:text-white hover:bg-navy-700'
-            }`}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <Tabs tabs={TABS} activeId={activeTab} onChange={setActiveTab} className="mb-6 flex-shrink-0 overflow-x-auto" />
 
       <div className="flex-1 min-h-0 overflow-y-auto">
         {activeTab === 'cii' && <CIITracker />}

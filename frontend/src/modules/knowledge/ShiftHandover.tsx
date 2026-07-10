@@ -65,14 +65,14 @@ export default function ShiftHandover() {
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Watch</label>
                 <select value={form.watch} onChange={e => setForm(f => ({ ...f, watch: e.target.value }))}
-                  className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600">
+                  className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600">
                   {WATCH_OPTIONS.map(w => <option key={w}>{w}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Engineer Name</label>
                 <input value={form.engineer} onChange={e => setForm(f => ({ ...f, engineer: e.target.value }))}
-                  placeholder="Your name" className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 placeholder-gray-600" />
+                  placeholder="Your name" className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 placeholder-gray-600" />
               </div>
             </div>
             {[
@@ -86,7 +86,7 @@ export default function ShiftHandover() {
                 <textarea value={form[field.key as keyof typeof form]}
                   onChange={e => setForm(f => ({ ...f, [field.key]: e.target.value }))}
                   rows={2} placeholder={field.placeholder}
-                  className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 resize-none placeholder-gray-600" />
+                  className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 resize-none placeholder-gray-600" />
               </div>
             ))}
             <button onClick={handleGenerate} disabled={loading}
@@ -117,11 +117,11 @@ export default function ShiftHandover() {
                 </button>
               </div>
             </div>
-            <div className="bg-teal-900/20 border border-teal-800 rounded-lg p-3 mb-3">
-              <p className="text-teal-300 text-sm font-medium">Summary</p>
+            <div className="bg-navy-800 border border-teal-600/50 rounded-[2px] p-3 mb-3">
+              <p className="text-teal-400 text-sm font-medium">Summary</p>
               <p className="text-gray-300 text-sm mt-1">{result.summary}</p>
             </div>
-            <pre className="text-gray-300 text-xs whitespace-pre-wrap font-mono bg-navy-900 rounded-lg p-3 max-h-64 overflow-y-auto">{result.reportText}</pre>
+            <pre className="text-gray-300 text-xs whitespace-pre-wrap font-mono bg-navy-900 rounded-[2px] p-3 max-h-64 overflow-y-auto">{result.reportText}</pre>
           </div>
         ) : (
           <div className="card flex items-center justify-center min-h-[200px] text-center text-gray-500">
@@ -133,7 +133,7 @@ export default function ShiftHandover() {
           <h3 className="font-semibold text-white mb-3 flex items-center gap-2"><Clock size={16} className="text-teal-400" /> Recent Handovers</h3>
           <div className="space-y-3">
             {history.map(h => (
-              <div key={h.id} className="bg-navy-900 rounded-lg p-3 border border-navy-700">
+              <div key={h.id} className="bg-navy-900 rounded-[2px] p-3 border border-navy-700">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-white text-sm font-medium">{h.engineer}</span>
                   <span className="text-xs text-gray-500">{formatDateTime(h.createdAt)}</span>

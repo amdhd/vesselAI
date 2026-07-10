@@ -48,10 +48,10 @@ function generateMockData(vesselId: string): EmissionRecord[] {
 }
 
 const fuelTypeBadge: Record<string, string> = {
-  HFO: 'bg-orange-900/50 text-orange-300 border border-orange-800',
-  VLSFO: 'bg-blue-900/50 text-blue-300 border border-blue-800',
-  MGO: 'bg-purple-900/50 text-purple-300 border border-purple-800',
-  LNG: 'bg-green-900/50 text-green-300 border border-green-800',
+  HFO: 'text-status-amber border-status-amber',
+  VLSFO: 'text-teal-400 border-teal-600',
+  MGO: 'text-[#a8adb5] border-white/20',
+  LNG: 'text-status-green border-status-green',
 }
 
 export default function EmissionsLog() {
@@ -106,7 +106,7 @@ export default function EmissionsLog() {
             <select
               value={monthFilter}
               onChange={(e) => setMonthFilter(e.target.value)}
-              className="bg-navy-700 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm"
+              className="bg-[#12161a] border border-white/[0.1] rounded-[2px] px-3 py-2 text-white text-sm"
             >
               <option value="All">All Months</option>
               {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -124,13 +124,13 @@ export default function EmissionsLog() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-navy-700 bg-navy-900/50">
-                <th className="text-left px-4 py-3 text-gray-400 font-medium">Date</th>
-                <th className="text-left px-4 py-3 text-gray-400 font-medium">Route</th>
-                <th className="text-left px-4 py-3 text-gray-400 font-medium">Fuel Type</th>
-                <th className="text-right px-4 py-3 text-gray-400 font-medium">Fuel (MT)</th>
-                <th className="text-right px-4 py-3 text-gray-400 font-medium">CO2 (MT)</th>
-                <th className="text-right px-4 py-3 text-gray-400 font-medium">SOx (MT)</th>
-                <th className="text-right px-4 py-3 text-gray-400 font-medium">NOx (MT)</th>
+                <th className="text-left px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">Date</th>
+                <th className="text-left px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">Route</th>
+                <th className="text-left px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">Fuel Type</th>
+                <th className="text-right px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">Fuel (MT)</th>
+                <th className="text-right px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">CO2 (MT)</th>
+                <th className="text-right px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">SOx (MT)</th>
+                <th className="text-right px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">NOx (MT)</th>
               </tr>
             </thead>
             <tbody>
@@ -139,17 +139,17 @@ export default function EmissionsLog() {
                   key={r.id}
                   className={`border-b border-navy-700/50 hover:bg-navy-700/30 transition-colors ${i % 2 === 0 ? '' : 'bg-navy-900/20'}`}
                 >
-                  <td className="px-4 py-3 text-gray-300">{r.date}</td>
+                  <td className="px-4 py-3 text-gray-300 font-mono">{r.date}</td>
                   <td className="px-4 py-3 text-gray-300">{r.route}</td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${fuelTypeBadge[r.fuelType]}`}>
+                    <span className={`text-[10px] font-semibold uppercase tracking-wide border rounded-[2px] px-2 py-0.5 ${fuelTypeBadge[r.fuelType]}`}>
                       {r.fuelType}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right text-white font-medium">{formatNumber(r.fuelMT, 1)}</td>
-                  <td className="px-4 py-3 text-right text-amber-400 font-medium">{formatNumber(r.co2MT, 1)}</td>
-                  <td className="px-4 py-3 text-right text-gray-300">{r.soxMT.toFixed(3)}</td>
-                  <td className="px-4 py-3 text-right text-gray-300">{r.noxMT.toFixed(3)}</td>
+                  <td className="px-4 py-3 text-right text-white font-mono font-medium">{formatNumber(r.fuelMT, 1)}</td>
+                  <td className="px-4 py-3 text-right text-status-amber font-mono font-medium">{formatNumber(r.co2MT, 1)}</td>
+                  <td className="px-4 py-3 text-right text-gray-300 font-mono">{r.soxMT.toFixed(3)}</td>
+                  <td className="px-4 py-3 text-right text-gray-300 font-mono">{r.noxMT.toFixed(3)}</td>
                 </tr>
               ))}
               {/* Summary row */}
@@ -157,10 +157,10 @@ export default function EmissionsLog() {
                 <td className="px-4 py-3 font-bold text-teal-400" colSpan={3}>
                   TOTALS ({filtered.length} records)
                 </td>
-                <td className="px-4 py-3 text-right font-bold text-white">{formatNumber(totals.fuelMT, 1)}</td>
-                <td className="px-4 py-3 text-right font-bold text-amber-400">{formatNumber(totals.co2MT, 1)}</td>
-                <td className="px-4 py-3 text-right font-bold text-white">{totals.soxMT.toFixed(3)}</td>
-                <td className="px-4 py-3 text-right font-bold text-white">{totals.noxMT.toFixed(3)}</td>
+                <td className="px-4 py-3 text-right font-bold font-mono text-white">{formatNumber(totals.fuelMT, 1)}</td>
+                <td className="px-4 py-3 text-right font-bold font-mono text-status-amber">{formatNumber(totals.co2MT, 1)}</td>
+                <td className="px-4 py-3 text-right font-bold font-mono text-white">{totals.soxMT.toFixed(3)}</td>
+                <td className="px-4 py-3 text-right font-bold font-mono text-white">{totals.noxMT.toFixed(3)}</td>
               </tr>
             </tbody>
           </table>

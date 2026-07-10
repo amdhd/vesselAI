@@ -1,7 +1,7 @@
 import { useState, Suspense, lazy } from 'react'
 import { Navigation, Gauge, Clock, CloudSun } from 'lucide-react'
 import { useFleet } from '@/context/FleetContext'
-import { cn } from '@/lib/utils'
+import Tabs from '@/components/ui/Tabs'
 
 const RouteOptimizer = lazy(() => import('./RouteOptimizer'))
 const SpeedOptimizer = lazy(() => import('./SpeedOptimizer'))
@@ -35,7 +35,7 @@ function WeatherPlaceholder() {
       <p className="text-gray-400 text-sm mt-2 max-w-sm">
         Real-time weather routing and GRIB data integration coming soon. Connect your preferred weather data provider.
       </p>
-      <div className="mt-6 px-4 py-2 bg-navy-700 border border-navy-600 rounded-lg text-gray-500 text-xs">
+      <div className="mt-6 px-4 py-2 bg-navy-700 border border-navy-600 rounded-[2px] text-gray-500 text-xs">
         Weather integration — Planned feature
       </div>
     </div>
@@ -50,8 +50,8 @@ export default function VoyagePage() {
     <div className="space-y-5">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-white">Voyage Optimizer</h1>
-        <p className="text-gray-400 text-sm mt-0.5">
+        <h1 className="text-[23px] font-semibold text-[#f0f1f3] tracking-[-0.01em]">Voyage Optimizer</h1>
+        <p className="text-[#767d88] text-[13px] mt-[5px]">
           {selectedVessel ? (
             <>AI-powered voyage planning for <span className="text-teal-400 font-medium">{selectedVessel.name}</span></>
           ) : (
@@ -61,26 +61,7 @@ export default function VoyagePage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 p-1 bg-navy-800 border border-navy-700 rounded-xl w-fit">
-        {TABS.map((tab) => {
-          const Icon = tab.icon
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                activeTab === tab.id
-                  ? 'bg-teal-600 text-white shadow-sm'
-                  : 'text-gray-400 hover:text-white hover:bg-navy-700'
-              )}
-            >
-              <Icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          )
-        })}
-      </div>
+      <Tabs tabs={TABS} activeId={activeTab} onChange={setActiveTab} />
 
       {/* Tab content */}
       <Suspense fallback={<TabLoadingState />}>

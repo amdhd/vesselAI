@@ -13,18 +13,18 @@
 
 @layer components {
   .card {
-    @apply bg-navy-800 border border-navy-700 rounded-xl p-5;
+    @apply bg-navy-800 border border-navy-700 rounded-[2px] p-5;
   }
   .btn-primary {
-    @apply bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-medium transition-colors;
+    @apply bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-[2px] font-medium transition-colors;
   }
   .btn-secondary {
-    @apply bg-navy-700 hover:bg-navy-600 text-white px-4 py-2 rounded-lg font-medium transition-colors;
+    @apply bg-navy-700 hover:bg-navy-600 text-white px-4 py-2 rounded-[2px] font-medium transition-colors;
   }
-  .badge-healthy { @apply bg-green-900/50 text-green-400 border border-green-800 text-xs px-2 py-0.5 rounded-full; }
-  .badge-warning { @apply bg-amber-900/50 text-amber-400 border border-amber-800 text-xs px-2 py-0.5 rounded-full; }
-  .badge-critical { @apply bg-red-900/50 text-red-400 border border-red-800 text-xs px-2 py-0.5 rounded-full; }
-  .badge-info { @apply bg-blue-900/50 text-blue-400 border border-blue-800 text-xs px-2 py-0.5 rounded-full; }
+  .badge-healthy { @apply border border-status-green text-status-green bg-transparent text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-[2px]; }
+  .badge-warning { @apply border border-status-amber text-status-amber bg-transparent text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-[2px]; }
+  .badge-critical { @apply border border-status-red text-status-red bg-transparent text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-[2px]; }
+  .badge-info { @apply border border-teal-600 text-teal-400 bg-transparent text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-[2px]; }
 }
 
 /* Scrollbar styling */
@@ -33,37 +33,37 @@
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0A1628;
+  background: #0d1013;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e3a6e;
-  border-radius: 3px;
+  background: #23282f;
+  border-radius: 0;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #2d4f8a;
+  background: #33383f;
 }
 
 /* Leaflet dark mode overrides */
 .leaflet-container {
-  background: #060e1a !important;
+  background: #0b0d10 !important;
 }
 .leaflet-control-zoom a {
-  background-color: #112654 !important;
+  background-color: #12161a !important;
   color: #fff !important;
-  border-color: #1e3a6e !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
 }
 .leaflet-control-zoom a:hover {
-  background-color: #1e3a6e !important;
+  background-color: #1f2227 !important;
 }
 .leaflet-control-attribution {
-  background-color: rgba(10, 22, 40, 0.7) !important;
-  color: #7892c2 !important;
+  background-color: rgba(10, 12, 15, 0.7) !important;
+  color: #767d88 !important;
 }
 .leaflet-popup-content-wrapper {
-  background-color: #112654 !important;
+  background-color: #12161a !important;
   color: #fff !important;
-  border: 1px solid #1e3a6e !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 .leaflet-popup-tip {
-  background-color: #112654 !important;
+  background-color: #12161a !important;
 }

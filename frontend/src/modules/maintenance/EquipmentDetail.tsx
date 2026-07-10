@@ -5,6 +5,8 @@ import type { Equipment, WorkOrder, MaintenanceAlert } from '@/lib/types'
 import { maintenanceApi } from '@/lib/api'
 import { MOCK_ALERTS, MOCK_WORK_ORDERS } from '@/lib/mockData'
 import { formatDate, timeAgo, cn } from '@/lib/utils'
+import Badge from '@/components/ui/Badge'
+import Tabs from '@/components/ui/Tabs'
 import SensorChart from './SensorChart'
 
 interface EquipmentDetailProps {
@@ -20,32 +22,35 @@ const TABS = [
   { id: 'workorders' as TabId, label: 'Work Orders', icon: ClipboardList },
 ]
 
+const statusVariant: Record<Equipment['status'], 'healthy' | 'warning' | 'critical' | 'info' | 'default'> = {
+  healthy: 'healthy',
+  warning: 'warning',
+  critical: 'critical',
+  offline: 'default',
+  maintenance: 'info',
+}
+
+const statusLabel: Record<Equipment['status'], string> = {
+  healthy: 'Healthy',
+  warning: 'Watch',
+  critical: 'Critical',
+  offline: 'Offline',
+  maintenance: 'In Maintenance',
+}
+
 function StatusBadge({ status }: { status: Equipment['status'] }) {
-  const map: Record<Equipment['status'], string> = {
-    healthy: 'badge-healthy',
-    warning: 'badge-warning',
-    critical: 'badge-critical',
-    offline: 'bg-gray-800 text-gray-400 border border-gray-700 text-xs px-2 py-0.5 rounded-full',
-    maintenance: 'badge-info',
-  }
-  const labels: Record<Equipment['status'], string> = {
-    healthy: 'Healthy',
-    warning: 'Watch',
-    critical: 'Critical',
-    offline: 'Offline',
-    maintenance: 'In Maintenance',
-  }
-  return <span className={map[status]}>{labels[status]}</span>
+  return <Badge variant={statusVariant[status]}>{statusLabel[status]}</Badge>
+}
+
+const priorityVariant: Record<WorkOrder['priority'], 'critical' | 'warning' | 'info' | 'default'> = {
+  critical: 'critical',
+  high: 'warning',
+  medium: 'info',
+  low: 'default',
 }
 
 function PriorityBadge({ priority }: { priority: WorkOrder['priority'] }) {
-  const map: Record<WorkOrder['priority'], string> = {
-    critical: 'badge-critical',
-    high: 'badge-warning',
-    medium: 'badge-info',
-    low: 'bg-navy-700 text-gray-400 border border-navy-600 text-xs px-2 py-0.5 rounded-full',
-  }
-  return <span className={cn(map[priority], 'capitalize')}>{priority}</span>
+  return <Badge variant={priorityVariant[priority]} className="capitalize">{priority}</Badge>
 }
 
 export default function EquipmentDetail({ equipment, onClose }: EquipmentDetailProps) {
@@ -109,46 +114,29 @@ export default function EquipmentDetail({ equipment, onClose }: EquipmentDetailP
               {equipment.manufacturer} {equipment.model} — {equipment.serialNumber}
             </p>
             <p className="text-gray-500 text-xs mt-0.5">
-              Health score: <span className="text-white font-semibold">{equipment.healthScore}/100</span>
+              Health score: <span className="text-white font-mono font-semibold">{equipment.healthScore}/100</span>
               <span className="mx-2">·</span>
-              {equipment.runningHours.toLocaleString()} running hours
+              <span className="font-mono">{equipment.runningHours.toLocaleString()}</span> running hours
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-navy-700 transition-colors"
+            className="p-2 rounded-[2px] text-gray-400 hover:text-white hover:bg-navy-700 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1 p-3 border-b border-navy-700 shrink-0">
-          {TABS.map((tab) => {
-            const Icon = tab.icon
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  'flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
-                  activeTab === tab.id
-                    ? 'bg-teal-600 text-white'
-                    : 'text-gray-400 hover:text-white hover:bg-navy-700'
-                )}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {tab.label}
-              </button>
-            )
-          })}
+        <div className="px-3 border-b border-navy-700 shrink-0">
+          <Tabs tabs={TABS} activeId={activeTab} onChange={setActiveTab} className="border-b-0" />
         </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-5">
           {/* AI Analysis result */}
           {aiAnalysis && (
-            <div className="mb-4 card border-teal-700/50 bg-teal-900/10">
+            <div className="mb-4 card border-teal-600/50">
               <button
                 className="flex items-center justify-between w-full text-left"
                 onClick={() => setAnalysisOpen(!analysisOpen)}
@@ -178,17 +166,17 @@ export default function EquipmentDetail({ equipment, onClose }: EquipmentDetailP
                     days={30}
                   />
                   <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                    <div className="bg-navy-700/50 rounded p-2">
+                    <div className="bg-navy-700/50 rounded-[2px] p-2">
                       <p className="text-gray-500">Current</p>
-                      <p className="text-white font-semibold">{sensor.currentValue} {sensor.unit}</p>
+                      <p className="text-white font-mono font-semibold">{sensor.currentValue} {sensor.unit}</p>
                     </div>
-                    <div className="bg-navy-700/50 rounded p-2">
+                    <div className="bg-navy-700/50 rounded-[2px] p-2">
                       <p className="text-gray-500">Normal range</p>
-                      <p className="text-white font-semibold">{sensor.normalRange[0]}–{sensor.normalRange[1]}</p>
+                      <p className="text-white font-mono font-semibold">{sensor.normalRange[0]}–{sensor.normalRange[1]}</p>
                     </div>
-                    <div className="bg-navy-700/50 rounded p-2">
+                    <div className="bg-navy-700/50 rounded-[2px] p-2">
                       <p className="text-gray-500">Warning range</p>
-                      <p className="text-amber-400 font-semibold">{sensor.warningRange[0]}–{sensor.warningRange[1]}</p>
+                      <p className="text-status-amber font-mono font-semibold">{sensor.warningRange[0]}–{sensor.warningRange[1]}</p>
                     </div>
                   </div>
                 </div>
@@ -209,29 +197,27 @@ export default function EquipmentDetail({ equipment, onClose }: EquipmentDetailP
                   <div
                     key={alert.id}
                     className={cn(
-                      'card border',
-                      alert.severity === 'critical' ? 'border-red-800 bg-red-900/10' : 'border-amber-800 bg-amber-900/10'
+                      'card',
+                      alert.severity === 'critical' ? 'border-status-red' : 'border-status-amber'
                     )}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-3">
-                        <AlertTriangle className={cn('w-4 h-4 shrink-0 mt-0.5', alert.severity === 'critical' ? 'text-red-400' : 'text-amber-400')} />
+                        <AlertTriangle className={cn('w-4 h-4 shrink-0 mt-0.5', alert.severity === 'critical' ? 'text-status-red' : 'text-status-amber')} />
                         <div>
                           <p className="text-white text-sm font-medium">{alert.message}</p>
                           <p className="text-gray-500 text-xs mt-1">{timeAgo(alert.detectedAt)}</p>
                           {alert.daysToFailure !== undefined && (
-                            <p className="text-red-400 text-xs mt-1 font-medium">
-                              Estimated {alert.daysToFailure} day{alert.daysToFailure !== 1 ? 's' : ''} to failure
+                            <p className="text-status-red text-xs mt-1 font-medium">
+                              Estimated <span className="font-mono">{alert.daysToFailure}</span> day{alert.daysToFailure !== 1 ? 's' : ''} to failure
                             </p>
                           )}
                         </div>
                       </div>
-                      <span className={cn(alert.severity === 'critical' ? 'badge-critical' : 'badge-warning')}>
-                        {alert.severity}
-                      </span>
+                      <Badge variant={alert.severity === 'critical' ? 'critical' : 'warning'}>{alert.severity}</Badge>
                     </div>
                     {alert.aiAnalysis && (
-                      <div className="mt-3 p-3 bg-navy-700/50 rounded-lg border border-navy-600 text-xs text-gray-300 leading-relaxed">
+                      <div className="mt-3 p-3 bg-navy-700/50 rounded-[2px] border border-navy-600 text-xs text-gray-300 leading-relaxed">
                         <span className="text-teal-400 font-medium">AI: </span>{alert.aiAnalysis}
                       </div>
                     )}
@@ -281,7 +267,7 @@ export default function EquipmentDetail({ equipment, onClose }: EquipmentDetailP
           <button
             onClick={() => analyzeWithAI()}
             disabled={isAnalyzing}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-teal-600/20 hover:bg-teal-600/30 border border-teal-700 text-teal-400 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 rounded-[2px] text-sm font-medium border border-teal-600 text-teal-400 hover:bg-teal-600/10 transition-colors disabled:opacity-50"
           >
             {isAnalyzing ? (
               <div className="w-4 h-4 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
@@ -290,7 +276,7 @@ export default function EquipmentDetail({ equipment, onClose }: EquipmentDetailP
             )}
             Analyze with AI
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium btn-secondary">
+          <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium btn-secondary">
             <Plus className="w-4 h-4" />
             Create Work Order
           </button>

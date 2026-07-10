@@ -86,22 +86,22 @@ export default function SensorChart({ equipmentId, sensorName, unit, normalRange
       <div className="h-48">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e3a6e" />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.09)" />
             <XAxis
               dataKey="time"
-              stroke="#4b6cb7"
-              tick={{ fill: '#6b7280', fontSize: 9 }}
+              stroke="#454b55"
+              tick={{ fill: '#5c6470', fontSize: 9 }}
               interval="preserveStartEnd"
             />
             <YAxis
-              stroke="#4b6cb7"
-              tick={{ fill: '#6b7280', fontSize: 9 }}
+              stroke="#454b55"
+              tick={{ fill: '#5c6470', fontSize: 9 }}
               domain={[yMin, yMax]}
               tickFormatter={(v) => v.toFixed(0)}
             />
             <Tooltip
-              contentStyle={{ backgroundColor: '#112654', border: '1px solid #1e3a6e', borderRadius: '6px', fontSize: '11px' }}
-              labelStyle={{ color: '#9ca3af' }}
+              contentStyle={{ backgroundColor: '#12161a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '2px', fontSize: '11px' }}
+              labelStyle={{ color: '#a8adb5' }}
               formatter={(value: number) => [`${value.toFixed(2)} ${unit}`, sensorName]}
             />
 
@@ -110,32 +110,32 @@ export default function SensorChart({ equipmentId, sensorName, unit, normalRange
               type="monotone"
               dataKey="cautionZoneTop"
               stroke="none"
-              fill="#eab308"
+              fill="#c99a54"
               fillOpacity={0.08}
             />
 
             {/* Critical reference line */}
             <ReferenceLine
               y={warningRange[0]}
-              stroke="#eab308"
+              stroke="#c99a54"
               strokeDasharray="4 3"
-              label={{ value: 'Caution', position: 'right', fill: '#eab308', fontSize: 9 }}
+              label={{ value: 'Caution', position: 'right', fill: '#c99a54', fontSize: 9 }}
             />
             <ReferenceLine
               y={warningRange[1]}
-              stroke="#ef4444"
+              stroke="#a8443b"
               strokeDasharray="4 3"
-              label={{ value: 'Critical', position: 'right', fill: '#ef4444', fontSize: 9 }}
+              label={{ value: 'Critical', position: 'right', fill: '#a8443b', fontSize: 9 }}
             />
 
             {/* Main sensor line */}
             <Line
               type="monotone"
               dataKey="value"
-              stroke="#14b8a6"
+              stroke="#3a8c85"
               strokeWidth={1.5}
               dot={false}
-              activeDot={{ r: 4, fill: '#14b8a6' }}
+              activeDot={{ r: 4, fill: '#3a8c85' }}
               name={sensorName}
             />
 
@@ -145,7 +145,7 @@ export default function SensorChart({ equipmentId, sensorName, unit, normalRange
               dataKey="anomaly"
               stroke="none"
               strokeWidth={0}
-              dot={{ r: 4, fill: '#ef4444', stroke: '#fff', strokeWidth: 1 }}
+              dot={{ r: 4, fill: '#a8443b', stroke: '#fff', strokeWidth: 1 }}
               activeDot={false}
               name="Anomaly"
               isAnimationActive={false}
@@ -155,16 +155,16 @@ export default function SensorChart({ equipmentId, sensorName, unit, normalRange
       </div>
       <div className="flex items-center gap-4 text-xs text-gray-500">
         <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 bg-teal-500 inline-block" /> Sensor reading
+          <span className="w-3 h-0.5 bg-teal-600 inline-block" /> Sensor reading
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Anomaly
+          <span className="w-2 h-2 bg-status-red inline-block" /> Anomaly
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 bg-amber-400 inline-block" style={{ borderTop: '2px dashed #eab308' }} /> Caution
+          <span className="w-3 h-0.5 inline-block" style={{ borderTop: '2px dashed #c99a54' }} /> Caution
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 bg-red-400 inline-block" style={{ borderTop: '2px dashed #ef4444' }} /> Critical
+          <span className="w-3 h-0.5 inline-block" style={{ borderTop: '2px dashed #a8443b' }} /> Critical
         </span>
       </div>
     </div>

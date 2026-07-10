@@ -6,58 +6,56 @@ import { maintenanceApi } from '@/lib/api'
 import { MOCK_EQUIPMENT, MOCK_ALERTS } from '@/lib/mockData'
 import type { Equipment } from '@/lib/types'
 import { formatDate, getHealthBg, cn } from '@/lib/utils'
+import Badge from '@/components/ui/Badge'
 import EquipmentDetail from './EquipmentDetail'
 
 function HealthCircle({ score }: { score: number }) {
-  const radius = 30
+  const radius = 24
   const circumference = 2 * Math.PI * radius
   const strokeDashoffset = circumference - (score / 100) * circumference
   const color = getHealthBg(score)
 
   return (
-    <div className="relative inline-flex items-center justify-center">
-      <svg width="80" height="80" viewBox="0 0 80 80">
-        <circle cx="40" cy="40" r={radius} fill="none" stroke="#1e3a6e" strokeWidth="6" />
+    <div className="relative inline-flex items-center justify-center shrink-0">
+      <svg width="56" height="56" viewBox="0 0 56 56">
+        <circle cx="28" cy="28" r={radius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
         <circle
-          cx="40"
-          cy="40"
+          cx="28"
+          cy="28"
           r={radius}
           fill="none"
           stroke={color}
-          strokeWidth="6"
+          strokeWidth="4"
           strokeDasharray={circumference}
           strokeDashoffset={strokeDashoffset}
           strokeLinecap="round"
-          transform="rotate(-90 40 40)"
+          transform="rotate(-90 28 28)"
           style={{ transition: 'stroke-dashoffset 0.5s ease' }}
         />
       </svg>
-      <span
-        className="absolute text-lg font-bold"
-        style={{ color }}
-      >
-        {score}
-      </span>
+      <span className="absolute font-mono text-[15px] font-semibold text-[#e2e4e7]">{score}</span>
     </div>
   )
 }
 
+const statusVariant: Record<Equipment['status'], 'healthy' | 'warning' | 'critical' | 'info' | 'default'> = {
+  healthy: 'healthy',
+  warning: 'warning',
+  critical: 'critical',
+  offline: 'default',
+  maintenance: 'info',
+}
+
+const statusLabel: Record<Equipment['status'], string> = {
+  healthy: 'Healthy',
+  warning: 'Watch',
+  critical: 'Critical',
+  offline: 'Offline',
+  maintenance: 'In Maintenance',
+}
+
 function StatusBadge({ status }: { status: Equipment['status'] }) {
-  const map: Record<Equipment['status'], string> = {
-    healthy: 'badge-healthy',
-    warning: 'badge-warning',
-    critical: 'badge-critical',
-    offline: 'bg-gray-800 text-gray-400 border border-gray-700 text-xs px-2 py-0.5 rounded-full',
-    maintenance: 'badge-info',
-  }
-  const labels: Record<Equipment['status'], string> = {
-    healthy: 'Healthy',
-    warning: 'Watch',
-    critical: 'Critical',
-    offline: 'Offline',
-    maintenance: 'In Maintenance',
-  }
-  return <span className={map[status]}>{labels[status]}</span>
+  return <Badge variant={statusVariant[status]}>{statusLabel[status]}</Badge>
 }
 
 interface EquipmentCardProps {
@@ -70,11 +68,11 @@ function EquipmentCard({ equipment, hasAlert, onClick }: EquipmentCardProps) {
   return (
     <div
       onClick={() => onClick(equipment)}
-      className="card cursor-pointer hover:border-teal-700/50 hover:bg-navy-750 transition-all group"
+      className="bg-navy-800 p-5 cursor-pointer hover:bg-white/[0.015] transition-colors group"
     >
       {/* Alert banner */}
       {hasAlert && (
-        <div className="flex items-center gap-2 mb-3 p-2 bg-red-900/30 border border-red-800/50 rounded-lg text-red-400 text-xs">
+        <div className="flex items-center gap-2 mb-3 p-2 border border-status-red text-status-red rounded-[2px] text-xs">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
           Anomaly Detected — AI flagged bearing issue
         </div>
@@ -82,29 +80,29 @@ function EquipmentCard({ equipment, hasAlert, onClick }: EquipmentCardProps) {
 
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-white truncate group-hover:text-teal-300 transition-colors">
+          <h3 className="font-semibold text-[#e2e4e7] text-[14px] truncate group-hover:text-teal-300 transition-colors">
             {equipment.name}
           </h3>
-          <p className="text-gray-500 text-xs mt-0.5">{equipment.type} — {equipment.manufacturer}</p>
+          <p className="text-[#767d88] text-[11.5px] mt-[3px]">{equipment.manufacturer}</p>
         </div>
         <div className="ml-3">
           <HealthCircle score={equipment.healthScore} />
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-between">
+      <div className="mt-4 pt-3.5 border-t border-white/[0.06] flex items-center justify-between">
         <StatusBadge status={equipment.status} />
-        <span className="text-gray-500 text-xs">{equipment.runningHours.toLocaleString()} hrs</span>
+        <span className="text-[#767d88] text-[11.5px] font-mono">{equipment.runningHours.toLocaleString()} hrs</span>
       </div>
 
-      <div className="mt-3 pt-3 border-t border-navy-700 grid grid-cols-2 gap-2 text-xs">
+      <div className="mt-3.5 flex justify-between text-xs">
         <div>
-          <span className="text-gray-500">Last maintenance</span>
-          <p className="text-gray-300 mt-0.5">{formatDate(equipment.lastMaintenance)}</p>
+          <span className="text-[10px] text-[#5c6470] uppercase tracking-wide">Last maint.</span>
+          <p className="text-[#c7cbd1] text-xs mt-[3px]">{formatDate(equipment.lastMaintenance)}</p>
         </div>
-        <div>
-          <span className="text-gray-500">Next maintenance</span>
-          <p className="text-gray-300 mt-0.5">{formatDate(equipment.nextMaintenance)}</p>
+        <div className="text-right">
+          <span className="text-[10px] text-[#5c6470] uppercase tracking-wide">Next maint.</span>
+          <p className="text-[#c7cbd1] text-xs mt-[3px]">{formatDate(equipment.nextMaintenance)}</p>
         </div>
       </div>
     </div>
@@ -186,10 +184,10 @@ export default function EquipmentGrid() {
             onClick={() => analyzeAll()}
             disabled={isAnalyzing || flaggedCount === 0}
             className={cn(
-              'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+              'flex items-center gap-2 px-4 py-2 rounded-[2px] text-[12.5px] font-semibold transition-colors border',
               flaggedCount > 0
-                ? 'bg-amber-600/20 hover:bg-amber-600/30 border border-amber-700 text-amber-400'
-                : 'bg-navy-700 border border-navy-600 text-gray-500 cursor-not-allowed'
+                ? 'border-status-amber text-status-amber hover:bg-status-amber/10'
+                : 'border-navy-600 text-gray-500 cursor-not-allowed'
             )}
           >
             {isAnalyzing ? (
@@ -203,17 +201,17 @@ export default function EquipmentGrid() {
 
         {/* Analysis result */}
         {analyzeResult && (
-          <div className="card border-amber-700/50 bg-amber-900/10">
+          <div className="border border-status-amber/50 bg-navy-800 rounded-[2px] p-5">
             <div className="flex items-center gap-2 mb-2">
-              <Zap className="w-4 h-4 text-amber-400" />
-              <span className="text-amber-400 font-semibold text-sm">AI Analysis Result</span>
+              <Zap className="w-4 h-4 text-status-amber" />
+              <span className="text-status-amber font-semibold text-sm">AI Analysis Result</span>
             </div>
             <p className="text-gray-300 text-sm leading-relaxed">{analyzeResult}</p>
           </div>
         )}
 
         {/* Equipment grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-px bg-navy-700 border border-navy-700">
           {sortedEquipment.map((eq) => (
             <EquipmentCard
               key={eq.id}

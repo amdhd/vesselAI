@@ -47,23 +47,23 @@ export default function Topbar() {
   }, [])
 
   return (
-    <header className="fixed top-0 left-60 right-0 h-14 bg-navy-950 border-b border-navy-800 flex items-center justify-between px-6 z-20">
+    <header className="fixed top-0 left-[236px] right-0 h-14 bg-navy-950 border-b border-navy-700 flex items-center justify-between px-6 z-20">
       {/* Vessel selector */}
       <div ref={vesselRef} className="relative">
         <button
           onClick={() => setVesselMenuOpen(!vesselMenuOpen)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-navy-800 hover:bg-navy-700 transition-colors border border-navy-700"
+          className="flex items-center gap-2 px-3 py-[7px] rounded-[2px] bg-[#12161a] hover:bg-navy-700 transition-colors border border-white/[0.09] text-[12.5px] font-medium"
         >
-          <Ship className="w-4 h-4 text-teal-400" />
-          <span className="text-white text-sm font-medium">
+          <Ship className="w-3.5 h-3.5 text-teal-600" strokeWidth={1.8} />
+          <span className="text-[#c7cbd1]">
             {selectedVessel?.name || 'Select Vessel'}
           </span>
-          <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+          <ChevronDown className="w-3 h-3 text-[#5c6470]" />
         </button>
         {vesselMenuOpen && (
-          <div className="absolute top-full left-0 mt-1.5 w-64 bg-navy-800 border border-navy-700 rounded-xl shadow-xl overflow-hidden">
+          <div className="absolute top-full left-0 mt-1.5 w-64 bg-navy-800 border border-navy-700 rounded-[2px] overflow-hidden">
             <div className="px-3 py-2 border-b border-navy-700">
-              <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">Select Vessel</p>
+              <p className="text-[10.5px] text-[#5c6470] font-semibold uppercase tracking-wider">Select Vessel</p>
             </div>
             {vessels.map((v) => (
               <button
@@ -82,10 +82,10 @@ export default function Topbar() {
                   </div>
                 </div>
                 <span className={cn(
-                  'text-xs px-1.5 py-0.5 rounded font-medium',
-                  v.status === 'underway' ? 'text-green-400 bg-green-900/30' :
-                  v.status === 'at_anchor' ? 'text-amber-400 bg-amber-900/30' :
-                  'text-blue-400 bg-blue-900/30'
+                  'text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-[2px] border',
+                  v.status === 'underway' ? 'text-status-green border-status-green' :
+                  v.status === 'at_anchor' ? 'text-status-amber border-status-amber' :
+                  'text-teal-400 border-teal-600'
                 )}>
                   {v.status.replace('_', ' ')}
                 </span>
@@ -101,18 +101,18 @@ export default function Topbar() {
         <div ref={notifRef} className="relative">
           <button
             onClick={() => setNotifOpen(!notifOpen)}
-            className="relative w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:bg-navy-800 hover:text-white transition-colors"
+            className="relative w-9 h-9 rounded-[2px] flex items-center justify-center text-gray-400 hover:bg-navy-800 hover:text-white transition-colors"
           >
             <Bell className="w-5 h-5" />
             {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold">
+              <span className="absolute top-1 right-1 w-4 h-4 bg-status-red text-white text-[10px] rounded-full flex items-center justify-center font-bold">
                 {unreadCount}
               </span>
             )}
           </button>
 
           {notifOpen && (
-            <div className="absolute top-full right-0 mt-1.5 w-96 bg-navy-800 border border-navy-700 rounded-xl shadow-2xl overflow-hidden">
+            <div className="absolute top-full right-0 mt-1.5 w-96 bg-navy-800 border border-navy-700 rounded-[2px] overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3 border-b border-navy-700">
                 <div>
                   <p className="text-white font-semibold text-sm">Notifications</p>
@@ -167,7 +167,7 @@ export default function Topbar() {
         <div ref={userRef} className="relative">
           <button
             onClick={() => setUserMenuOpen(!userMenuOpen)}
-            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-navy-800 transition-colors"
+            className="flex items-center gap-2 px-2 py-1.5 rounded-[2px] hover:bg-navy-800 transition-colors"
           >
             <div className="w-7 h-7 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-bold">
               {user?.name.charAt(0) || 'U'}
@@ -180,7 +180,7 @@ export default function Topbar() {
           </button>
 
           {userMenuOpen && (
-            <div className="absolute top-full right-0 mt-1.5 w-52 bg-navy-800 border border-navy-700 rounded-xl shadow-xl overflow-hidden">
+            <div className="absolute top-full right-0 mt-1.5 w-52 bg-navy-800 border border-navy-700 rounded-[2px] overflow-hidden">
               <div className="px-4 py-3 border-b border-navy-700">
                 <p className="text-white font-medium text-sm">{user?.name}</p>
                 <p className="text-gray-400 text-xs">{user?.email}</p>
@@ -193,7 +193,7 @@ export default function Topbar() {
                 </button>
                 <button
                   onClick={logout}
-                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-red-400 hover:bg-red-900/20 hover:text-red-300 transition-colors"
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-status-red hover:bg-status-red/10 transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
                   Sign Out

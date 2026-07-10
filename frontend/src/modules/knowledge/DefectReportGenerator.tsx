@@ -85,7 +85,7 @@ export default function DefectReportGenerator() {
               <select
                 value={form.equipment}
                 onChange={e => setForm(f => ({ ...f, equipment: e.target.value }))}
-                className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600"
+                className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600"
               >
                 <option value="">Select equipment...</option>
                 {EQUIPMENT_LIST.map(e => <option key={e} value={e}>{e}</option>)}
@@ -99,7 +99,7 @@ export default function DefectReportGenerator() {
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                 rows={3}
                 placeholder="Describe the defect or failure observed..."
-                className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 resize-none placeholder-gray-600"
+                className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 resize-none placeholder-gray-600"
               />
             </div>
 
@@ -110,7 +110,7 @@ export default function DefectReportGenerator() {
                 onChange={e => setForm(f => ({ ...f, symptoms: e.target.value }))}
                 rows={3}
                 placeholder="What symptoms are present? (vibration, noise, temperature, pressure, etc.)"
-                className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 resize-none placeholder-gray-600"
+                className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 resize-none placeholder-gray-600"
               />
             </div>
 
@@ -121,7 +121,7 @@ export default function DefectReportGenerator() {
                 onChange={e => setForm(f => ({ ...f, conditions: e.target.value }))}
                 rows={2}
                 placeholder="Load conditions, time of occurrence, recent work done..."
-                className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 resize-none placeholder-gray-600"
+                className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 resize-none placeholder-gray-600"
               />
             </div>
 
@@ -130,14 +130,14 @@ export default function DefectReportGenerator() {
               <select
                 value={form.severity}
                 onChange={e => setForm(f => ({ ...f, severity: e.target.value }))}
-                className="w-full bg-navy-900 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600"
+                className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600"
               >
                 {SEVERITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
 
             {error && (
-              <div className="flex items-center gap-2 text-red-400 text-sm bg-red-900/20 border border-red-800 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2 text-status-red text-sm bg-navy-800 border border-status-red rounded-[2px] px-3 py-2">
                 <AlertTriangle size={14} /> {error}
               </div>
             )}
@@ -184,7 +184,7 @@ export default function DefectReportGenerator() {
                   </button>
                 </div>
               </div>
-              <pre className="text-gray-300 text-xs whitespace-pre-wrap font-mono bg-navy-900 rounded-lg p-4 max-h-64 overflow-y-auto">
+              <pre className="text-gray-300 text-xs whitespace-pre-wrap font-mono bg-navy-900 rounded-[2px] p-4 max-h-64 overflow-y-auto">
                 {result.reportText}
               </pre>
             </div>

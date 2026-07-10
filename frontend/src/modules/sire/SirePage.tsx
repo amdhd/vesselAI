@@ -7,6 +7,14 @@ import { MOCK_SIRE_DOCS, MOCK_SIRE_FINDINGS, MOCK_SIRE_CHAPTERS } from '@/lib/mo
 import type { SireDocument, SireFinding, SireChapterScore } from '@/lib/types'
 import { formatDate, cn } from '@/lib/utils'
 import ChatMarkdown from '@/components/ui/ChatMarkdown'
+import Badge from '@/components/ui/Badge'
+import Tabs from '@/components/ui/Tabs'
+
+const statusColor: Record<'green' | 'amber' | 'red', string> = {
+  green: '#4a9d6f',
+  amber: '#c99a54',
+  red: '#a8443b',
+}
 
 type Tab = 'readiness' | 'documents' | 'findings' | 'chat'
 
@@ -17,31 +25,22 @@ const TABS = [
   { id: 'chat' as Tab, label: 'Inspector Chat', icon: MessageSquare },
 ]
 
-function ChapterRow({ chapter }: { chapter: SireChapterScore }) {
+function ChapterRow({ chapter, index }: { chapter: SireChapterScore; index: number }) {
   const pct = Math.round((chapter.score / chapter.maxScore) * 100)
   return (
-    <div className="flex items-center gap-4">
-      <span className="text-gray-500 text-xs w-5 text-right">{chapter.chapter}</span>
-      <span className="text-gray-300 text-sm flex-1 truncate">{chapter.title}</span>
-      <div className="w-32 h-2 bg-navy-700 rounded-full">
+    <div className="flex items-center gap-4 py-[13px] border-b border-white/[0.05] last:border-b-0">
+      <span className="font-mono text-[11.5px] text-[#454b55] w-4">{index + 1}</span>
+      <span className="text-[#e2e4e7] text-[13px] flex-1 truncate">{chapter.title}</span>
+      <div className="w-32 h-[5px] bg-white/[0.06] relative">
         <div
-          className="h-full rounded-full transition-all"
-          style={{
-            width: `${pct}%`,
-            background: chapter.status === 'green' ? '#22c55e' : chapter.status === 'amber' ? '#f59e0b' : '#ef4444',
-          }}
+          className="absolute inset-y-0 left-0"
+          style={{ width: `${pct}%`, background: statusColor[chapter.status] }}
         />
       </div>
-      <span
-        className={cn('text-xs font-bold w-8 text-right', {
-          'text-green-400': chapter.status === 'green',
-          'text-amber-400': chapter.status === 'amber',
-          'text-red-400': chapter.status === 'red',
-        })}
-      >
+      <span className="font-mono text-[13px] font-semibold w-8 text-right" style={{ color: statusColor[chapter.status] }}>
         {chapter.score}
       </span>
-      <span className={cn('text-xs', chapter.findings > 0 ? 'text-amber-400' : 'text-gray-600')}>
+      <span className="text-[11.5px] text-[#767d88] w-20 text-right">
         {chapter.findings} finding{chapter.findings !== 1 ? 's' : ''}
       </span>
     </div>
@@ -50,14 +49,14 @@ function ChapterRow({ chapter }: { chapter: SireChapterScore }) {
 
 function DocumentRow({ doc }: { doc: SireDocument }) {
   return (
-    <div className="flex items-center justify-between p-3 bg-navy-700/40 border border-navy-600/50 rounded-lg">
+    <div className="flex items-center justify-between p-3 bg-navy-700/40 border border-navy-600/50 rounded-[2px]">
       <div className="flex items-center gap-3">
         {doc.status === 'valid' ? (
-          <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />
+          <CheckCircle className="w-4 h-4 text-status-green shrink-0" />
         ) : doc.status === 'expiring_soon' ? (
-          <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+          <Clock className="w-4 h-4 text-status-amber shrink-0" />
         ) : (
-          <XCircle className="w-4 h-4 text-red-400 shrink-0" />
+          <XCircle className="w-4 h-4 text-status-red shrink-0" />
         )}
         <div>
           <p className="text-white text-sm font-medium">{doc.name}</p>
@@ -66,12 +65,12 @@ function DocumentRow({ doc }: { doc: SireDocument }) {
       </div>
       <div className="text-right">
         {doc.expiryDate && (
-          <p className="text-gray-400 text-xs">Expires {formatDate(doc.expiryDate)}</p>
+          <p className="text-gray-400 text-xs font-mono">Expires {formatDate(doc.expiryDate)}</p>
         )}
         <span className={cn('text-xs', {
-          'text-green-400': doc.status === 'valid',
-          'text-amber-400': doc.status === 'expiring_soon',
-          'text-red-400': doc.status === 'expired',
+          'text-status-green': doc.status === 'valid',
+          'text-status-amber': doc.status === 'expiring_soon',
+          'text-status-red': doc.status === 'expired',
         })}>
           {doc.status === 'valid' ? 'Valid' : doc.status === 'expiring_soon' ? 'Expiring Soon' : 'Expired'}
         </span>
@@ -84,32 +83,33 @@ function FindingRow({ finding }: { finding: SireFinding }) {
   const [expanded, setExpanded] = useState(false)
   return (
     <div className={cn('card', {
-      'border-red-800/50 bg-red-900/5': finding.severity === 'major',
-      'border-amber-800/50 bg-amber-900/5': finding.severity === 'deficiency',
+      'border-status-red': finding.severity === 'major',
+      'border-status-amber': finding.severity === 'deficiency',
       'border-navy-700': finding.severity === 'observation',
     })}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn('text-xs px-2 py-0.5 rounded-full border capitalize', {
-              'badge-critical': finding.severity === 'major',
-              'badge-warning': finding.severity === 'deficiency',
-              'badge-info': finding.severity === 'observation',
-            })}>
+            <Badge
+              variant={
+                finding.severity === 'major' ? 'critical' : finding.severity === 'deficiency' ? 'warning' : 'info'
+              }
+              className="capitalize"
+            >
               {finding.severity}
-            </span>
+            </Badge>
             <span className="text-gray-500 text-xs">Ch.{finding.chapter}: {finding.chapterTitle}</span>
             <span className={cn('text-xs capitalize', {
-              'text-green-400': finding.status === 'closed' || finding.status === 'verified',
-              'text-amber-400': finding.status === 'in_progress',
-              'text-red-400': finding.status === 'open',
+              'text-status-green': finding.status === 'closed' || finding.status === 'verified',
+              'text-status-amber': finding.status === 'in_progress',
+              'text-status-red': finding.status === 'open',
             })}>
               {finding.status.replace('_', ' ')}
             </span>
           </div>
           <p className="text-white text-sm mt-2">{finding.finding}</p>
           {finding.dueDate && (
-            <p className="text-gray-500 text-xs mt-1">Due: {formatDate(finding.dueDate)}</p>
+            <p className="text-gray-500 text-xs mt-1 font-mono">Due: {formatDate(finding.dueDate)}</p>
           )}
         </div>
         {finding.correctiveAction && (
@@ -122,7 +122,7 @@ function FindingRow({ finding }: { finding: SireFinding }) {
         )}
       </div>
       {expanded && finding.correctiveAction && (
-        <div className="mt-3 p-3 bg-navy-700/50 rounded-lg border border-navy-600 text-xs text-gray-300">
+        <div className="mt-3 p-3 bg-navy-700/50 rounded-[2px] border border-navy-600 text-xs text-gray-300">
           <span className="text-teal-400 font-medium">Corrective action: </span>
           {finding.correctiveAction}
         </div>
@@ -186,13 +186,13 @@ function ReadinessTab({ vesselId }: { vesselId: string }) {
         <div className="flex items-center gap-8">
           <div className="relative w-24 h-24 shrink-0">
             <svg viewBox="0 0 100 100" className="w-full h-full">
-              <circle cx="50" cy="50" r="40" fill="none" stroke="#1e3a6e" strokeWidth="10" />
+              <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="10" />
               <circle
                 cx="50"
                 cy="50"
                 r="40"
                 fill="none"
-                stroke={overallScore >= 80 ? '#22c55e' : overallScore >= 60 ? '#f59e0b' : '#ef4444'}
+                stroke={overallScore >= 80 ? '#4a9d6f' : overallScore >= 60 ? '#c99a54' : '#a8443b'}
                 strokeWidth="10"
                 strokeDasharray={`${2 * Math.PI * 40}`}
                 strokeDashoffset={`${2 * Math.PI * 40 * (1 - overallScore / 100)}`}
@@ -201,7 +201,7 @@ function ReadinessTab({ vesselId }: { vesselId: string }) {
               />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-2xl font-bold text-white">{overallScore}</span>
+              <span className="font-mono text-2xl font-semibold text-white">{overallScore}</span>
             </div>
           </div>
           <div className="flex-1">
@@ -210,15 +210,15 @@ function ReadinessTab({ vesselId }: { vesselId: string }) {
                overallScore >= 60 ? 'Good readiness — some areas need attention before inspection' :
                'Low readiness — significant deficiencies must be addressed urgently'}
             </p>
-            <div className="mt-3 grid grid-cols-3 gap-3 text-center">
+            <div className="mt-3 grid grid-cols-3 gap-px bg-navy-700 border border-navy-700">
               {[
                 { label: 'Chapters', value: chapters.length },
                 { label: 'Green', value: chapters.filter((c) => c.status === 'green').length },
                 { label: 'Issues', value: chapters.reduce((s, c) => s + c.findings, 0) },
               ].map(({ label, value }) => (
-                <div key={label} className="bg-navy-700/50 rounded-lg p-2">
-                  <p className="text-white font-bold">{value}</p>
-                  <p className="text-gray-500 text-xs">{label}</p>
+                <div key={label} className="bg-navy-800 p-2.5 text-center">
+                  <p className="font-mono text-white font-semibold text-lg">{value}</p>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mt-0.5">{label}</p>
                 </div>
               ))}
             </div>
@@ -228,9 +228,9 @@ function ReadinessTab({ vesselId }: { vesselId: string }) {
 
       {/* Chapter scores */}
       <div className="card">
-        <h3 className="font-semibold text-white mb-4">Chapter Scores</h3>
-        <div className="space-y-3">
-          {chapters.map((ch) => <ChapterRow key={ch.chapter} chapter={ch} />)}
+        <h3 className="font-semibold text-white mb-1">Chapter Scores</h3>
+        <div>
+          {chapters.map((ch, i) => <ChapterRow key={ch.chapter} chapter={ch} index={i} />)}
         </div>
       </div>
     </div>
@@ -259,13 +259,13 @@ function DocumentsTab({ vesselId }: { vesselId: string }) {
       {(expired > 0 || expiring > 0) && (
         <div className="flex gap-3">
           {expired > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">
+            <div className="flex items-center gap-2 px-3 py-2 bg-navy-800 border border-status-red rounded-[2px] text-status-red text-sm">
               <XCircle className="w-4 h-4" />
               {expired} expired certificate{expired !== 1 ? 's' : ''}
             </div>
           )}
           {expiring > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-amber-900/20 border border-amber-800 rounded-lg text-amber-400 text-sm">
+            <div className="flex items-center gap-2 px-3 py-2 bg-navy-800 border border-status-amber rounded-[2px] text-status-amber text-sm">
               <Clock className="w-4 h-4" />
               {expiring} expiring soon
             </div>
@@ -304,11 +304,11 @@ function FindingsTab({ vesselId }: { vesselId: string }) {
     <div className="space-y-4">
       <div className="flex items-center gap-4 text-sm text-gray-400">
         <span>{findings?.length ?? 0} total findings</span>
-        {open > 0 && <span className="text-red-400 font-medium">{open} open</span>}
+        {open > 0 && <span className="text-status-red font-medium">{open} open</span>}
       </div>
       {!findings || findings.length === 0 ? (
         <div className="card flex flex-col items-center justify-center py-12 text-center">
-          <CheckCircle className="w-12 h-12 text-green-600 mb-3" />
+          <CheckCircle className="w-12 h-12 text-status-green mb-3" />
           <p className="text-white font-semibold">No findings on record</p>
           <p className="text-gray-400 text-sm mt-1">This vessel has no SIRE inspection findings</p>
         </div>
@@ -396,9 +396,9 @@ function ChatTab({ vesselId }: { vesselId: string }) {
         {messages.map((msg, i) => (
           <div key={i} className={cn('flex', msg.role === 'user' ? 'justify-end' : 'justify-start')}>
             <div className={cn(
-              'max-w-[85%] p-3 rounded-xl text-sm leading-relaxed',
+              'max-w-[85%] p-3 rounded-[2px] text-sm leading-relaxed',
               msg.role === 'user'
-                ? 'bg-teal-600/30 border border-teal-700 text-white'
+                ? 'bg-teal-600/20 border border-teal-600 text-white'
                 : 'bg-navy-700 border border-navy-600 text-gray-200'
             )}>
               {msg.content ? (
@@ -422,7 +422,7 @@ function ChatTab({ vesselId }: { vesselId: string }) {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
           placeholder="Ask about inspection topics, request a practice question..."
-          className="flex-1 bg-navy-700 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-teal-600 transition-colors"
+          className="flex-1 bg-navy-700 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-teal-600 transition-colors"
           disabled={isStreaming}
         />
         <button
@@ -445,8 +445,8 @@ export default function SirePage() {
     return (
       <div className="space-y-5">
         <div>
-          <h1 className="text-2xl font-bold text-white">SIRE Readiness</h1>
-          <p className="text-gray-400 text-sm mt-0.5">SIRE 2.0 inspection preparation and compliance tracking</p>
+          <h1 className="text-[23px] font-semibold text-[#f0f1f3] tracking-[-0.01em]">SIRE Readiness</h1>
+          <p className="text-[#767d88] text-[13px] mt-[5px]">SIRE 2.0 inspection preparation and compliance tracking</p>
         </div>
         <div className="card flex flex-col items-center justify-center py-16 text-center">
           <Shield className="w-12 h-12 text-gray-600 mb-4" />
@@ -460,33 +460,14 @@ export default function SirePage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-bold text-white">SIRE Readiness</h1>
-        <p className="text-gray-400 text-sm mt-0.5">
+        <h1 className="text-[23px] font-semibold text-[#f0f1f3] tracking-[-0.01em]">SIRE Readiness</h1>
+        <p className="text-[#767d88] text-[13px] mt-[5px]">
           SIRE 2.0 preparation for <span className="text-teal-400 font-medium">{selectedVessel.name}</span>
         </p>
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 p-1 bg-navy-800 border border-navy-700 rounded-xl w-fit">
-        {TABS.map((tab) => {
-          const Icon = tab.icon
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                activeTab === tab.id
-                  ? 'bg-teal-600 text-white shadow-sm'
-                  : 'text-gray-400 hover:text-white hover:bg-navy-700'
-              )}
-            >
-              <Icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          )
-        })}
-      </div>
+      <Tabs tabs={TABS} activeId={activeTab} onChange={setActiveTab} />
 
       {activeTab === 'readiness' && <ReadinessTab vesselId={selectedVessel.id} />}
       {activeTab === 'documents' && <DocumentsTab vesselId={selectedVessel.id} />}

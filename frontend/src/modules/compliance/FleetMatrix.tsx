@@ -49,23 +49,23 @@ function StatusCell({ ok, label }: { ok: boolean | 'warn'; label?: string }) {
   if (ok === 'warn') {
     return (
       <div className="flex items-center justify-center gap-1">
-        <AlertCircle className="w-4 h-4 text-amber-400" />
-        <span className="text-xs text-amber-400">{label ?? 'At Risk'}</span>
+        <AlertCircle className="w-4 h-4 text-status-amber" />
+        <span className="text-xs text-status-amber">{label ?? 'At Risk'}</span>
       </div>
     )
   }
   if (ok) {
     return (
       <div className="flex items-center justify-center gap-1">
-        <CheckCircle className="w-4 h-4 text-green-400" />
-        <span className="text-xs text-green-400">{label ?? 'Valid'}</span>
+        <CheckCircle className="w-4 h-4 text-status-green" />
+        <span className="text-xs text-status-green">{label ?? 'Valid'}</span>
       </div>
     )
   }
   return (
     <div className="flex items-center justify-center gap-1">
-      <XCircle className="w-4 h-4 text-red-400" />
-      <span className="text-xs text-red-400">{label ?? 'Required'}</span>
+      <XCircle className="w-4 h-4 text-status-red" />
+      <span className="text-xs text-status-red">{label ?? 'Required'}</span>
     </div>
   )
 }
@@ -123,24 +123,22 @@ export default function FleetMatrix() {
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-sm">
-            <CheckCircle className="w-4 h-4 text-green-400" />
-            <span className="text-green-400 font-semibold">{fullCompliant} fully compliant</span>
+            <CheckCircle className="w-4 h-4 text-status-green" />
+            <span className="text-status-green font-semibold font-mono">{fullCompliant} fully compliant</span>
           </div>
           <div className="flex items-center gap-2 text-sm">
-            <AlertCircle className="w-4 h-4 text-amber-400" />
-            <span className="text-amber-400 font-semibold">{requireAttention} require attention</span>
+            <AlertCircle className="w-4 h-4 text-status-amber" />
+            <span className="text-status-amber font-semibold font-mono">{requireAttention} require attention</span>
           </div>
         </div>
       </div>
 
       {/* Summary banner */}
-      <div className={`flex items-center gap-3 rounded-xl px-4 py-3 border ${
-        requireAttention > 0
-          ? 'bg-amber-900/20 border-amber-700'
-          : 'bg-green-900/20 border-green-700'
+      <div className={`flex items-center gap-3 rounded-[2px] px-4 py-3 border bg-navy-800 ${
+        requireAttention > 0 ? 'border-status-amber' : 'border-status-green'
       }`}>
-        <Grid className={`w-5 h-5 flex-shrink-0 ${requireAttention > 0 ? 'text-amber-400' : 'text-green-400'}`} />
-        <p className={`text-sm font-medium ${requireAttention > 0 ? 'text-amber-300' : 'text-green-300'}`}>
+        <Grid className={`w-5 h-5 flex-shrink-0 ${requireAttention > 0 ? 'text-status-amber' : 'text-status-green'}`} />
+        <p className={`text-sm font-medium ${requireAttention > 0 ? 'text-status-amber' : 'text-status-green'}`}>
           {fullCompliant} vessel{fullCompliant !== 1 ? 's' : ''} fully compliant,{' '}
           {requireAttention} require{requireAttention === 1 ? 's' : ''} attention
         </p>
@@ -151,12 +149,12 @@ export default function FleetMatrix() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-navy-700 bg-navy-900/50">
-                <th className="text-left px-5 py-3 text-gray-400 font-medium">Vessel</th>
-                <th className="text-center px-4 py-3 text-gray-400 font-medium">CII Rating</th>
-                <th className="text-center px-4 py-3 text-gray-400 font-medium">ETS Status</th>
-                <th className="text-center px-4 py-3 text-gray-400 font-medium">MRV Filed</th>
-                <th className="text-center px-4 py-3 text-gray-400 font-medium">EEXI Valid</th>
-                <th className="text-center px-4 py-3 text-gray-400 font-medium">SOx Compliant</th>
+                <th className="text-left px-5 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">Vessel</th>
+                <th className="text-center px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">CII Rating</th>
+                <th className="text-center px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">ETS Status</th>
+                <th className="text-center px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">MRV Filed</th>
+                <th className="text-center px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">EEXI Valid</th>
+                <th className="text-center px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">SOx Compliant</th>
               </tr>
             </thead>
             <tbody>
@@ -177,7 +175,7 @@ export default function FleetMatrix() {
                     </td>
                     <td className="px-4 py-4 text-center">
                       <span
-                        className={`inline-flex items-center justify-center w-9 h-9 rounded-lg font-bold text-lg border ${getCIIBgColor(vessel.ciiRating)}`}
+                        className={`inline-flex items-center justify-center w-9 h-9 rounded-[2px] font-mono font-semibold text-lg border ${getCIIBgColor(vessel.ciiRating)}`}
                       >
                         {vessel.ciiRating}
                       </span>
@@ -223,7 +221,7 @@ export default function FleetMatrix() {
       </div>
 
       {generated && (
-        <div className="bg-green-900/30 border border-green-700 rounded-xl px-4 py-3 text-green-300 text-sm flex items-center gap-2">
+        <div className="bg-navy-800 border border-status-green rounded-[2px] px-4 py-3 text-status-green text-sm flex items-center gap-2">
           <CheckCircle className="w-4 h-4" />
           Fleet compliance report downloaded as CSV.
         </div>
