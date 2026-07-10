@@ -6,6 +6,7 @@ import { sireApi } from '@/lib/api'
 import { MOCK_SIRE_DOCS, MOCK_SIRE_FINDINGS, MOCK_SIRE_CHAPTERS } from '@/lib/mockData'
 import type { SireDocument, SireFinding, SireChapterScore } from '@/lib/types'
 import { formatDate, cn } from '@/lib/utils'
+import ChatMarkdown from '@/components/ui/ChatMarkdown'
 
 type Tab = 'readiness' | 'documents' | 'findings' | 'chat'
 
@@ -400,13 +401,17 @@ function ChatTab({ vesselId }: { vesselId: string }) {
                 ? 'bg-teal-600/30 border border-teal-700 text-white'
                 : 'bg-navy-700 border border-navy-600 text-gray-200'
             )}>
-              {msg.content || (isStreaming && i === messages.length - 1 && (
-                <span className="flex gap-1">
-                  <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" />
-                  <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-100" />
-                  <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-200" />
-                </span>
-              ))}
+              {msg.content ? (
+                msg.role === 'assistant' ? <ChatMarkdown content={msg.content} /> : msg.content
+              ) : (
+                isStreaming && i === messages.length - 1 && (
+                  <span className="flex gap-1">
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" />
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-100" />
+                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-200" />
+                  </span>
+                )
+              )}
             </div>
           </div>
         ))}

@@ -3,6 +3,7 @@ import { Send, Bot, User, Loader2 } from 'lucide-react'
 import { useFleet } from '@/context/FleetContext'
 import { sireApi } from '@/lib/api'
 import { toBackendVesselId } from '@/lib/utils'
+import ChatMarkdown from '@/components/ui/ChatMarkdown'
 
 interface ChatMessage {
   id: string
@@ -158,7 +159,9 @@ export default function ComplianceChat() {
                   : 'bg-navy-800 border border-navy-700 text-gray-200 rounded-tl-sm'
               }`}
             >
-              {msg.content || (
+              {msg.content ? (
+                msg.role === 'assistant' ? <ChatMarkdown content={msg.content} /> : msg.content
+              ) : (
                 <span className="flex items-center gap-2 text-gray-500">
                   <Loader2 className="w-3 h-3 animate-spin" />
                   Thinking...

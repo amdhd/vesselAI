@@ -6,9 +6,32 @@ import { requireVessel } from '../lib/tenant';
 
 const router = Router();
 
+const CONGESTION_LEVEL_MAP: Record<string, 'low' | 'medium' | 'high' | 'congested'> = {
+  LOW: 'low',
+  MEDIUM: 'medium',
+  HIGH: 'high',
+  CRITICAL: 'congested',
+};
+
 // GET /api/ports/congestion
 router.get('/congestion', authenticate, (_req: Request, res: Response) => {
-  res.json(MOCK_PORTS);
+  // Frontend PortCongestion type uses portId/portName/congestionLevel (lowercase)/
+  // avgWaitingTime/vesselsAtAnchor/forecast[].level; the mock fixtures use
+  // id/name/congestion (uppercase)/avgWaitHours/currentVessels/forecast[].congestion.
+  res.json(
+    MOCK_PORTS.map(p => ({
+      portId: p.id,
+      portName: p.name,
+      country: p.country,
+      congestionLevel: CONGESTION_LEVEL_MAP[p.congestion],
+      avgWaitingTime: p.avgWaitHours,
+      vesselsAtAnchor: p.currentVessels,
+      forecast: p.forecast.map(f => ({
+        date: f.date,
+        level: CONGESTION_LEVEL_MAP[f.congestion],
+      })),
+    }))
+  );
 });
 
 // GET /api/ports/demurrage/:vesselId

@@ -48,10 +48,10 @@ function generateMockData(normalRange: [number, number], warningRange: [number, 
 
 export default function SensorChart({ equipmentId, sensorName, unit, normalRange, warningRange, days = 30 }: SensorChartProps) {
   const { data: sensorData, isLoading } = useQuery<SensorReading[]>({
-    queryKey: ['sensor', equipmentId, days],
+    queryKey: ['sensor', equipmentId, sensorName, days],
     queryFn: async () => {
       try {
-        return await maintenanceApi.getSensorData(equipmentId, days)
+        return await maintenanceApi.getSensorData(equipmentId, days, sensorName)
       } catch {
         return generateMockData(normalRange, warningRange, days)
       }

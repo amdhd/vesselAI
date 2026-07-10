@@ -115,8 +115,9 @@ export const voyageApi = {
     return data
   },
   getActive: async (fleetId: string): Promise<Voyage[]> => {
-    const { data } = await api.get<Voyage[]>(`/voyage/active/${fleetId}`)
-    return data
+    // Backend wraps the list in { fleetId, activeVoyages }, not a bare array.
+    const { data } = await api.get<{ activeVoyages: Voyage[] }>(`/voyage/active/${fleetId}`)
+    return data.activeVoyages
   },
   predictEta: async (params: { vesselId: string; voyageId: string }) => {
     const { data } = await api.post('/voyage/predict-eta', params)
@@ -126,9 +127,14 @@ export const voyageApi = {
     portCallId: string
     type: string
     vesselId: string
+    portName?: string
   }) => {
-    const { data } = await api.post('/voyage/generate-agent-message', params)
-    return data
+    // Backend schema expects messageType/portName, not type/portCallId.
+    const { data } = await api.post<{ subject: string; body: string; recipient: string }>(
+      '/voyage/generate-agent-message',
+      { vesselId: params.vesselId, messageType: params.type, portName: params.portName },
+    )
+    return { subject: data.subject, body: data.body, to: data.recipient }
   },
 }
 
@@ -136,12 +142,17 @@ export const voyageApi = {
 
 export const maintenanceApi = {
   getEquipment: async (vesselId: string): Promise<Equipment[]> => {
-    const { data } = await api.get<Equipment[]>(`/maintenance/equipment/${vesselId}`)
-    return data
+    // Backend wraps the list in { vesselId, equipment, summary }, not a bare array.
+    const { data } = await api.get<{ equipment: Equipment[] }>(`/maintenance/equipment/${vesselId}`)
+    return data.equipment
   },
-  getSensorData: async (equipmentId: string, days: number): Promise<SensorReading[]> => {
-    const { data } = await api.get<SensorReading[]>(`/maintenance/sensor-data/${equipmentId}?days=${days}`)
-    return data
+  getSensorData: async (equipmentId: string, days: number, parameter?: string): Promise<SensorReading[]> => {
+    // Backend wraps the list in { equipmentId, equipment, sensorData, ... }, not a bare array.
+    // Without `parameter`, the backend returns every sensor for this equipment mixed
+    // together (RPM, exhaust temps, pressures...) in one array.
+    const query = parameter ? `?days=${days}&parameter=${encodeURIComponent(parameter)}` : `?days=${days}`
+    const { data } = await api.get<{ sensorData: SensorReading[] }>(`/maintenance/sensor-data/${equipmentId}${query}`)
+    return data.sensorData
   },
   analyzeAnomaly: async (params: { equipmentId: string; vesselId: string }): Promise<{ analysis: string }> => {
     const { data } = await api.post<{ analysis: string }>('/maintenance/analyze-anomaly', params)
@@ -162,8 +173,9 @@ export const maintenanceApi = {
     return data
   },
   getWorkOrders: async (vesselId: string): Promise<WorkOrder[]> => {
-    const { data } = await api.get<WorkOrder[]>(`/maintenance/work-orders/${vesselId}`)
-    return data
+    // Backend wraps the list in { vesselId, workOrders, summary }, not a bare array.
+    const { data } = await api.get<{ workOrders: WorkOrder[] }>(`/maintenance/work-orders/${vesselId}`)
+    return data.workOrders
   },
   getAlerts: async (vesselId: string): Promise<MaintenanceAlert[]> => {
     const { data } = await api.get<MaintenanceAlert[]>(`/maintenance/alerts/${vesselId}`)
@@ -212,8 +224,9 @@ export const knowledgeApi = {
     return data
   },
   getDocuments: async (vesselId: string): Promise<KnowledgeDocument[]> => {
-    const { data } = await api.get<KnowledgeDocument[]>(`/knowledge/documents/${vesselId}`)
-    return data
+    // Backend wraps the list in { vesselId, vessel, documents, summary }, not a bare array.
+    const { data } = await api.get<{ documents: KnowledgeDocument[] }>(`/knowledge/documents/${vesselId}`)
+    return data.documents
   },
   createHandover: async (params: {
     vesselId: string
@@ -262,12 +275,14 @@ export const sireApi = {
     return data
   },
   getDocuments: async (vesselId: string): Promise<SireDocument[]> => {
-    const { data } = await api.get<SireDocument[]>(`/sire/documents/${vesselId}`)
-    return data
+    // Backend wraps the list in { vesselId, vessel, documents, byCategory, summary }, not a bare array.
+    const { data } = await api.get<{ documents: SireDocument[] }>(`/sire/documents/${vesselId}`)
+    return data.documents
   },
   getFindings: async (vesselId: string): Promise<SireFinding[]> => {
-    const { data } = await api.get<SireFinding[]>(`/sire/findings/${vesselId}`)
-    return data
+    // Backend wraps the list in { vesselId, vessel, findings, inspections, summary }, not a bare array.
+    const { data } = await api.get<{ findings: SireFinding[] }>(`/sire/findings/${vesselId}`)
+    return data.findings
   },
   inspectorChatStream: (params: { vesselId: string; message: string; conversationHistory: { role: string; content: string }[] }) => {
     const token = localStorage.getItem('vm_token')
@@ -297,8 +312,9 @@ export const sireApi = {
 
 export const notificationsApi = {
   getNotifications: async (): Promise<Notification[]> => {
-    const { data } = await api.get<Notification[]>('/notifications')
-    return data
+    // Backend wraps the list in { notifications, summary }, not a bare array.
+    const { data } = await api.get<{ notifications: Notification[] }>('/notifications')
+    return data.notifications
   },
   markRead: async (id: string): Promise<void> => {
     if (!navigator.onLine) {
