@@ -3,6 +3,7 @@ import { Send, Bot, User, Anchor } from 'lucide-react'
 import { useFleet } from '../../context/FleetContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import { toBackendVesselId } from '../../lib/utils'
+import ChatMarkdown from '../../components/ui/ChatMarkdown'
 
 interface Message {
   id: string
@@ -151,12 +152,16 @@ export default function KnowledgeChat() {
                   ? 'bg-teal-700 text-white'
                   : 'bg-navy-800 border border-navy-700 text-gray-200'
               }`}>
-                {msg.content || (isStreaming && msg.role === 'assistant' && (
-                  <span className="flex items-center gap-2">
-                    <LoadingSpinner size="sm" />
-                    <span className="text-gray-400">VesselMind AI is thinking...</span>
-                  </span>
-                ))}
+                {msg.content ? (
+                  msg.role === 'assistant' ? <ChatMarkdown content={msg.content} /> : msg.content
+                ) : (
+                  isStreaming && msg.role === 'assistant' && (
+                    <span className="flex items-center gap-2">
+                      <LoadingSpinner size="sm" />
+                      <span className="text-gray-400">VesselMind AI is thinking...</span>
+                    </span>
+                  )
+                )}
                 {msg.role === 'assistant' && msg.content && isStreaming && messages[messages.length - 1].id === msg.id && (
                   <span className="inline-block w-1 h-4 bg-teal-400 animate-pulse ml-1 align-middle" />
                 )}

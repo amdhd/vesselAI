@@ -3,6 +3,7 @@ import { Send, User, ClipboardList, Shield } from 'lucide-react'
 import { useFleet } from '../../context/FleetContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import { toBackendVesselId } from '../../lib/utils'
+import ChatMarkdown from '../../components/ui/ChatMarkdown'
 
 interface Message {
   id: string
@@ -158,11 +159,15 @@ export default function InspectorSimulation() {
                 ? 'bg-teal-700 text-white'
                 : 'bg-amber-900/20 border border-amber-800/50 text-gray-200'
             }`}>
-              {msg.content || (isStreaming && msg.role === 'assistant' && (
-                <span className="flex items-center gap-2 text-amber-400">
-                  <LoadingSpinner size="sm" />Inspector reviewing...
-                </span>
-              ))}
+              {msg.content ? (
+                msg.role === 'assistant' ? <ChatMarkdown content={msg.content} /> : msg.content
+              ) : (
+                isStreaming && msg.role === 'assistant' && (
+                  <span className="flex items-center gap-2 text-amber-400">
+                    <LoadingSpinner size="sm" />Inspector reviewing...
+                  </span>
+                )
+              )}
             </div>
           </div>
         ))}

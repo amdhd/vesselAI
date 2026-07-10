@@ -137,8 +137,19 @@ router.get('/cii/:vesselId', authenticate, (req: AuthenticatedRequest, res: Resp
         'Hull cleaning due in 90 days — plan to maintain current SFOC',
       ];
 
+  const currentYear = new Date().getFullYear();
+
   res.json({
+    // Flat fields matching the frontend's CIIData type — the primary contract
+    // CIITracker.tsx reads from.
     vesselId,
+    year: currentYear,
+    currentRating: ciiData.rating,
+    currentValue: ciiData.score,
+    requiredValue: ciiData.required,
+    projectedYearEnd: ciiData.rating,
+    trajectory: ciiData.trajectory.map(t => ({ month: t.month, actual: t.score, required: t.required })),
+    // Extra detail for callers that want it (not consumed by CIITracker.tsx today).
     vessel: {
       id: vessel.id,
       name: vessel.name,
@@ -169,7 +180,7 @@ router.get('/cii/:vesselId', authenticate, (req: AuthenticatedRequest, res: Resp
       applicableFrom: '2023-01-01',
       requiredRating: 'C or better',
       penaltyRating: 'D or E triggers corrective action plan',
-      currentYear: new Date().getFullYear(),
+      currentYear,
       improvementPerYear: '2% reduction in required CII from 2023 baseline',
     },
   });
@@ -191,8 +202,29 @@ router.get('/ets/:vesselId', authenticate, (req: AuthenticatedRequest, res: Resp
   const payableTonnes = euCo2 - freeAllowances2025;
   const euaCost = Math.round(payableTonnes * etaPrice);
 
+  const monthlyBreakdown = Array.from({ length: 12 }, (_, i) => ({
+    month: new Date(2025, i).toLocaleString('default', { month: 'short' }),
+    co2: Math.round((euCo2 / 12) * (0.9 + Math.random() * 0.2)),
+    cost: Math.round((euaCost / 12) * (0.9 + Math.random() * 0.2)),
+  }));
+
+  // Prorate YTD figures by how far through the year we are; payableTonnes/
+  // euaCost represent the full-year requirement.
+  const monthFraction = (new Date().getMonth() + 1) / 12;
+
   res.json({
+    // Flat fields matching the frontend's ETSData type — the primary
+    // contract ETSTracker.tsx reads from.
     vesselId,
+    year: 2025,
+    totalCO2: Math.round(euCo2 * monthFraction),
+    annualEstimate: euCo2,
+    eurCost: Math.round(euaCost * monthFraction),
+    allowancesPurchased: Math.round(payableTonnes * monthFraction),
+    allowancesRequired: payableTonnes,
+    projectedYearEndCost: euaCost,
+    monthlyData: monthlyBreakdown,
+    // Extra detail for callers that want it (not consumed by ETSTracker.tsx today).
     vessel: { id: vessel.id, name: vessel.name, type: vessel.type },
     ets: {
       year: 2025,
@@ -205,11 +237,7 @@ router.get('/ets/:vesselId', authenticate, (req: AuthenticatedRequest, res: Resp
       estimatedCost: euaCost,
       allowancesCoverage: Math.round((freeAllowances2025 / euCo2) * 100),
       complianceStatus: 'compliant',
-      monthlyBreakdown: Array.from({ length: 12 }, (_, i) => ({
-        month: new Date(2025, i).toLocaleString('default', { month: 'short' }),
-        co2: Math.round((euCo2 / 12) * (0.9 + Math.random() * 0.2)),
-        cost: Math.round((euaCost / 12) * (0.9 + Math.random() * 0.2)),
-      })),
+      monthlyBreakdown,
     },
     regulatory: {
       regulation: 'EU Emissions Trading System (ETS)',

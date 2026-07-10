@@ -70,6 +70,11 @@ router.get('/equipment/:vesselId', authenticate, (req: AuthenticatedRequest, res
 
   const enrichedEquipment = equipment.map(e => ({
     ...e,
+    // Frontend Equipment type uses `manufacturer`/`runningHours` (required);
+    // the mock fixtures use `maker` and treat running hours as optional.
+    manufacturer: e.maker,
+    runningHours: e.runningHours ?? 0,
+    sensors: [],
     activeAlerts: alerts.filter(a => a.equipmentId === e.id && a.status === 'open'),
   }));
 
@@ -326,7 +331,14 @@ router.get('/alerts/:vesselId', authenticate, (req: AuthenticatedRequest, res: R
   const { vesselId } = req.params;
   if (!requireVessel(req, res, vesselId)) return;
   const alerts = getAlertsByVesselId(vesselId);
-  res.json(alerts);
+  // Frontend MaintenanceAlert type uses `message`/`detectedAt`/`equipmentName`;
+  // the mock fixtures use `description`/`createdAt` and no equipment name.
+  res.json(alerts.map(a => ({
+    ...a,
+    message: a.description,
+    detectedAt: a.createdAt,
+    equipmentName: getEquipmentById(a.equipmentId)?.name ?? 'Unknown equipment',
+  })));
 });
 
 export default router;
