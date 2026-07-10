@@ -51,10 +51,11 @@ export default function DocumentManager() {
   const { data: docs = DEMO_DOCS, isLoading } = useQuery({
     queryKey: ['knowledge-docs', selectedVessel?.id],
     queryFn: async () => {
-      const { data } = await axios.get(`/api/knowledge/documents/${toBackendVesselId(selectedVessel?.id)}`, {
+      // Backend wraps the list in { vesselId, vessel, documents, summary }, not a bare array.
+      const { data } = await axios.get<{ documents: KnowledgeDoc[] }>(`/api/knowledge/documents/${toBackendVesselId(selectedVessel?.id)}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('vm_token')}` }
       })
-      return data as KnowledgeDoc[]
+      return data.documents
     },
     placeholderData: DEMO_DOCS,
   })

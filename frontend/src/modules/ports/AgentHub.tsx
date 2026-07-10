@@ -39,8 +39,9 @@ export default function AgentHub() {
         portCallId: selectedPortCall.id,
         type: messageType,
         vesselId: selectedPortCall.vesselId,
+        portName: selectedPortCall.portName,
       })
-      setGeneratedMsg(data as GeneratedMessage)
+      setGeneratedMsg(data)
     } catch {
       // Mock response
       const vessel = MOCK_VESSELS.find((v) => v.id === selectedPortCall.vesselId)

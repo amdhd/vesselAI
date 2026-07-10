@@ -131,7 +131,24 @@ router.get('/history/:vesselId', authenticate, (req: AuthenticatedRequest, res: 
   const { vesselId } = req.params;
   if (!requireVessel(req, res, vesselId)) return;
   const voyages = getVoyagesByVesselId(vesselId);
-  res.json(voyages);
+  // Frontend VoyageHistoryRecord wants a single `route` string and
+  // non-nullable numeric fields; the mock fixtures split departure/
+  // destination ports and leave those fields null until a voyage completes.
+  res.json(
+    voyages
+      .filter(v => v.status === 'completed')
+      .map(v => ({
+        id: v.id,
+        vesselId: v.vesselId,
+        route: `${v.departurePort} → ${v.destinationPort}`,
+        departureDate: v.departureDate,
+        arrivalDate: v.arrivalDate,
+        plannedFuel: v.plannedFuel,
+        actualFuel: v.actualFuel ?? v.plannedFuel,
+        savings: v.savings ?? 0,
+        ciiImpact: v.ciiImpact ?? 0,
+      }))
+  );
 });
 
 // POST /api/voyage/calculate-speed

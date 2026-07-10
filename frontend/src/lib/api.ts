@@ -127,9 +127,14 @@ export const voyageApi = {
     portCallId: string
     type: string
     vesselId: string
+    portName?: string
   }) => {
-    const { data } = await api.post('/voyage/generate-agent-message', params)
-    return data
+    // Backend schema expects messageType/portName, not type/portCallId.
+    const { data } = await api.post<{ subject: string; body: string; recipient: string }>(
+      '/voyage/generate-agent-message',
+      { vesselId: params.vesselId, messageType: params.type, portName: params.portName },
+    )
+    return { subject: data.subject, body: data.body, to: data.recipient }
   },
 }
 

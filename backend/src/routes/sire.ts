@@ -118,7 +118,25 @@ router.get('/readiness-score/:vesselId', authenticate, (req: AuthenticatedReques
     expiringSoonDocs.forEach(d => priorityActions.push(`Renew expiring document: ${d.name} (expires soon)`));
   }
 
+  const STATUS_MAP: Record<'good' | 'attention' | 'critical', 'green' | 'amber' | 'red'> = {
+    good: 'green',
+    attention: 'amber',
+    critical: 'red',
+  };
+
   res.json({
+    // Flat fields matching the frontend's SireReadiness type — the primary
+    // contract ReadinessTab reads from.
+    score: readiness.overall,
+    chapters: readiness.chapters.map((c, i) => ({
+      chapter: i + 1,
+      title: c.name,
+      score: c.score,
+      maxScore: 100,
+      findings: c.openFindings,
+      status: STATUS_MAP[c.status],
+    })),
+    // Extra detail for callers that want it (not consumed by ReadinessTab today).
     vesselId,
     vessel: { id: vessel.id, name: vessel.name, type: vessel.type, flag: vessel.flag },
     readiness: {
