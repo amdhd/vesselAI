@@ -17,7 +17,9 @@ import knowledgeRoutes from './routes/knowledge';
 import sireRoutes from './routes/sire';
 import notificationRoutes from './routes/notifications';
 import weatherRoutes from './routes/weather';
+import aisRoutes from './routes/ais';
 import { syncWeather } from './services/weatherPipeline';
+import { startAisStream } from './services/aisStream';
 
 dotenv.config();
 
@@ -82,6 +84,7 @@ app.use('/api/knowledge', knowledgeRoutes);
 app.use('/api/sire', sireRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/weather', weatherRoutes);
+app.use('/api/ais', aisRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -121,6 +124,12 @@ if (process.env.ENABLE_WEATHER_SYNC === 'true') {
   runSync();
   setInterval(runSync, intervalMs);
   console.log(`[weather] scheduled ingestion every ${Math.round(intervalMs / 1000)}s`);
+}
+
+// Live AIS vessel-position streaming from aisstream.io. Off by default; enable
+// with ENABLE_AIS_STREAM=true and a AISSTREAM_API_KEY in the environment.
+if (process.env.ENABLE_AIS_STREAM === 'true') {
+  startAisStream(process.env.AISSTREAM_API_KEY);
 }
 
 const PORT = process.env.PORT || 3001;
