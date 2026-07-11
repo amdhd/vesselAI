@@ -1,0 +1,6 @@
+imoNumber,date,port,supplier,fuelGrade,quantityMt,pricePerMt,sulfurContent
+9876543,2026-06-01,Port of Singapore,Petronas Trading,VLSFO,1250.5,585.00,0.42
+9765432,2026-06-03,Port Klang,Shell Marine,VLSFO,980.0,590.50,0.38
+9654321,2026-06-05,Bintulu Terminal,Vitol Bunkers,MGO,420.75,720.00,0.08
+9876543,2026-06-10,Fujairah,World Fuel Services,VLSFO,1600,,0.45
+0000000,2026-06-12,Rotterdam,Unknown Supplier,HFO,500,300,3.50
