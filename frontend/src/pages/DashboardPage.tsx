@@ -1,5 +1,14 @@
 import { AlertTriangle, CheckCircle, XCircle, AlertCircle, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from 'recharts'
 import { useAuth } from '@/context/AuthContext'
 import { useFleet } from '@/context/FleetContext'
 import Badge from '@/components/ui/Badge'
@@ -99,43 +108,31 @@ function buildComplianceMatrix() {
   })
 }
 
-const QUICK_MODULES = [
-  {
-    icon: '🧭',
-    name: 'Voyage Optimizer',
-    description: 'AI route planning, speed optimization and voyage history tracking',
-    link: '/voyage',
-  },
-  {
-    icon: '🔧',
-    name: 'Maintenance AI',
-    description: 'Equipment health monitoring, predictive maintenance and work orders',
-    link: '/maintenance',
-  },
-  {
-    icon: '📊',
-    name: 'Compliance Hub',
-    description: 'CII ratings, EU ETS tracking and MRV data reporting',
-    link: '/compliance',
-  },
-  {
-    icon: '⚓',
-    name: 'Port Intelligence',
-    description: 'Real-time congestion data, demurrage monitoring and agent comms',
-    link: '/ports',
-  },
-  {
-    icon: '📚',
-    name: 'Knowledge Base',
-    description: 'AI-powered vessel documents, defect reports and handover reports',
-    link: '/knowledge',
-  },
-  {
-    icon: '🔍',
-    name: 'SIRE Readiness',
-    description: 'Inspection readiness scoring, findings tracking and compliance chat',
-    link: '/sire',
-  },
+// ── Fleet fuel consumption — 7-day trend (t/day) ──────────────────────────────
+const FUEL_TREND = [
+  { day: 'Wed', actual: 11.4, baseline: 6.8 },
+  { day: 'Thu', actual: 12.1, baseline: 7.1 },
+  { day: 'Fri', actual: 10.4, baseline: 7.4 },
+  { day: 'Sat', actual: 12.6, baseline: 6.9 },
+  { day: 'Sun', actual: 13.5, baseline: 6.5 },
+  { day: 'Mon', actual: 12.2, baseline: 6.6 },
+  { day: 'Tue', actual: 14.4, baseline: 5.4 },
+]
+const FLEET_AVG_FUEL = 18.4 // t/day
+
+// ── Upcoming port calls ───────────────────────────────────────────────────────
+const PORT_CALLS = [
+  { vessel: 'MT Kerteh Venture', port: 'Port of Singapore', status: 'on_time', eta: 'ETA 13 Jul, 06:00' },
+  { vessel: 'MV Merdeka Spirit', port: 'Port Klang',        status: 'delayed', eta: 'ETA 14 Jul, 18:30' },
+  { vessel: 'OSV Tenaga Satu',   port: 'Bintulu Terminal',  status: 'on_time', eta: 'ETA 16 Jul, 09:15' },
+] as const
+
+// ── Fleet operations KPIs ─────────────────────────────────────────────────────
+const OPS_KPIS = [
+  { label: 'Fleet CO₂ Intensity',  value: '4.82', unit: 'gCO₂/dwt-nm', sub: '+0.62 vs required',        subColor: 'text-status-red'   },
+  { label: 'Crew Certification',   value: '46',   unit: '/48 valid',   sub: '2 expiring within 30 days', subColor: 'text-status-amber' },
+  { label: 'Bunker Spend (MTD)',   value: '$284K', unit: '',           sub: '-6.2% vs budget',           subColor: 'text-status-green' },
+  { label: 'Off-Hire Days (YTD)',  value: '3.5',  unit: '',            sub: 'Across 3 vessels',          subColor: 'text-gray-500'     },
 ]
 
 function SeverityIcon({ severity }: { severity: string }) {
@@ -329,28 +326,123 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Quick Navigation */}
-      <div>
-        <h2 className="text-[14px] font-semibold text-[#e2e4e7] mb-4">Fleet Modules</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {QUICK_MODULES.map((mod) => (
-            <Link
-              key={mod.link}
-              to={mod.link}
-              className="bg-navy-800 border border-navy-700 rounded-[2px] p-5 hover:border-teal-600/50 hover:bg-white/[0.015] transition-colors group"
-            >
-              <div className="flex items-start justify-between">
-                <span className="text-2xl">{mod.icon}</span>
-                <ArrowRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
-              </div>
-              <h3 className="text-[#e2e4e7] font-semibold mt-3 text-[13.5px]">{mod.name}</h3>
-              <p className="text-[#767d88] text-xs mt-1 leading-relaxed">{mod.description}</p>
-              <p className="text-teal-400 text-xs mt-3 font-medium group-hover:text-teal-300 transition-colors">
-                Go to Module →
-              </p>
-            </Link>
-          ))}
+      {/* Fuel Consumption Trend + Upcoming Port Calls */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        {/* Fuel Consumption Trend */}
+        <div className="xl:col-span-2 border border-navy-700 bg-navy-800">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-navy-700">
+            <h2 className="text-[14px] font-semibold text-[#e2e4e7]">Fleet Fuel Consumption — 7 Day Trend</h2>
+            <p className="text-xs text-[#767d88]">
+              Fleet avg <span className="font-mono font-semibold text-teal-400">{FLEET_AVG_FUEL}</span> t/day
+            </p>
+          </div>
+          <div className="px-3 pt-5 pb-3">
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={FUEL_TREND} margin={{ top: 5, right: 16, bottom: 5, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis
+                    dataKey="day"
+                    stroke="#454b55"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: '#5c6470', fontSize: 11 }}
+                  />
+                  <YAxis
+                    stroke="#454b55"
+                    tickLine={false}
+                    axisLine={false}
+                    domain={[0, 24]}
+                    ticks={[0, 12, 24]}
+                    tick={{ fill: '#5c6470', fontSize: 11 }}
+                    tickFormatter={(v) => `${v}t`}
+                    width={34}
+                  />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#12161a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '2px', fontSize: '11px' }}
+                    labelStyle={{ color: '#a8adb5' }}
+                    formatter={(value: number, name: string) => [`${value.toFixed(1)} t`, name === 'actual' ? 'Actual consumption' : 'Baseline plan']}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="baseline"
+                    stroke="#6b7280"
+                    strokeWidth={1.5}
+                    strokeDasharray="4 4"
+                    dot={false}
+                    activeDot={{ r: 3, fill: '#6b7280' }}
+                    name="baseline"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="actual"
+                    stroke="#3a8c85"
+                    strokeWidth={2}
+                    dot={{ r: 3, fill: '#3a8c85' }}
+                    activeDot={{ r: 4, fill: '#3a8c85' }}
+                    name="actual"
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex items-center gap-5 text-xs text-[#a8adb5] px-2 pt-1">
+              <span className="flex items-center gap-2">
+                <span className="w-4 h-0.5 bg-teal-600 inline-block" /> Actual consumption
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="w-4 h-0.5 inline-block" style={{ borderTop: '2px dashed #6b7280' }} /> Baseline plan
+              </span>
+            </div>
+          </div>
         </div>
+
+        {/* Upcoming Port Calls */}
+        <div className="border border-navy-700 bg-navy-800 flex flex-col">
+          <h2 className="text-[14px] font-semibold text-[#e2e4e7] px-5 py-4 border-b border-navy-700">Upcoming Port Calls</h2>
+          <div className="divide-y divide-navy-700/60 flex-1">
+            {PORT_CALLS.map((call) => (
+              <div key={call.vessel} className="px-5 py-[15px]">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[#e2e4e7] text-[13px] font-semibold">{call.vessel}</p>
+                  {call.status === 'on_time' ? (
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-status-green border border-status-green/50 px-1.5 py-0.5">
+                      On Time
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-status-amber border border-status-amber/50 px-1.5 py-0.5">
+                      Delayed
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-2 mt-1.5">
+                  <p className="text-[#767d88] text-xs">{call.port}</p>
+                  <p className="text-[#a8adb5] text-xs font-mono">{call.eta}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="px-5 py-3.5 border-t border-navy-700">
+            <Link to="/ports" className="text-teal-400 hover:text-teal-300 text-xs flex items-center gap-1 transition-colors w-fit">
+              View port schedule <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* Fleet Operations KPIs */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-px bg-navy-700 border border-navy-700">
+        {OPS_KPIS.map((kpi) => (
+          <div key={kpi.label} className="bg-navy-800 p-5">
+            <p className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-[#5c6470] mb-3.5">
+              {kpi.label}
+            </p>
+            <p className="font-mono text-[26px] font-semibold text-[#f0f1f3] leading-none">
+              {kpi.value}
+              {kpi.unit && <span className="text-[13px] text-[#5c6470] ml-1.5">{kpi.unit}</span>}
+            </p>
+            <p className={cn('text-xs mt-2', kpi.subColor)}>{kpi.sub}</p>
+          </div>
+        ))}
       </div>
     </div>
   )
