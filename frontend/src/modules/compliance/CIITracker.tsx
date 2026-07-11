@@ -224,7 +224,10 @@ export default function CIITracker() {
               step={0.5}
               value={speed}
               onChange={(e) => setSpeed(parseFloat(e.target.value))}
-              className="w-full accent-teal-500"
+              className="slider-teal w-full cursor-pointer"
+              style={{
+                background: `linear-gradient(to right, #3a8c85 0%, #3a8c85 ${((speed - 10) / 5) * 100}%, #1f2227 ${((speed - 10) / 5) * 100}%, #1f2227 100%)`,
+              }}
             />
             <div className="flex justify-between text-xs text-gray-500 mt-1 font-mono">
               <span>10 kn (Eco)</span>

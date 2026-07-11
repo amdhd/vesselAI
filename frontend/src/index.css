@@ -27,6 +27,41 @@
   .badge-info { @apply border border-teal-600 text-teal-400 bg-transparent text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-[2px]; }
 }
 
+/* Range slider — teal fill + round thumb */
+.slider-teal {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 9999px;
+  outline: none;
+}
+.slider-teal::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #57a89f;
+  border: 2px solid #0b0d10;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.slider-teal::-webkit-slider-thumb:hover {
+  background: #6bc0b6;
+}
+.slider-teal::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #57a89f;
+  border: 2px solid #0b0d10;
+  cursor: pointer;
+}
+.slider-teal::-moz-range-track {
+  height: 6px;
+  border-radius: 9999px;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
