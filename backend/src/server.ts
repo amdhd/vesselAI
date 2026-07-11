@@ -16,6 +16,8 @@ import portsRoutes from './routes/ports';
 import knowledgeRoutes from './routes/knowledge';
 import sireRoutes from './routes/sire';
 import notificationRoutes from './routes/notifications';
+import weatherRoutes from './routes/weather';
+import { syncWeather } from './services/weatherPipeline';
 
 dotenv.config();
 
@@ -79,6 +81,7 @@ app.use('/api/ports', portsRoutes);
 app.use('/api/knowledge', knowledgeRoutes);
 app.use('/api/sire', sireRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/weather', weatherRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -106,6 +109,19 @@ io.on('connection', (socket) => {
 setInterval(() => {
   io.emit('vessels:positions', { timestamp: new Date().toISOString() });
 }, 30000);
+
+// Scheduled Open-Meteo Marine ingestion. Off by default; enable with
+// ENABLE_WEATHER_SYNC=true once DATABASE_URL points at a reachable Postgres.
+// Runs once on boot, then on WEATHER_SYNC_INTERVAL_MS (default 15 min).
+if (process.env.ENABLE_WEATHER_SYNC === 'true') {
+  const intervalMs = Number(process.env.WEATHER_SYNC_INTERVAL_MS) || 15 * 60 * 1000;
+  const runSync = () => {
+    syncWeather().catch((err) => console.error('[weather] scheduled sync error:', err));
+  };
+  runSync();
+  setInterval(runSync, intervalMs);
+  console.log(`[weather] scheduled ingestion every ${Math.round(intervalMs / 1000)}s`);
+}
 
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {

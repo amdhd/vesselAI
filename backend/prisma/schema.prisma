@@ -325,3 +325,26 @@ model AuditLog {
   details   Json?
   createdAt DateTime @default(now())
 }
+
+// Ingested from the Open-Meteo Marine + Forecast APIs by the weather pipeline
+// (services/weatherPipeline.ts). One row per monitored location per provider
+// timestamp; the compound unique makes re-ingestion idempotent (upsert).
+model WeatherObservation {
+  id               String   @id @default(uuid())
+  locationName     String?
+  latitude         Float
+  longitude        Float
+  observedAt       DateTime // provider timestamp (UTC)
+  waveHeight       Float?   // metres
+  waveDirection    Float?   // degrees
+  windSpeed        Float?   // knots
+  windDirection    Float?   // degrees
+  currentSpeed     Float?   // km/h (provider default)
+  currentDirection Float?   // degrees
+  weatherCode      Int?     // WMO weather code
+  source           String   @default("open-meteo")
+  fetchedAt        DateTime @default(now())
+
+  @@unique([latitude, longitude, observedAt])
+  @@index([latitude, longitude])
+}
