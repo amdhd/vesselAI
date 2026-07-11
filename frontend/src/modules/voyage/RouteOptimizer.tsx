@@ -179,7 +179,10 @@ export default function RouteOptimizer() {
               max={100}
               value={cargoLoad}
               onChange={(e) => setCargoLoad(Number(e.target.value))}
-              className="w-full h-2 bg-navy-600 rounded-[2px] appearance-none cursor-pointer accent-teal-500"
+              className="slider-teal w-full cursor-pointer"
+              style={{
+                background: `linear-gradient(to right, #3a8c85 0%, #3a8c85 ${cargoLoad}%, #1f2227 ${cargoLoad}%, #1f2227 100%)`,
+              }}
             />
             <div className="flex justify-between text-xs text-gray-500 mt-1">
               <span>0% (Empty)</span>
@@ -217,7 +220,7 @@ export default function RouteOptimizer() {
         <button
           onClick={handleOptimize}
           disabled={loading || !selectedVessel}
-          className="mt-6 w-full btn-primary py-[13px] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="mt-6 w-full py-[13px] flex items-center justify-center gap-2 rounded-[2px] font-semibold bg-teal-900 border border-teal-600/50 text-teal-400 hover:bg-teal-600/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? (
             <>
