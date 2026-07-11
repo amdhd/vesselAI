@@ -17,12 +17,16 @@ export const LoginSchema = z.object({
   password: z.string().min(1).max(100),
 });
 
+// NOTE: fleetId is intentionally NOT accepted here. Fleet membership grants
+// access to every vessel in that fleet (see lib/tenant.ts), so letting a
+// self-service registrant pick their own fleetId is a horizontal privilege
+// escalation — anyone could join an existing tenant's fleet. Fleet assignment
+// must happen through a trusted admin/invite flow, never from the signup body.
 export const RegisterSchema = z.object({
   email: z.string().email().max(254),
   password: z.string().min(6).max(100),
   name: z.string().min(1).max(100),
   role: z.string().max(50).optional(),
-  fleetId: z.string().max(50).optional(),
 });
 
 // ── Voyage ───────────────────────────────────────────────────────────────────

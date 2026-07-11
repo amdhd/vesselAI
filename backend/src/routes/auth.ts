@@ -96,7 +96,7 @@ router.post('/login', validate(LoginSchema), async (req: Request, res: Response)
 // POST /api/auth/register
 router.post('/register', validate(RegisterSchema), async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password, name, role, fleetId } = req.body;
+    const { email, password, name, role } = req.body;
 
     let existingUser: { id: string } | null = null;
     try {
@@ -117,13 +117,16 @@ router.post('/register', validate(RegisterSchema), async (req: Request, res: Res
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
+    // New accounts start with no fleet. Fleet membership — which grants access
+    // to that fleet's vessels — is assigned later through a trusted admin/invite
+    // flow, never from the self-service signup payload.
     const user = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
         name,
         role: safeRole,
-        fleetId: fleetId || null,
+        fleetId: null,
       },
     });
 
