@@ -1,14 +1,16 @@
 import { useState, Suspense, lazy } from 'react'
-import { Navigation, Gauge, Clock, CloudSun } from 'lucide-react'
+import { Navigation, Gauge, Clock, CloudSun, Bot } from 'lucide-react'
 import { useFleet } from '@/context/FleetContext'
 import Tabs from '@/components/ui/Tabs'
 
 const RouteOptimizer = lazy(() => import('./RouteOptimizer'))
+const AgentPlanner = lazy(() => import('./AgentPlanner'))
 const SpeedOptimizer = lazy(() => import('./SpeedOptimizer'))
 const VoyageHistory = lazy(() => import('./VoyageHistory'))
 
 const TABS = [
   { id: 'route', label: 'Route Optimizer', icon: Navigation },
+  { id: 'agent', label: 'AI Agent', icon: Bot },
   { id: 'speed', label: 'Speed Optimizer', icon: Gauge },
   { id: 'history', label: 'Voyage History', icon: Clock },
   { id: 'weather', label: 'Weather', icon: CloudSun },
@@ -66,6 +68,7 @@ export default function VoyagePage() {
       {/* Tab content */}
       <Suspense fallback={<TabLoadingState />}>
         {activeTab === 'route' && <RouteOptimizer />}
+        {activeTab === 'agent' && <AgentPlanner />}
         {activeTab === 'speed' && <SpeedOptimizer />}
         {activeTab === 'history' && <VoyageHistory />}
         {activeTab === 'weather' && <WeatherPlaceholder />}
