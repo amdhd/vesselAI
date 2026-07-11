@@ -15,6 +15,7 @@ import {
 } from '../schemas';
 import { computeFuelConsumption, buildSpeedPowerCurve, computeAdmiraltyCoefficient } from '../lib/fuelModel';
 import { generateJson } from '../services/aiService';
+import { runVoyageAgent, AgentVessel } from '../services/voyageAgent';
 
 const router = Router();
 
@@ -124,6 +125,25 @@ Respond with JSON only (no markdown): {
     directRoute: { ...core.directRoute, waypoints: directWaypoints },
     aiRoute: { ...core.aiRoute, waypoints: aiWaypoints },
   });
+});
+
+// POST /api/voyage/agent-plan
+// Multi-step agentic voyage planner: Claude calls get_vessel_specs / get_route_info /
+// get_marine_weather / compute_fuel across several steps, then recommends a speed.
+router.post('/agent-plan', authenticate, aiLimiter, validate(OptimizeRouteSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const { vesselId, departurePort, destinationPort, cargoLoad, speedPreference } = req.body;
+  if (!departurePort || !destinationPort) {
+    res.status(400).json({ error: 'departurePort and destinationPort are required' });
+    return;
+  }
+  const vessel = resolveFleetVessel(req, vesselId);
+  if (!vessel) {
+    res.status(403).json({ error: 'No accessible vessel for your fleet' });
+    return;
+  }
+  const plan = await runVoyageAgent(vessel as AgentVessel, { departurePort, destinationPort, cargoLoad, speedPreference });
+  if (plan.fallback) res.setHeader('X-AI-Fallback', 'true');
+  res.json(plan);
 });
 
 // GET /api/voyage/history/:vesselId
