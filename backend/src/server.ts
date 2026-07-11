@@ -18,6 +18,7 @@ import sireRoutes from './routes/sire';
 import notificationRoutes from './routes/notifications';
 import weatherRoutes from './routes/weather';
 import aisRoutes from './routes/ais';
+import importRoutes from './routes/imports';
 import { syncWeather } from './services/weatherPipeline';
 import { startAisStream } from './services/aisStream';
 
@@ -85,6 +86,7 @@ app.use('/api/sire', sireRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/weather', weatherRoutes);
 app.use('/api/ais', aisRoutes);
+app.use('/api/imports', importRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
