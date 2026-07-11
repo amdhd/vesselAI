@@ -102,10 +102,41 @@ const SPEED_PREFERENCE_TO_BACKEND = {
   fast: 'fast',
 } as const
 
+export interface AgentToolCall {
+  tool: string
+  input: unknown
+  output: unknown
+}
+export interface AgentPlanResult {
+  recommendation: string
+  steps: number
+  toolCalls: AgentToolCall[]
+  fallback: boolean
+  incomplete?: boolean
+}
+
 export const voyageApi = {
   optimizeRoute: async (params: RouteOptimizeParams): Promise<RouteOptimization> => {
     const { data } = await api.post<RouteOptimization>('/voyage/optimize-route', {
       ...params,
+      speedPreference: SPEED_PREFERENCE_TO_BACKEND[params.speedPreference],
+    })
+    return data
+  },
+  // Multi-step agentic planner — Claude calls get_vessel_specs / get_route_info /
+  // get_marine_weather / compute_fuel and returns its reasoning trace.
+  agentPlan: async (params: {
+    vesselId?: string
+    departurePort: string
+    destinationPort: string
+    cargoLoad?: number
+    speedPreference: 'eco' | 'normal' | 'fast'
+  }): Promise<AgentPlanResult> => {
+    const { data } = await api.post<AgentPlanResult>('/voyage/agent-plan', {
+      vesselId: params.vesselId,
+      departurePort: params.departurePort,
+      destinationPort: params.destinationPort,
+      cargoLoad: params.cargoLoad,
       speedPreference: SPEED_PREFERENCE_TO_BACKEND[params.speedPreference],
     })
     return data
