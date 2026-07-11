@@ -11,12 +11,22 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const navItems = [
+type NavItem = {
+  to: string
+  icon: typeof LayoutDashboard
+  label: string
+  exact?: boolean
+}
+
+const operationsItems: NavItem[] = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
   { to: '/voyage', icon: Navigation, label: 'Voyage & Routes' },
   { to: '/maintenance', icon: Wrench, label: 'Maintenance' },
   { to: '/compliance', icon: FileCheck, label: 'Compliance' },
   { to: '/ports', icon: Anchor, label: 'Port Scheduling' },
+]
+
+const intelligenceItems: NavItem[] = [
   { to: '/knowledge', icon: BookOpen, label: 'Knowledge' },
   { to: '/sire', icon: ClipboardList, label: 'SIRE Inspection' },
 ]
@@ -29,49 +39,56 @@ export default function Sidebar() {
     return location.pathname.startsWith(to)
   }
 
+  const renderItem = ({ to, icon: Icon, label, exact }: NavItem) => {
+    const active = isActive(to, exact)
+    return (
+      <NavLink
+        key={to}
+        to={to}
+        className={cn(
+          'flex items-center gap-2.5 px-3 py-2.5 text-[13px] font-medium border-l-2 transition-colors',
+          active
+            ? 'border-teal-600 bg-white/[0.045] text-[#eceef0]'
+            : 'border-transparent text-[#8a919d] hover:text-[#eceef0] hover:bg-white/[0.025]',
+        )}
+      >
+        <Icon className={cn('shrink-0', active ? 'text-teal-600' : 'text-[#5c6470]')} size={16} strokeWidth={1.6} />
+        {label}
+      </NavLink>
+    )
+  }
+
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-60 bg-navy-950 border-r border-navy-800 flex flex-col z-30">
+    <aside className="fixed left-0 top-0 bottom-0 w-[236px] bg-navy-800 border-r border-navy-700 flex flex-col z-30">
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-navy-800">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-teal-600 rounded-lg flex items-center justify-center">
-            <Waves className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-white font-bold text-sm leading-tight">VesselMind AI</h1>
-            <p className="text-gray-500 text-xs">Maritime Intelligence</p>
-          </div>
+      <div className="px-5 py-[18px] border-b border-navy-700 flex items-center gap-2.5">
+        <div className="w-[30px] h-[30px] shrink-0 bg-[#12181a] border border-teal-600/40 rounded-[2px] flex items-center justify-center">
+          <Waves className="w-4 h-4 text-teal-600" strokeWidth={1.6} />
+        </div>
+        <div className="leading-tight">
+          <h1 className="text-[13.5px] font-semibold tracking-wide text-[#eceef0]">VesselMind AI</h1>
+          <p className="text-[10.5px] text-[#5c6470] uppercase tracking-wider">Maritime Intelligence</p>
         </div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 overflow-y-auto">
-        <div className="space-y-0.5">
-          {navItems.map(({ to, icon: Icon, label, exact }) => {
-            const active = isActive(to, exact)
-            return (
-              <NavLink
-                key={to}
-                to={to}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
-                  active
-                    ? 'bg-teal-600/20 text-teal-400 border border-teal-600/30'
-                    : 'text-gray-400 hover:bg-navy-800 hover:text-white',
-                )}
-              >
-                <Icon className={cn('w-4.5 h-4.5', active ? 'text-teal-400' : 'text-gray-500')} size={18} />
-                {label}
-              </NavLink>
-            )
-          })}
+      <nav className="flex-1 overflow-y-auto px-2.5 py-3.5">
+        <div className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[#454b55] px-2.5 pt-1.5 pb-2">
+          Operations
         </div>
+        <div>{operationsItems.map(renderItem)}</div>
+
+        <div className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[#454b55] px-2.5 pt-[18px] pb-2">
+          Intelligence
+        </div>
+        <div>{intelligenceItems.map(renderItem)}</div>
       </nav>
 
       {/* Footer */}
-      <div className="px-5 py-4 border-t border-navy-800">
-        <p className="text-gray-600 text-xs">VesselMind AI v0.0.1</p>
-        <p className="text-gray-700 text-xs">Maritime SaaS Platform</p>
+      <div className="px-5 py-3.5 border-t border-navy-700 text-[10.5px] text-[#454b55] leading-relaxed">
+        VesselMind AI v0.0.1
+        <br />
+        Maritime Operations Platform
       </div>
     </aside>
   )

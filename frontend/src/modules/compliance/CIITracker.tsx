@@ -9,32 +9,17 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts'
-import { AlertTriangle, ChevronDown, Zap } from 'lucide-react'
+import { ChevronDown, Zap } from 'lucide-react'
 import { useFleet } from '@/context/FleetContext'
 import { complianceApi } from '@/lib/api'
 import { MOCK_CII_DATA, MOCK_VESSELS } from '@/lib/mockData'
 import type { CIIData } from '@/lib/types'
 import type { CIIRating } from '@/lib/types'
 import LoadingSpinner from '@/components/ui/LoadingSpinner'
+import Badge from '@/components/ui/Badge'
 import { getCIIColor } from '@/lib/utils'
 
 const RATINGS: CIIRating[] = ['A', 'B', 'C', 'D', 'E']
-
-const ratingColors: Record<CIIRating, string> = {
-  A: 'bg-green-500',
-  B: 'bg-teal-400',
-  C: 'bg-yellow-400',
-  D: 'bg-amber-500',
-  E: 'bg-red-500',
-}
-
-const ratingGlowColors: Record<CIIRating, string> = {
-  A: 'text-green-400 drop-shadow-[0_0_30px_rgba(34,197,94,0.8)]',
-  B: 'text-teal-400 drop-shadow-[0_0_30px_rgba(45,212,191,0.8)]',
-  C: 'text-yellow-400 drop-shadow-[0_0_30px_rgba(234,179,8,0.8)]',
-  D: 'text-amber-400 drop-shadow-[0_0_30px_rgba(251,146,60,0.8)]',
-  E: 'text-red-400 drop-shadow-[0_0_30px_rgba(248,113,113,0.8)]',
-}
 
 function calcProjectedCII(baseCII: number, speed: number, baseSpeed: number, routeEff: string): number {
   const speedFactor = Math.pow(speed / baseSpeed, 3)
@@ -86,7 +71,7 @@ export default function CIITracker() {
 
   if (error || !ciiData) {
     return (
-      <div className="card flex items-center justify-center h-64 text-red-400">
+      <div className="card flex items-center justify-center h-64 text-status-red">
         {error ?? 'Failed to load CII data.'}
       </div>
     )
@@ -122,12 +107,12 @@ export default function CIITracker() {
             <ChevronDown className="w-4 h-4" />
           </button>
           {showVesselDrop && (
-            <div className="absolute right-0 top-full mt-1 bg-navy-800 border border-navy-700 rounded-lg shadow-xl z-10 min-w-[200px]">
+            <div className="absolute right-0 top-full mt-1 bg-navy-800 border border-navy-700 rounded-[2px] z-10 min-w-[200px]">
               {MOCK_VESSELS.map((v) => (
                 <button
                   key={v.id}
                   onClick={() => { setLocalVessel(v); setShowVesselDrop(false) }}
-                  className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-navy-700 hover:text-white first:rounded-t-lg last:rounded-b-lg"
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-navy-700 hover:text-white"
                 >
                   {v.name}
                 </button>
@@ -141,42 +126,38 @@ export default function CIITracker() {
         {/* Big rating display */}
         <div className="card flex flex-col items-center justify-center gap-4 py-8">
           {isAtRisk && (
-            <div className="flex items-center gap-2 animate-pulse">
-              <AlertTriangle className="w-5 h-5 text-red-400" />
-              <span className="text-red-400 font-bold text-sm tracking-widest uppercase">At Risk</span>
-            </div>
+            <Badge variant="warning">At Risk</Badge>
           )}
-          <div className={`text-9xl font-black leading-none ${ratingGlowColors[rating]}`}>
+          <div className={`font-mono text-8xl font-semibold leading-none ${getCIIColor(rating)}`}>
             {rating}
           </div>
           {/* Rating scale */}
-          <div className="flex gap-2 mt-2">
+          <div className="flex gap-1.5 mt-2">
             {RATINGS.map((r) => (
               <div
                 key={r}
-                className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm transition-all ${
+                className={`w-8 h-8 rounded-[2px] flex items-center justify-center font-mono font-semibold text-[13px] transition-colors ${
                   r === rating
-                    ? `${ratingColors[r]} text-white scale-110 shadow-lg`
-                    : 'bg-navy-700 text-gray-500'
+                    ? `${getCIIColor(r)} bg-white/5 border border-current`
+                    : 'bg-[#12161a] border border-white/[0.08] text-[#5c6470]'
                 }`}
               >
                 {r}
               </div>
             ))}
           </div>
-          <div className="mt-2 text-center">
-            <p className="text-xs text-gray-400">Current vs Required</p>
-            <p className="text-white font-semibold mt-1">
+          <div className="mt-2 text-center border-t border-navy-700 pt-4 w-full">
+            <p className="text-[11px] uppercase tracking-wide text-gray-500">Current vs Required</p>
+            <p className="font-mono text-2xl font-semibold mt-1.5">
               <span className={getCIIColor(rating)}>{ciiData.currentValue.toFixed(2)}</span>
-              <span className="text-gray-500 mx-1">|</span>
-              <span className="text-green-400">{ciiData.requiredValue.toFixed(2)}</span>
+              <span className="text-gray-600 mx-1">/</span>
+              <span className="text-status-green">{ciiData.requiredValue.toFixed(2)}</span>
             </p>
-            <p className="text-xs text-gray-500 mt-0.5">Actual | Required</p>
           </div>
           {ciiData.daysToRatingChange !== undefined && (
-            <div className="mt-2 text-center bg-navy-700 rounded-lg px-4 py-2">
+            <div className="mt-2 text-center bg-navy-700/50 rounded-[2px] px-4 py-2.5">
               <p className="text-xs text-gray-400">Days until rating change</p>
-              <p className="text-2xl font-bold text-amber-400">{ciiData.daysToRatingChange}</p>
+              <p className="font-mono text-2xl font-semibold text-status-amber">{ciiData.daysToRatingChange}</p>
             </div>
           )}
         </div>
@@ -188,32 +169,32 @@ export default function CIITracker() {
             <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
               <defs>
                 <linearGradient id="actualFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={isAtRisk ? '#ef4444' : '#14b8a6'} stopOpacity={0.4} />
-                  <stop offset="95%" stopColor={isAtRisk ? '#ef4444' : '#14b8a6'} stopOpacity={0} />
+                  <stop offset="5%" stopColor={isAtRisk ? '#a8443b' : '#3a8c85'} stopOpacity={0.4} />
+                  <stop offset="95%" stopColor={isAtRisk ? '#a8443b' : '#3a8c85'} stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="requiredFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#4a9d6f" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="#4a9d6f" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e3a6e" />
-              <XAxis dataKey="month" tick={{ fill: '#9ca3af', fontSize: 11 }} />
-              <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.09)" />
+              <XAxis dataKey="month" tick={{ fill: '#5c6470', fontSize: 11 }} />
+              <YAxis tick={{ fill: '#5c6470', fontSize: 11 }} />
               <Tooltip
-                contentStyle={{ backgroundColor: '#112654', border: '1px solid #1e3a6e', borderRadius: '8px', color: '#fff' }}
+                contentStyle={{ backgroundColor: '#12161a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '2px', color: '#fff' }}
               />
-              <Legend wrapperStyle={{ fontSize: '12px', color: '#9ca3af' }} />
+              <Legend wrapperStyle={{ fontSize: '12px', color: '#a8adb5' }} />
               <Area
                 type="monotone"
                 dataKey="Actual CII"
-                stroke={isAtRisk ? '#ef4444' : '#14b8a6'}
+                stroke={isAtRisk ? '#a8443b' : '#3a8c85'}
                 strokeWidth={2}
                 fill="url(#actualFill)"
               />
               <Area
                 type="monotone"
                 dataKey="Required CII"
-                stroke="#22c55e"
+                stroke="#4a9d6f"
                 strokeWidth={2}
                 strokeDasharray="5 5"
                 fill="url(#requiredFill)"
@@ -232,8 +213,9 @@ export default function CIITracker() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
-            <label className="block text-sm text-gray-400 mb-2">
-              Speed: <span className="text-white font-semibold">{speed} kn</span>
+            <label className="flex justify-between text-[11.5px] font-semibold text-[#a8adb5] mb-2">
+              <span>Speed</span>
+              <span className="text-teal-400 font-mono">{speed} kn</span>
             </label>
             <input
               type="range"
@@ -244,18 +226,18 @@ export default function CIITracker() {
               onChange={(e) => setSpeed(parseFloat(e.target.value))}
               className="w-full accent-teal-500"
             />
-            <div className="flex justify-between text-xs text-gray-500 mt-1">
+            <div className="flex justify-between text-xs text-gray-500 mt-1 font-mono">
               <span>10 kn (Eco)</span>
               <span>15 kn (Fast)</span>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-2">Route Efficiency</label>
+            <label className="block text-[11.5px] font-semibold text-[#a8adb5] mb-2">Route Efficiency</label>
             <select
               value={routeEff}
               onChange={(e) => setRouteEff(e.target.value)}
-              className="w-full bg-navy-700 border border-navy-600 rounded-lg px-3 py-2 text-white text-sm"
+              className="w-full bg-[#12161a] border border-white/[0.1] rounded-[2px] px-3 py-2 text-white text-sm"
             >
               <option value="optimal">Optimal (AI-optimized route)</option>
               <option value="standard">Standard (current route)</option>
@@ -263,20 +245,20 @@ export default function CIITracker() {
             </select>
           </div>
 
-          <div className="bg-navy-700 rounded-xl p-4 flex flex-col justify-center">
-            <p className="text-xs text-gray-400 mb-1">Projected CII Score</p>
-            <p className={`text-3xl font-bold ${projectedCII <= ciiData.requiredValue ? 'text-green-400' : 'text-amber-400'}`}>
+          <div className="border border-navy-700 rounded-[2px] p-4 flex flex-col justify-center">
+            <p className="text-[10.5px] uppercase tracking-wide text-gray-500 mb-1">Projected CII Score</p>
+            <p className={`font-mono text-2xl font-semibold ${projectedCII <= ciiData.requiredValue ? 'text-status-green' : 'text-status-amber'}`}>
               {projectedCII.toFixed(2)}
             </p>
             <p className="text-xs text-gray-400 mt-1">
               {projectedImprovement > 0 ? (
-                <span className="text-green-400">-{projectedImprovement.toFixed(2)} improvement vs current</span>
+                <span className="text-status-green">-{projectedImprovement.toFixed(2)} improvement vs current</span>
               ) : (
-                <span className="text-red-400">+{Math.abs(projectedImprovement).toFixed(2)} worse vs current</span>
+                <span className="text-status-red">+{Math.abs(projectedImprovement).toFixed(2)} worse vs current</span>
               )}
             </p>
             {projectedCII <= ciiData.requiredValue && (
-              <span className="mt-2 badge-healthy inline-block w-fit">Will meet requirement</span>
+              <Badge variant="healthy" className="mt-2 w-fit">Will meet requirement</Badge>
             )}
           </div>
         </div>

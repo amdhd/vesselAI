@@ -39,9 +39,9 @@ function createVesselIcon(color: string) {
 // Vessel marker colors by status
 function getVesselColor(vessel: Vessel): string {
   // OSV Tenaga Satu at risk (approaching demurrage)
-  if (vessel.id === 'v3') return '#f59e0b'
+  if (vessel.id === 'v3') return '#c99a54'
   // Others green
-  return '#22c55e'
+  return '#4a9d6f'
 }
 
 // Mock destination coordinates
@@ -73,7 +73,7 @@ export default function LiveFleetMap() {
           <p className="text-gray-400 text-sm mt-0.5">Real-time vessel positions and route tracking</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-green-400 animate-pulse' : 'bg-amber-400'}`} />
+          <div className={`w-1.5 h-1.5 ${socketConnected ? 'bg-status-green animate-pulse' : 'bg-status-amber'}`} />
           <span className="text-xs text-gray-400">{socketConnected ? 'Live' : 'Demo mode'}</span>
         </div>
       </div>
@@ -81,16 +81,16 @@ export default function LiveFleetMap() {
       {/* Legend */}
       <div className="flex items-center gap-6 flex-wrap">
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-green-500" />
+          <div className="w-[7px] h-[7px] bg-status-green" />
           <span className="text-xs text-gray-400">On Schedule</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-amber-500" />
+          <div className="w-[7px] h-[7px] bg-status-amber" />
           <span className="text-xs text-gray-400">At Risk / Demurrage</span>
         </div>
       </div>
 
-      <div className="rounded-xl overflow-hidden border border-navy-700" style={{ height: '550px' }}>
+      <div className="rounded-[2px] overflow-hidden border border-navy-700" style={{ height: '550px' }}>
         <MapContainer
           center={center}
           zoom={5}
@@ -129,7 +129,7 @@ export default function LiveFleetMap() {
                         <div className="flex justify-between">
                           <span className="text-gray-300">Status:</span>
                           <span className={`font-medium ${
-                            info?.status.includes('Risk') ? 'text-amber-400' : 'text-green-400'
+                            info?.status.includes('Risk') ? 'text-status-amber' : 'text-status-green'
                           }`}>
                             {info?.status ?? vessel.status}
                           </span>

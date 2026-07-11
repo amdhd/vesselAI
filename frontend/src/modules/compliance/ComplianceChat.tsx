@@ -104,7 +104,7 @@ export default function ComplianceChat() {
   return (
     <div className="flex flex-col h-[calc(100vh-280px)] min-h-[500px]">
       {/* Context banner */}
-      <div className="flex items-center gap-2 bg-teal-900/30 border border-teal-700 rounded-xl px-4 py-2.5 mb-4 flex-shrink-0">
+      <div className="flex items-center gap-2 bg-navy-800 border border-teal-600/50 rounded-[2px] px-4 py-2.5 mb-4 flex-shrink-0">
         <Bot className="w-4 h-4 text-teal-400 flex-shrink-0" />
         <span className="text-sm text-teal-300">
           Context: <span className="font-semibold">{selectedVessel?.name ?? 'All Vessels'}</span> — CII, EU ETS, MARPOL, FuelEU Maritime regulations
@@ -127,7 +127,7 @@ export default function ComplianceChat() {
                 <button
                   key={q}
                   onClick={() => void sendMessage(q)}
-                  className="text-left text-sm text-gray-300 bg-navy-800 hover:bg-navy-700 border border-navy-700 hover:border-teal-700 rounded-xl px-4 py-3 transition-all"
+                  className="text-left text-sm text-gray-300 bg-navy-800 hover:bg-navy-700 border border-navy-700 hover:border-teal-700 rounded-[2px] px-4 py-3 transition-colors"
                 >
                   {q}
                 </button>
@@ -153,10 +153,10 @@ export default function ComplianceChat() {
               )}
             </div>
             <div
-              className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+              className={`max-w-[75%] rounded-[2px] px-4 py-3 text-sm leading-relaxed ${
                 msg.role === 'user'
-                  ? 'bg-navy-700 text-white rounded-tr-sm'
-                  : 'bg-navy-800 border border-navy-700 text-gray-200 rounded-tl-sm'
+                  ? 'bg-navy-700 text-white'
+                  : 'bg-navy-800 border border-navy-700 text-gray-200'
               }`}
             >
               {msg.content ? (
@@ -174,7 +174,7 @@ export default function ComplianceChat() {
       </div>
 
       {/* Input area */}
-      <div className="flex-shrink-0 bg-navy-800 border border-navy-700 rounded-xl p-3 flex items-end gap-3">
+      <div className="flex-shrink-0 bg-navy-800 border border-navy-700 rounded-[2px] p-3 flex items-end gap-3">
         <textarea
           ref={textareaRef}
           value={input}
@@ -195,7 +195,7 @@ export default function ComplianceChat() {
         <button
           onClick={() => void sendMessage(input)}
           disabled={!input.trim() || isStreaming}
-          className="bg-teal-600 hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white p-2 rounded-lg transition-colors flex-shrink-0"
+          className="bg-teal-600 hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white p-2 rounded-[2px] transition-colors flex-shrink-0"
         >
           <Send className="w-4 h-4" />
         </button>

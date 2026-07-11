@@ -24,17 +24,17 @@ interface ToastContextType {
 const ToastContext = createContext<ToastContextType | undefined>(undefined)
 
 const icons: Record<ToastType, React.ReactNode> = {
-  success: <CheckCircle className="w-4 h-4 text-green-400" />,
-  error: <XCircle className="w-4 h-4 text-red-400" />,
-  warning: <AlertTriangle className="w-4 h-4 text-amber-400" />,
-  info: <Info className="w-4 h-4 text-blue-400" />,
+  success: <CheckCircle className="w-4 h-4 text-status-green" />,
+  error: <XCircle className="w-4 h-4 text-status-red" />,
+  warning: <AlertTriangle className="w-4 h-4 text-status-amber" />,
+  info: <Info className="w-4 h-4 text-teal-400" />,
 }
 
 const bgMap: Record<ToastType, string> = {
-  success: 'border-green-700 bg-green-900/30',
-  error: 'border-red-700 bg-red-900/30',
-  warning: 'border-amber-700 bg-amber-900/30',
-  info: 'border-blue-700 bg-blue-900/30',
+  success: 'border-status-green bg-navy-800',
+  error: 'border-status-red bg-navy-800',
+  warning: 'border-status-amber bg-navy-800',
+  info: 'border-teal-600 bg-navy-800',
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -63,7 +63,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div
             key={toast.id}
             className={cn(
-              'flex items-start gap-3 p-3 rounded-lg border animate-in slide-in-from-right-full',
+              'flex items-start gap-3 p-3 rounded-[2px] border animate-in slide-in-from-right-full',
               'bg-navy-800 shadow-lg',
               bgMap[toast.type],
             )}

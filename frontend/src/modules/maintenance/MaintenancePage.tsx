@@ -1,7 +1,7 @@
 import { useState, Suspense, lazy } from 'react'
 import { Cpu, ClipboardList, Calendar } from 'lucide-react'
 import { useFleet } from '@/context/FleetContext'
-import { cn } from '@/lib/utils'
+import Tabs from '@/components/ui/Tabs'
 
 const EquipmentGrid = lazy(() => import('./EquipmentGrid'))
 const WorkOrderSystem = lazy(() => import('./WorkOrderSystem'))
@@ -33,7 +33,7 @@ function CalendarPlaceholder() {
       <p className="text-gray-400 text-sm mt-2 max-w-sm">
         Interactive maintenance scheduling calendar coming soon. View planned work orders by date.
       </p>
-      <div className="mt-6 px-4 py-2 bg-navy-700 border border-navy-600 rounded-lg text-gray-500 text-xs">
+      <div className="mt-6 px-4 py-2 bg-navy-700 border border-navy-600 rounded-[2px] text-gray-500 text-xs">
         Calendar view — Planned feature
       </div>
     </div>
@@ -48,8 +48,8 @@ export default function MaintenancePage() {
     <div className="space-y-5">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-white">Maintenance AI</h1>
-        <p className="text-gray-400 text-sm mt-0.5">
+        <h1 className="text-[23px] font-semibold text-[#f0f1f3] tracking-[-0.01em]">Maintenance AI</h1>
+        <p className="text-[#767d88] text-[13px] mt-[5px]">
           {selectedVessel ? (
             <>Equipment health monitoring for <span className="text-teal-400 font-medium">{selectedVessel.name}</span></>
           ) : (
@@ -59,26 +59,7 @@ export default function MaintenancePage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 p-1 bg-navy-800 border border-navy-700 rounded-xl w-fit">
-        {TABS.map((tab) => {
-          const Icon = tab.icon
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                activeTab === tab.id
-                  ? 'bg-teal-600 text-white shadow-sm'
-                  : 'text-gray-400 hover:text-white hover:bg-navy-700'
-              )}
-            >
-              <Icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          )
-        })}
-      </div>
+      <Tabs tabs={TABS} activeId={activeTab} onChange={setActiveTab} />
 
       {/* Tab content */}
       <Suspense fallback={<TabLoadingState />}>

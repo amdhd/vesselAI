@@ -15,10 +15,10 @@ const COUNTRY_FLAGS: Record<string, string> = {
 }
 
 const CONGESTION_COLORS: Record<CongestionLevel, string> = {
-  low: '#22c55e',
-  medium: '#3b82f6',
-  high: '#f59e0b',
-  congested: '#ef4444',
+  low: '#4a9d6f',
+  medium: '#3a8c85',
+  high: '#c99a54',
+  congested: '#a8443b',
 }
 
 const CONGESTION_LABELS: Record<CongestionLevel, string> = {
@@ -69,15 +69,15 @@ export default function PortCongestion() {
       {ports.filter((p) => p.congestionLevel === 'high' || p.congestionLevel === 'congested').map((p) => (
         <div
           key={p.portId}
-          className="flex items-start gap-3 bg-amber-900/20 border border-amber-700 rounded-xl px-4 py-3"
+          className="flex items-start gap-3 bg-navy-800 border border-status-amber rounded-[2px] px-4 py-3"
         >
-          <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+          <AlertTriangle className="w-5 h-5 text-status-amber flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-amber-300 text-sm font-medium">
+            <p className="text-status-amber text-sm font-medium">
               {COUNTRY_FLAGS[p.country] ?? ''} {p.portName} — {CONGESTION_LABELS[p.congestionLevel]} CONGESTION
             </p>
             {p.alerts?.map((alert, i) => (
-              <p key={i} className="text-amber-400/80 text-xs mt-1">
+              <p key={i} className="text-status-amber/80 text-xs mt-1">
                 {alert.includes('fuel') || alert.includes('speed')
                   ? `Consider 2-knot speed reduction to save ~18 MT fuel and arrive at optimal berth window`
                   : alert}
@@ -105,25 +105,25 @@ export default function PortCongestion() {
                   </p>
                   <p className="text-xs text-gray-500">{port.country}</p>
                 </div>
-                <span className={`text-xs px-2 py-1 rounded-full font-semibold border ${getCongestionColor(port.congestionLevel)}`}>
+                <span className={`text-[10px] px-2 py-0.5 rounded-[2px] font-semibold uppercase tracking-wide border ${getCongestionColor(port.congestionLevel)}`}>
                   {CONGESTION_LABELS[port.congestionLevel]}
                 </span>
               </div>
 
               <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="bg-navy-700 rounded-lg p-2">
+                <div className="bg-navy-700/50 rounded-[2px] p-2">
                   <p className="text-xs text-gray-400">Avg Wait</p>
-                  <p className="text-white font-bold text-sm">{port.avgWaitingTime}h</p>
+                  <p className="text-white font-mono font-semibold text-sm">{port.avgWaitingTime}h</p>
                 </div>
-                <div className="bg-navy-700 rounded-lg p-2">
+                <div className="bg-navy-700/50 rounded-[2px] p-2">
                   <p className="text-xs text-gray-400 flex items-center justify-center gap-1">
                     <Anchor className="w-3 h-3" /> At Anchor
                   </p>
-                  <p className="text-white font-bold text-sm">{port.vesselsAtAnchor}</p>
+                  <p className="text-white font-mono font-semibold text-sm">{port.vesselsAtAnchor}</p>
                 </div>
-                <div className="bg-navy-700 rounded-lg p-2">
+                <div className="bg-navy-700/50 rounded-[2px] p-2">
                   <p className="text-xs text-gray-400">Next Berth</p>
-                  <p className="text-white font-bold text-xs leading-tight">
+                  <p className="text-white font-mono font-semibold text-xs leading-tight">
                     {NEXT_BERTH[port.portId] ?? 'TBD'}
                   </p>
                 </div>
@@ -142,7 +142,7 @@ export default function PortCongestion() {
                     const y = 48 - barHeight
                     const labels = ['', 'Low', 'Medium', 'High', 'Congested']
                     return (
-                      <rect key={entry.day} x={x} y={y} width={barWidth} height={barHeight} rx={2} ry={2} fill={entry.color}>
+                      <rect key={entry.day} x={x} y={y} width={barWidth} height={barHeight} fill={entry.color}>
                         <title>{`${entry.day}: ${labels[entry.level]}`}</title>
                       </rect>
                     )
