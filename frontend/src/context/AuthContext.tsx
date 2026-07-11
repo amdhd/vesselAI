@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import type { User } from '@/lib/types'
 import { MOCK_USER } from '@/lib/mockData'
+import { authApi } from '@/lib/api'
 
 interface AuthContextType {
   user: User | null
@@ -35,23 +36,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {
-    // Try real API first, fall back to demo mode
+    // Try real API first, fall back to demo mode. Use authApi (the shared axios
+    // instance) so login hits the SAME backend/base URL as every other request —
+    // a hardcoded '/api/auth/login' would bypass VITE_API_URL and could sign the
+    // token on a different backend than the one that later verifies it (→ 401).
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })
-      if (res.ok) {
-        const data = await res.json() as { token: string; user: User }
-        setToken(data.token)
-        setUser(data.user)
-        localStorage.setItem('vm_token', data.token)
-        localStorage.setItem('vm_user', JSON.stringify(data.user))
-        return
-      }
+      const data = await authApi.login(email, password)
+      setToken(data.token)
+      setUser(data.user)
+      localStorage.setItem('vm_token', data.token)
+      localStorage.setItem('vm_user', JSON.stringify(data.user))
+      return
     } catch {
-      // API not available — use demo credentials
+      // API not available or bad credentials — try demo fallback below
     }
 
     // Demo fallback
