@@ -348,3 +348,24 @@ model WeatherObservation {
   @@unique([latitude, longitude, observedAt])
   @@index([latitude, longitude])
 }
+
+// Live AIS vessel positions streamed from aisstream.io (services/aisStream.ts).
+// One row per vessel (mmsi unique), upserted to the latest known position —
+// bounded storage for a live fleet map rather than an unbounded firehose log.
+model AisVesselPosition {
+  id         String   @id @default(uuid())
+  mmsi       Int      @unique
+  shipName   String?
+  latitude   Float
+  longitude  Float
+  sog        Float?   // speed over ground, knots
+  cog        Float?   // course over ground, degrees
+  heading    Int?     // true heading, degrees
+  navStatus  Int?     // AIS navigational status code
+  timeUtc    String?  // raw provider timestamp
+  source     String   @default("aisstream")
+  receivedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([latitude, longitude])
+}
