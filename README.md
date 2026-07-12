@@ -4,7 +4,39 @@ A full-stack, AI-powered SaaS platform for oil & gas vessel fleet operators — 
 
 I built and hardened this solo as a demo-day portfolio piece for Forward Deployed Engineering roles. The parts of the FDE job that matter most — wiring agentic AI into real data, defending trust boundaries, and debugging integrations end-to-end rather than trusting that they work — are exactly what this project is set up to show, not just describe.
 
-**[Demo credentials](#demo-mode) · [What's real vs. mocked](#whats-real-vs-mocked) · [Engineering notes](#engineering-notes)**
+**[The two FDE headline features](#the-two-features-that-matter-for-an-fde) · [Demo credentials](#demo-mode) · [What's real vs. mocked](#whats-real-vs-mocked) · [Engineering notes](#engineering-notes) · [How this maps to an FDE role](#how-this-maps-to-an-fde-role)**
+
+---
+
+## The two features that matter for an FDE
+
+Everything else in this repo is context. These two are the point, because they are the parts of an FDE's job — *integrate a customer's data sources* and *configure agentic workflows* — that you can't fake.
+
+### 1. A real data-ingestion pipeline
+
+Three genuine ingestion paths land external data in Postgres, not fixtures dressed up as one:
+
+| Source | Kind | What it does |
+|---|---|---|
+| **Open-Meteo Marine** (`services/weatherPipeline.ts`) | Keyless HTTP API | For each monitored point: **fetch → Zod-validate → transform → idempotent upsert**. Points run in parallel and are isolated — one bad point (network blip, malformed shape) is recorded but never aborts the run, so a run degrades *partially* instead of all-or-nothing. Re-runs are idempotent via a compound unique `(lat, lon, observedAt)`. |
+| **aisstream.io** (`services/aisStream.ts`) | Live WebSocket firehose | Streams AIS vessel positions, upserted one-row-per-vessel by MMSI — bounded storage for a live map rather than an unbounded append log. |
+| **ERP bunker CSV** (`services/bunkerImport.ts`) | Uploaded file | ERP-style bunker-procurement CSV: header validation, **per-row** Zod validation, bad rows collected and reported (not silently dropped), IMO→vessel resolution scoped to the caller's fleet. |
+
+This is the FDE line "reliable data pipelines for ingestion, transformation, and validation" made concrete: bad rows, retries-friendly idempotency, and partial-failure handling are all present, not hand-waved.
+
+### 2. A genuine agentic workflow
+
+The route optimizer is a real **Claude tool-use agent loop** (`services/voyageAgent.ts`), not a single prompt. The agent is given four tools and reasons across multiple steps:
+
+```
+get_vessel_specs → get_route_info → get_marine_weather (both endpoints) → compute_fuel (2–3 candidate speeds) → recommend ONE speed
+```
+
+- Up to **8 agentic steps** (`MAX_STEPS`), the full tool-call trace returned to the UI so the reasoning is inspectable, not a black box.
+- Tool execution is **tenant-isolated** — the vessel is the caller's fleet-resolved vessel, so even a prompt-injected agent can't reach another fleet's data.
+- **Deterministic fallback**: on any API failure (bad key, rate limit, error) it computes a recommendation from the same physics the tools use and flags `fallback: true`, so the endpoint always returns a usable answer.
+
+Served at `POST /api/voyage/agent-plan`.
 
 ---
 
@@ -25,8 +57,33 @@ I built and hardened this solo as a demo-day portfolio piece for Forward Deploye
 - **Backend:** Node.js + Express + TypeScript + Prisma ORM
 - **Database:** PostgreSQL 16
 - **AI:** Anthropic Claude API, streamed (SSE) for chat, structured JSON for domain tasks
-- **Testing:** Vitest — tenant-isolation and JWT auth-middleware coverage
+- **Testing:** Vitest — tenant isolation, JWT auth middleware, and the ingestion pipelines + voyage agent (parsers, CSV import, Open-Meteo transform)
 - **Real-time:** Socket.io · **Auth:** JWT
+
+## Architecture
+
+```
+                         ┌──────────────────────────────────────────┐
+   External sources      │              VesselMind backend          │        Client
+                         │              (Express + Prisma)          │
+ Open-Meteo Marine  ─────┤                                          │
+ (keyless HTTP)          │  ingestion → validate (Zod) → transform  │
+                         │       → upsert (idempotent)              │    React + Vite
+ aisstream.io       ─────┤                │                         │    ├─ Fleet map (Leaflet)
+ (WebSocket firehose)    │                ▼                         │    ├─ 6 module dashboards
+                         │           PostgreSQL 16                  │◄───┤─ Voyage agent trace UI
+ ERP bunker CSV     ─────┤          (Prisma models)                │    └─ AI chat (SSE stream)
+ (multipart upload)      │                │                         │
+                         │                ▼                         │
+                         │   Voyage AGENT loop ── tools ──┐         │
+ Anthropic Claude   ◄────┤   get_vessel / get_route /     │         │
+ (tool use + SSE)        │   get_weather / compute_fuel   │         │
+                         │        (tenant-isolated)       ◄─────────┤  JWT + fleet-scoped
+                         │   deterministic fallback ──────┘         │  tenant isolation
+                         └──────────────────────────────────────────┘
+```
+
+Every external arrow is a **trust boundary**: input is validated before it's persisted, tool execution is scoped to the caller's fleet, and every AI path has a non-AI fallback so a provider outage degrades the demo instead of breaking it.
 
 ---
 
@@ -40,10 +97,13 @@ A demo is only useful if you're honest about where the edges are. Here's the act
 | Fleet & vessel data | Real — served from Postgres via Prisma, with an in-memory fallback if the DB is unreachable so the demo degrades instead of 500ing |
 | Fuel consumption model | Real domain engineering — Admiralty Coefficient + speed-power curve, cited IMO MEPC sources (`backend/src/lib/fuelModel.ts`) |
 | Claude integration (all 6 modules) | Real API calls, real prompts, real streaming — with a canned fallback on failure, flagged via an `X-AI-Fallback` header/field so degraded responses are never silently indistinguishable from real ones |
+| Voyage agent (tool-use loop) | Real — multi-step Claude tool-use with a deterministic physics fallback (`services/voyageAgent.ts`) |
+| Marine weather | **Real — live Open-Meteo Marine ingestion** into Postgres (`services/weatherPipeline.ts`), keyless |
+| AIS vessel positions | **Real — live aisstream.io WebSocket** upserted into Postgres (`services/aisStream.ts`) |
+| Bunker procurement | **Real — ERP-style CSV import** with per-row validation (`services/bunkerImport.ts`) |
 | Equipment sensor telemetry, SIRE findings, port congestion, voyage history | Fixture data, generated with real-ish statistical variation (trends, noise, seeded anomalies) |
-| Weather routing (StormGlass/MarineTraffic) | Not wired up — env vars are documented but there's no live integration behind them yet |
 
-In a real engagement, swapping those fixtures for a customer's SCADA feed, ERP, or AIS provider is exactly the data-integration work an FDE does. I didn't fake that part; I scoped it out and said so.
+In a real engagement, swapping the remaining fixtures for a customer's SCADA feed or class-society data is exactly the data-integration work an FDE does. The three pipelines above show the pattern already working end-to-end; the rest is scoped, not faked.
 
 ---
 
@@ -136,11 +196,21 @@ GET    /api/vessels/:id
 
 # Voyage
 POST   /api/voyage/optimize-route
+POST   /api/voyage/agent-plan            # multi-step Claude tool-use agent
 GET    /api/voyage/history/:vesselId
 POST   /api/voyage/calculate-speed
 GET    /api/voyage/active/:fleetId
 POST   /api/voyage/predict-eta
 POST   /api/voyage/generate-agent-message
+
+# Data ingestion pipelines
+POST   /api/weather/sync                 # run the Open-Meteo ingestion pass
+GET    /api/weather/latest
+GET    /api/weather/near?lat=&lon=
+GET    /api/ais/positions                # live AIS positions from aisstream.io
+GET    /api/ais/positions/near?lat=&lon=
+POST   /api/imports/bunker               # upload ERP-style bunker CSV
+GET    /api/imports/bunker/template
 
 # Maintenance
 GET    /api/maintenance/equipment/:vesselId
@@ -185,8 +255,8 @@ GET    /api/sire/findings/:vesselId
 | `JWT_SECRET` | Yes in production | Min 32 chars — the app refuses to boot without one in production rather than fall back to an insecure default |
 | `ANTHROPIC_API_KEY` | Yes | Anthropic Claude API key |
 | `FRONTEND_URL` | Yes | Frontend origin, for CORS |
-| `STORMGLASS_API_KEY` | No | Not wired up yet — see [What's Real vs. Mocked](#whats-real-vs-mocked) |
-| `MARINETRAFFIC_API_KEY` | No | Same |
+| `AISSTREAM_API_KEY` | No | Free key from [aisstream.io](https://aisstream.io) — enables the live AIS stream. Omit and the fleet map falls back to fixture positions |
+| — | — | Open-Meteo Marine needs **no key**; the weather pipeline works out of the box |
 
 ---
 
@@ -227,6 +297,30 @@ railway login && railway init && railway up
 cd frontend && npx vercel deploy
 # set VITE_API_URL to your Railway backend URL + /api
 ```
+
+---
+
+## How this maps to an FDE role
+
+The Forward Deployed Engineer JD asks for specific things. Here's where each one lives in this repo:
+
+| What the role asks for | Where it is here |
+|---|---|
+| *Integrate customer data sources* | Three real pipelines — Open-Meteo (HTTP), aisstream.io (WebSocket), ERP CSV (upload) — each landing validated data in Postgres (`services/weatherPipeline.ts`, `aisStream.ts`, `bunkerImport.ts`) |
+| *Reliable pipelines for ingestion, transformation, validation* | Zod validation at every boundary, idempotent upserts, per-row / per-point failure isolation, bad-row reporting |
+| *Configure agentic workflows; adapt agents* | Multi-step Claude tool-use loop with 4 tools and a deterministic fallback (`services/voyageAgent.ts`) |
+| *Defend trust boundaries* | Fleet-scoped tenant isolation (`lib/tenant.ts`), IDOR fixes, prompt-injection guardrails on every AI surface, per-user AI rate limiting |
+| *Move a POC toward production* | Prisma migrations, Docker Compose, graceful DB/AI fallbacks, `X-AI-Fallback` observability, seeded demo scenarios |
+| *Communicate* | This README, honest "real vs. mocked" accounting, and commit messages that explain *why* |
+
+## Roadmap (honest gaps)
+
+These are scoped but not yet built — I'd rather name them than imply they're done:
+
+- **CI/CD** — GitHub Actions to run lint + typecheck + the backend test suite on every PR (currently run by hand).
+- **Live deployment + Terraform** — a public URL with a minimal Terraform module to provision it.
+- **Frontend tests** — Vitest + Testing Library, plus backend route-integration tests (the current suite is unit/lib/middleware level).
+- **Onboarding playbook** — a one-pager on how a new customer fleet gets connected, configured, and scoped for success.
 
 ---
 
