@@ -3,6 +3,7 @@ import { Bot, Loader2, Wrench, Sparkles, AlertTriangle } from 'lucide-react'
 import { useFleet } from '@/context/FleetContext'
 import { voyageApi, type AgentPlanResult } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import ChatMarkdown from '@/components/ui/ChatMarkdown'
 
 const PORTS = ['Singapore', 'Fujairah', 'Port Klang', 'Kerteh', 'Rotterdam', 'Ras Tanura', 'Bintulu']
 
@@ -175,7 +176,9 @@ export default function AgentPlanner() {
                 )}
               </div>
             </div>
-            <p className="text-[#e2e4e7] text-sm leading-relaxed whitespace-pre-wrap">{result.recommendation}</p>
+            <div className="text-[#e2e4e7] text-sm leading-relaxed">
+              <ChatMarkdown content={result.recommendation} />
+            </div>
           </div>
 
           {/* Tool-call trace */}
