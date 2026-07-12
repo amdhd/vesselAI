@@ -1,6 +1,7 @@
 # VesselMind AI — Maritime Fleet Intelligence Platform
 
 Read more: https://claude.ai/code/artifact/a66c0438-c2ea-43e1-a367-aafb05edf62f?open_in_browser=1&via=user_open&org=63d0e974-fa52-456b-bdb9-13c0df5dd129
+
 A full-stack, AI-powered SaaS platform for oil & gas vessel fleet operators — six modules covering voyage optimization, predictive maintenance, emissions compliance, port scheduling, a technical-knowledge chat assistant, and SIRE inspection prep, all backed by the Anthropic Claude API.
 
 I built and hardened this solo as a demo-day portfolio piece for Forward Deployed Engineering roles. The parts of the FDE job that matter most — wiring agentic AI into real data, defending trust boundaries, and debugging integrations end-to-end rather than trusting that they work — are exactly what this project is set up to show, not just describe.
