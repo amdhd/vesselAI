@@ -1,5 +1,6 @@
 # VesselMind AI — Maritime Fleet Intelligence Platform
 
+Read more: https://claude.ai/code/artifact/a66c0438-c2ea-43e1-a367-aafb05edf62f?open_in_browser=1&via=user_open&org=63d0e974-fa52-456b-bdb9-13c0df5dd129 
 A full-stack, AI-powered SaaS platform for oil & gas vessel fleet operators — six modules covering voyage optimization, predictive maintenance, emissions compliance, port scheduling, a technical-knowledge chat assistant, and SIRE inspection prep, all backed by the Anthropic Claude API.
 
 I built and hardened this solo as a demo-day portfolio piece for Forward Deployed Engineering roles. The parts of the FDE job that matter most — wiring agentic AI into real data, defending trust boundaries, and debugging integrations end-to-end rather than trusting that they work — are exactly what this project is set up to show, not just describe.
@@ -57,7 +58,7 @@ Served at `POST /api/voyage/agent-plan`.
 - **Backend:** Node.js + Express + TypeScript + Prisma ORM
 - **Database:** PostgreSQL 16
 - **AI:** Anthropic Claude API, streamed (SSE) for chat, structured JSON for domain tasks
-- **Testing:** Vitest — tenant isolation, JWT auth middleware, and the ingestion pipelines + voyage agent (parsers, CSV import, Open-Meteo transform)
+- **Testing:** Vitest everywhere — backend unit tests (tenant isolation, JWT auth middleware, ingestion pipelines, voyage agent) plus supertest route-integration tests exercising the real Express app over HTTP; frontend unit + Testing Library component tests
 - **Real-time:** Socket.io · **Auth:** JWT
 
 ## Architecture
@@ -163,7 +164,10 @@ npm run dev          # http://localhost:5173
 
 ```bash
 cd backend
-npm test             # tenant isolation + JWT auth middleware, no DB required
+npm test             # unit tests + supertest route-integration tests, no DB required
+
+cd frontend
+npm test             # Vitest + Testing Library
 ```
 
 ---
@@ -317,9 +321,9 @@ The Forward Deployed Engineer JD asks for specific things. Here's where each one
 
 These are scoped but not yet built — I'd rather name them than imply they're done:
 
-- **CI/CD** — GitHub Actions to run lint + typecheck + the backend test suite on every PR (currently run by hand).
+- ~~**CI/CD**~~ — done: GitHub Actions typechecks and tests both backend and frontend on every PR (`.github/workflows/ci.yml`).
+- ~~**Frontend tests, backend route-integration tests**~~ — done: Vitest + Testing Library on the frontend, supertest route-integration tests on the backend (`backend/src/routes/integration.test.ts`).
 - **Live deployment + Terraform** — a public URL with a minimal Terraform module to provision it.
-- **Frontend tests** — Vitest + Testing Library, plus backend route-integration tests (the current suite is unit/lib/middleware level).
 - **Onboarding playbook** — a one-pager on how a new customer fleet gets connected, configured, and scoped for success.
 
 ---
