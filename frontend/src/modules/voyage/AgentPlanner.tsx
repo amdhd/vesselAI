@@ -21,6 +21,53 @@ const TOOL_LABELS: Record<string, string> = {
   compute_fuel: 'Compute fuel / cost / CO₂',
 }
 
+// "fuelTonnesPerDay" -> "Fuel tonnes per day"
+function humanizeKey(k: string): string {
+  const spaced = k.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/_/g, ' ')
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase()
+}
+
+function formatValue(v: unknown): string {
+  if (v === null || v === undefined) return '—'
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No'
+  if (typeof v === 'number') return v.toLocaleString(undefined, { maximumFractionDigits: 4 })
+  return String(v)
+}
+
+// Renders a tool's input/output as clean labeled rows instead of raw JSON.
+function DataView({ data }: { data: unknown }) {
+  if (data === null || typeof data !== 'object') {
+    return <span className="text-[12px] font-mono text-[#e2e4e7]">{formatValue(data)}</span>
+  }
+  const entries = Object.entries(data as Record<string, unknown>)
+  if (entries.length === 0) {
+    return <span className="text-[11.5px] text-[#5c6470] italic">no arguments</span>
+  }
+  return (
+    <div className="space-y-1.5">
+      {entries.map(([k, v]) => {
+        const nested = v !== null && typeof v === 'object'
+        if (nested) {
+          return (
+            <div key={k}>
+              <p className="text-[11px] text-[#767d88] mb-1">{humanizeKey(k)}</p>
+              <div className="ml-1 pl-3 border-l border-navy-700">
+                <DataView data={v} />
+              </div>
+            </div>
+          )
+        }
+        return (
+          <div key={k} className="flex items-baseline justify-between gap-4">
+            <span className="text-[11.5px] text-[#767d88] shrink-0">{humanizeKey(k)}</span>
+            <span className="text-[12.5px] font-mono text-[#e2e4e7] text-right break-all">{formatValue(v)}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function AgentPlanner() {
   const { selectedVessel } = useFleet()
   const [departurePort, setDeparturePort] = useState('Kerteh')
@@ -197,17 +244,13 @@ export default function AgentPlanner() {
                     <span className="text-[11px] font-mono text-[#5c6470]">{call.tool}</span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-navy-700">
-                    <div className="p-3">
-                      <p className="text-[10px] uppercase tracking-wide text-[#5c6470] mb-1">Input</p>
-                      <pre className="text-[11px] text-[#a8adb5] font-mono whitespace-pre-wrap break-words">
-                        {JSON.stringify(call.input, null, 2)}
-                      </pre>
+                    <div className="p-3.5">
+                      <p className="text-[10px] uppercase tracking-[0.08em] text-[#5c6470] mb-2">Input</p>
+                      <DataView data={call.input} />
                     </div>
-                    <div className="p-3">
-                      <p className="text-[10px] uppercase tracking-wide text-[#5c6470] mb-1">Output</p>
-                      <pre className="text-[11px] text-[#a8adb5] font-mono whitespace-pre-wrap break-words">
-                        {JSON.stringify(call.output, null, 2)}
-                      </pre>
+                    <div className="p-3.5">
+                      <p className="text-[10px] uppercase tracking-[0.08em] text-[#5c6470] mb-2">Output</p>
+                      <DataView data={call.output} />
                     </div>
                   </div>
                 </li>

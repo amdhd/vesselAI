@@ -8,7 +8,9 @@ export default function ChatMarkdown({ content }: { content: string }) {
   return (
     <div className="prose-chat">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        // singleTilde: false so "~18 hours" (approximately) isn't parsed as
+        // strikethrough — only real "~~...~~" is.
+        remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
         components={{
           p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
           ul: ({ children }) => <ul className="list-disc pl-5 mb-2 space-y-1">{children}</ul>,
