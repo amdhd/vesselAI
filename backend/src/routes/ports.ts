@@ -3,6 +3,7 @@ import { MOCK_PORTS } from '../mock/ports';
 import { MOCK_ACTIVE_VOYAGES } from '../mock/voyages';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { requireVessel } from '../lib/tenant';
+import { derivePortCongestionFromAis } from '../services/portCongestion';
 
 const router = Router();
 
@@ -14,10 +15,22 @@ const CONGESTION_LEVEL_MAP: Record<string, 'low' | 'medium' | 'high' | 'congeste
 };
 
 // GET /api/ports/congestion
-router.get('/congestion', authenticate, (_req: Request, res: Response) => {
-  // Frontend PortCongestion type uses portId/portName/congestionLevel (lowercase)/
-  // avgWaitingTime/vesselsAtAnchor/forecast[].level; the mock fixtures use
-  // id/name/congestion (uppercase)/avgWaitHours/currentVessels/forecast[].congestion.
+// Prefers congestion derived live from ingested AIS positions (anchored vessels
+// near each port); falls back to the mock fixtures when there's no AIS data yet
+// (stream off or DB empty). Sets X-Data-Source so callers can tell which.
+router.get('/congestion', authenticate, async (_req: Request, res: Response) => {
+  const live = await derivePortCongestionFromAis();
+  if (live) {
+    res.setHeader('X-Data-Source', 'ais-live');
+    res.json(live);
+    return;
+  }
+
+  // Mock fallback. Frontend PortCongestion type uses portId/portName/
+  // congestionLevel (lowercase)/avgWaitingTime/vesselsAtAnchor/forecast[].level;
+  // the mock fixtures use id/name/congestion (uppercase)/avgWaitHours/
+  // currentVessels/forecast[].congestion.
+  res.setHeader('X-Data-Source', 'mock');
   res.json(
     MOCK_PORTS.map(p => ({
       portId: p.id,
