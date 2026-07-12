@@ -191,6 +191,29 @@ export const weatherApi = {
   },
 }
 
+// ─── AIS (live vessel positions) ────────────────────────────────────────────────
+
+export interface AisPosition {
+  mmsi: number
+  shipName: string | null
+  latitude: number
+  longitude: number
+  sog: number | null
+  cog: number | null
+  heading: number | null
+  navStatus: number | null
+  receivedAt: string
+}
+
+export const aisApi = {
+  // Latest live position per vessel from the aisstream ingestion (empty until
+  // the stream + DB are running).
+  getPositions: async (): Promise<AisPosition[]> => {
+    const { data } = await api.get<{ positions: AisPosition[] }>('/ais/positions')
+    return data.positions
+  },
+}
+
 // ─── Maintenance ──────────────────────────────────────────────────────────────
 
 export const maintenanceApi = {
