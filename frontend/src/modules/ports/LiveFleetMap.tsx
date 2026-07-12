@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
+import { useState, useEffect } from 'react'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker } from 'react-leaflet'
 import L from 'leaflet'
 import { useFleet } from '@/context/FleetContext'
 import { MOCK_VESSELS } from '@/lib/mockData'
+import { aisApi, type AisPosition } from '@/lib/api'
 import type { Vessel } from '@/lib/types'
 
 // Fix leaflet default icon
@@ -60,7 +61,24 @@ const VOYAGE_INFO: Record<string, { speed: string; eta: string; status: string; 
 export default function LiveFleetMap() {
   const { vessels } = useFleet()
   const displayVessels = vessels.length > 0 ? vessels : MOCK_VESSELS
-  const [socketConnected] = useState(false)
+
+  // Live AIS traffic from the aisstream ingestion — polled every 20s. Empty when
+  // the stream/DB aren't running, in which case only the fleet markers show.
+  const [aisVessels, setAisVessels] = useState<AisPosition[]>([])
+  useEffect(() => {
+    let active = true
+    const load = () => {
+      aisApi
+        .getPositions()
+        .then((p) => { if (active) setAisVessels(p) })
+        .catch(() => { /* stream/DB not running — keep the demo layer only */ })
+    }
+    load()
+    const id = setInterval(load, 20_000)
+    return () => { active = false; clearInterval(id) }
+  }, [])
+
+  const aisLive = aisVessels.length > 0
 
   // Center on SE Asia / Middle East
   const center: [number, number] = [15.0, 82.0]
@@ -70,11 +88,13 @@ export default function LiveFleetMap() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-white">Live Fleet Map</h2>
-          <p className="text-gray-400 text-sm mt-0.5">Real-time vessel positions and route tracking</p>
+          <p className="text-gray-400 text-sm mt-0.5">Fleet vessels + live AIS traffic (aisstream)</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className={`w-1.5 h-1.5 ${socketConnected ? 'bg-status-green animate-pulse' : 'bg-status-amber'}`} />
-          <span className="text-xs text-gray-400">{socketConnected ? 'Live' : 'Demo mode'}</span>
+          <div className={`w-1.5 h-1.5 ${aisLive ? 'bg-status-green animate-pulse' : 'bg-status-amber'}`} />
+          <span className="text-xs text-gray-400">
+            {aisLive ? `Live AIS · ${aisVessels.length} vessels` : 'Demo mode (AIS stream off)'}
+          </span>
         </div>
       </div>
 
@@ -82,11 +102,15 @@ export default function LiveFleetMap() {
       <div className="flex items-center gap-6 flex-wrap">
         <div className="flex items-center gap-2">
           <div className="w-[7px] h-[7px] bg-status-green" />
-          <span className="text-xs text-gray-400">On Schedule</span>
+          <span className="text-xs text-gray-400">Fleet — On Schedule</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-[7px] h-[7px] bg-status-amber" />
-          <span className="text-xs text-gray-400">At Risk / Demurrage</span>
+          <span className="text-xs text-gray-400">Fleet — At Risk / Demurrage</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-[7px] h-[7px] rounded-full" style={{ backgroundColor: '#3a8c85' }} />
+          <span className="text-xs text-gray-400">Live AIS vessel</span>
         </div>
       </div>
 
@@ -101,6 +125,28 @@ export default function LiveFleetMap() {
             attribution='&copy; <a href="https://carto.com/">CARTO</a>'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
+
+          {/* Live AIS traffic — small dots, drawn beneath the fleet markers */}
+          {aisVessels.map((v) => (
+            <CircleMarker
+              key={v.mmsi}
+              center={[v.latitude, v.longitude]}
+              radius={4}
+              pathOptions={{ color: '#57a89f', fillColor: '#3a8c85', fillOpacity: 0.85, weight: 1 }}
+            >
+              <Popup>
+                <div className="text-white min-w-[180px]">
+                  <p className="font-bold text-sm mb-1">{v.shipName || `MMSI ${v.mmsi}`}</p>
+                  <div className="space-y-0.5 text-xs">
+                    <div className="flex justify-between"><span className="text-gray-300">MMSI</span><span>{v.mmsi}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-300">Speed</span><span>{v.sog != null ? `${v.sog.toFixed(1)} kn` : '—'}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-300">Course</span><span>{v.cog != null ? `${Math.round(v.cog)}°` : '—'}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-300">Source</span><span className="text-teal-400">Live AIS</span></div>
+                  </div>
+                </div>
+              </Popup>
+            </CircleMarker>
+          ))}
 
           {displayVessels.map((vessel) => {
             const color = getVesselColor(vessel)
