@@ -1,10 +1,13 @@
+// Load .env FIRST, before any import that reads process.env at module-load
+// time (aiService constructs the Anthropic client, jwtConfig reads JWT_SECRET).
+// A later dotenv.config() would run after those and leave the values undefined.
+import 'dotenv/config';
 import express from 'express';
 import helmet from 'helmet';
 import compression from 'compression';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import dotenv from 'dotenv';
 import { apiLimiter, authLimiter } from './middleware/rateLimiter';
 import { errorHandler, notFound } from './middleware/errorHandler';
 import authRoutes from './routes/auth';
@@ -21,8 +24,6 @@ import aisRoutes from './routes/ais';
 import importRoutes from './routes/imports';
 import { syncWeather } from './services/weatherPipeline';
 import { startAisStream } from './services/aisStream';
-
-dotenv.config();
 
 const app = express();
 
