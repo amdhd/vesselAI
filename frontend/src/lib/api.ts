@@ -169,6 +169,28 @@ export const voyageApi = {
   },
 }
 
+// ─── Weather ──────────────────────────────────────────────────────────────────
+
+export interface LiveWeatherLocation {
+  name: string
+  latitude: number
+  longitude: number
+  waveHeightM?: number | null
+  windSpeedKn?: number | null
+  currentSpeedKmh?: number | null
+  weatherCode?: number | null
+  observedAt?: string
+  ok: boolean
+}
+
+export const weatherApi = {
+  // Live marine conditions for the fleet's operating area (Open-Meteo, no DB).
+  getLive: async (): Promise<{ locations: LiveWeatherLocation[]; fetchedAt: string }> => {
+    const { data } = await api.get<{ locations: LiveWeatherLocation[]; fetchedAt: string }>('/weather/live')
+    return data
+  },
+}
+
 // ─── Maintenance ──────────────────────────────────────────────────────────────
 
 export const maintenanceApi = {
