@@ -27,5 +27,6 @@ models:
 
 # Tunable business logic for the idling model (override with --vars if needed).
 vars:
-  idle_speed_knots: 0.5   # at/below this speed a ping counts as "idle"
-  idle_min_minutes: 30    # an idle run must last this long to count as an episode
+  idle_speed_knots: 0.5    # at/below this speed a ping counts as "idle"
+  idle_min_minutes: 30     # an idle run must last this long to count as an episode
+  max_plausible_knots: 50  # legs implying a higher speed are GPS teleports -> dropped from distance

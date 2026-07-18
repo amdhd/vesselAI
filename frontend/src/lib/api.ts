@@ -401,4 +401,60 @@ export const notificationsApi = {
   },
 }
 
+// ─── Fleet Analytics (data platform / gold layer) ───────────────────────────────
+// These read from the SEPARATE analytics service (FastAPI over the DuckDB gold
+// tables), not the main app backend — so they use their own axios instance.
+// Point VITE_ANALYTICS_API_URL at it; defaults to http://localhost:8000.
+const analyticsHttp = axios.create({
+  baseURL: (import.meta.env.VITE_ANALYTICS_API_URL as string) || 'http://localhost:8000',
+})
+
+export interface FleetSummary {
+  vessels: number
+  position_reports: number
+  total_distance_nm: number
+  idle_episodes: number
+  first_day: string
+  last_day: string
+}
+export interface VesselTypeCount {
+  type: string
+  vessels: number
+}
+export interface TopVessel {
+  vessel_name: string
+  vessel_type_desc: string
+  distance_nm: number
+  avg_speed_knots: number
+  ping_count: number
+}
+export interface IdleEpisode {
+  vessel_name: string
+  vessel_type_desc: string
+  idle_start: string
+  idle_end: string
+  idle_minutes: number
+  avg_lat: number
+  avg_lon: number
+}
+
+export const analyticsApi = {
+  getSummary: async (): Promise<FleetSummary> => {
+    const { data } = await analyticsHttp.get<FleetSummary>('/api/analytics/summary')
+    return data
+  },
+  getVesselTypes: async (): Promise<VesselTypeCount[]> => {
+    const { data } = await analyticsHttp.get<VesselTypeCount[]>('/api/analytics/vessel-types')
+    return data
+  },
+  getTopVessels: async (limit = 12): Promise<TopVessel[]> => {
+    const { data } = await analyticsHttp.get<TopVessel[]>(`/api/analytics/top-vessels?limit=${limit}`)
+    return data
+  },
+  getIdling: async (limit = 25): Promise<IdleEpisode[]> => {
+    const { data } = await analyticsHttp.get<IdleEpisode[]>(`/api/analytics/idling?limit=${limit}`)
+    return data
+  },
+}
+
 export default api

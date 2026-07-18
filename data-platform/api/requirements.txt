@@ -1,0 +1,7 @@
+# VesselMind Analytics API (Option B serving layer).
+# Reads the gold tables from the DuckDB warehouse and serves them as JSON.
+# Install into the pipeline venv (already has duckdb) or its own venv:
+#   pip install -r api/requirements.txt
+fastapi==0.115.6
+uvicorn==0.34.0
+duckdb==1.5.4
