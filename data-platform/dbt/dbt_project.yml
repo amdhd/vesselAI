@@ -1,0 +1,31 @@
+# dbt project config. dbt reads this to know where models live, how to name
+# schemas, and how each layer should be materialized.
+name: 'vesselmind'
+version: '1.0.0'
+config-version: 2
+
+# Which profile (connection) to use — defined in profiles.yml next to this file.
+profile: 'vesselmind'
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  vesselmind:
+    silver:
+      # Silver is materialized as a real TABLE (not a view) so the cleaned data
+      # is physically stored and fast to query from gold and the dashboard.
+      +schema: silver
+      +materialized: table
+    gold:
+      # Gold — the star schema and business aggregates the dashboard reads.
+      +schema: gold
+      +materialized: table
+
+# Tunable business logic for the idling model (override with --vars if needed).
+vars:
+  idle_speed_knots: 0.5   # at/below this speed a ping counts as "idle"
+  idle_min_minutes: 30    # an idle run must last this long to count as an episode

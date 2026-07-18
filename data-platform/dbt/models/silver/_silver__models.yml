@@ -1,0 +1,54 @@
+# What dbt tests are for
+# -----------------------
+# A dbt test is an assertion about the data, written once and checked on every
+# run. Under the hood each test is a SELECT that returns the *bad* rows — if it
+# returns zero rows the test passes. Tests turn "I think silver is clean" into
+# "silver is provably clean, and CI will fail the day it isn't." They document
+# our assumptions (e.g. "latitude is always -90..90") right next to the model.
+version: 2
+
+models:
+  - name: silver_ais_positions
+    description: >
+      Cleaned AIS positions — one row per vessel per timestamp, correctly typed,
+      with invalid coordinates and rows missing an MMSI removed. The first layer
+      that is safe to build analytics on.
+    columns:
+      - name: mmsi
+        description: "Vessel identifier (MMSI), kept as text. Never null in silver."
+        tests:
+          - not_null
+
+      - name: event_time
+        description: "Timestamp of the position report (parsed to TIMESTAMP)."
+        tests:
+          - not_null
+
+      - name: latitude
+        description: "Latitude in decimal degrees, validated to [-90, 90]."
+        tests:
+          - not_null
+          - between:            # custom generic test (see macros/test_between.sql)
+              arguments:
+                min_value: -90
+                max_value: 90
+
+      - name: longitude
+        description: "Longitude in decimal degrees, validated to [-180, 180]."
+        tests:
+          - not_null
+          - between:
+              arguments:
+                min_value: -180
+                max_value: 180
+
+      - name: transceiver_class
+        description: "AIS class: 'A' (larger/commercial) or 'B' (smaller craft)."
+        tests:
+          # 'warn' surfaces oddities without failing the build — good for a
+          # value we expect but don't want to hard-block on if real data varies.
+          - accepted_values:
+              arguments:
+                values: ['A', 'B']
+              config:
+                severity: warn

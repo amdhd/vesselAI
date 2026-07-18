@@ -1,0 +1,23 @@
+# VesselMind Data Platform — Python dependencies
+#
+# Use Python 3.10. dbt-core does not yet ship wheels for Python 3.14, so the
+# project pins to 3.10 for the whole toolchain:
+#   python3.10 -m venv .venv
+#   source .venv/bin/activate
+#   pip install -r requirements.txt
+
+# --- Warehouse engine (Phase 1: ingestion) ---
+duckdb==1.5.4
+
+# --- Transformations (Phase 2 silver, Phase 3 gold) via dbt ---
+# dbt-duckdb pulls in a compatible dbt-core automatically; both are pinned here
+# for reproducibility.
+dbt-duckdb==1.10.1
+dbt-core==1.12.0
+
+# --- Dashboard (Phase 4) ---
+# Install this separately when you build the dashboard. It's kept out of the
+# main resolve because streamlit and dbt pin several of the same packages, and
+# resolving them together is very slow:
+#   pip install streamlit
+# streamlit
