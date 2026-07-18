@@ -22,14 +22,15 @@ with positions as (
 
 with_previous as (
 
-    -- Pull each ping's previous position WITHIN the same vessel-day, so we can
-    -- measure the leg travelled since the last ping. Partitioning by day means
-    -- the first ping of each day has no previous point (prev_* is NULL) and
-    -- therefore contributes zero distance — no phantom leg across midnight.
+    -- Pull each ping's previous position + time WITHIN the same vessel-day, so
+    -- we can measure the leg travelled since the last ping. Partitioning by day
+    -- means the first ping of each day has no previous point (prev_* is NULL)
+    -- and therefore contributes zero distance — no phantom leg across midnight.
     select
         positions.*,
-        lag(latitude)  over w as prev_lat,
-        lag(longitude) over w as prev_lon
+        lag(latitude)   over w as prev_lat,
+        lag(longitude)  over w as prev_lon,
+        lag(event_time) over w as prev_time
     from positions
     window w as (partition by mmsi, activity_date order by event_time)
 
@@ -37,14 +38,36 @@ with_previous as (
 
 segments as (
 
+    -- Keep ALL pings (no filter) so ping counts / speeds / first & last
+    -- positions stay correct. The first ping of a vessel-day simply has no
+    -- previous point, so its leg is 0.
     select
         *,
         case
-            when prev_lat is not null
-            then {{ haversine_nm('prev_lat', 'prev_lon', 'latitude', 'longitude') }}
+            when prev_lat is null then 0
+            else {{ haversine_nm('prev_lat', 'prev_lon', 'latitude', 'longitude') }}
+        end as raw_leg_nm,
+        date_diff('second', prev_time, event_time) / 3600.0 as gap_hours
+    from with_previous
+
+),
+
+legs as (
+
+    -- Only count a leg if its IMPLIED speed is physically plausible. Real AIS
+    -- has GPS teleports (a moored rig or a spoofed/shared MMSI whose position
+    -- jumps across the map between pings); summing those raw hops would inflate
+    -- distance to absurd values. If leg_nm / gap_hours exceeds a sane ceiling,
+    -- we treat the leg as bad data and count it as zero.
+    select
+        *,
+        case
+            when gap_hours > 0
+             and raw_leg_nm / gap_hours <= {{ var('max_plausible_knots') }}
+            then raw_leg_nm
             else 0
         end as segment_nm
-    from with_previous
+    from segments
 
 )
 
@@ -62,5 +85,5 @@ select
     arg_min(longitude, event_time)      as first_lon,
     arg_max(latitude,  event_time)      as last_lat,
     arg_max(longitude, event_time)      as last_lon
-from segments
+from legs
 group by mmsi, activity_date

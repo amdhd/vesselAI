@@ -160,6 +160,32 @@ separate from the transform environment is also normal practice.
 
 ---
 
+## Serving layer — Fleet Analytics API (app integration)
+
+The gold tables also power a **Fleet Analytics** page *inside the VesselMind app*
+(not only the standalone Streamlit dashboard). A tiny read-only FastAPI service
+(`api/main.py`) exposes gold as JSON, and the React app renders it with its own
+components. The app never touches the millions of raw rows — it reads only the
+small, pre-aggregated gold results.
+
+```
+gold (DuckDB)  ──►  FastAPI  api/main.py (:8000)  ──►  React "Fleet Analytics" page
+                    /api/analytics/{summary,vessel-types,top-vessels,idling}
+```
+
+Run the API (from `data-platform/`, after building the warehouse with dbt):
+
+```bash
+pip install -r api/requirements.txt        # into .venv, or its own venv
+uvicorn api.main:app --port 8000
+```
+
+The frontend points at it via `VITE_ANALYTICS_API_URL` (default
+`http://localhost:8000`). Every endpoint is aggregated / top-N, so responses stay
+small no matter how big the raw feed is.
+
+---
+
 ## Layout
 
 ```

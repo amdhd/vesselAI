@@ -11,6 +11,7 @@ import CompliancePage from '@/modules/compliance/CompliancePage'
 import PortsPage from '@/modules/ports/PortsPage'
 import KnowledgePage from '@/modules/knowledge/KnowledgePage'
 import SirePage from '@/modules/sire/SirePage'
+import AnalyticsPage from '@/modules/analytics/AnalyticsPage'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth()
@@ -47,6 +48,7 @@ function AppRoutes() {
                   <Route path="/ports" element={<PortsPage />} />
                   <Route path="/knowledge" element={<KnowledgePage />} />
                   <Route path="/sire" element={<SirePage />} />
+                  <Route path="/analytics" element={<AnalyticsPage />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </MainLayout>

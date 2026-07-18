@@ -7,6 +7,7 @@ import {
   Anchor,
   BookOpen,
   ClipboardList,
+  BarChart3,
   Waves,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -24,6 +25,7 @@ const operationsItems: NavItem[] = [
   { to: '/maintenance', icon: Wrench, label: 'Maintenance' },
   { to: '/compliance', icon: FileCheck, label: 'Compliance' },
   { to: '/ports', icon: Anchor, label: 'Port Scheduling' },
+  { to: '/analytics', icon: BarChart3, label: 'Fleet Analytics' },
 ]
 
 const intelligenceItems: NavItem[] = [
