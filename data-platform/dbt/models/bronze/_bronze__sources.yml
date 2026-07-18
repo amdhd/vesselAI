@@ -1,0 +1,18 @@
+# The bronze layer is NOT a dbt model — it's landed by ingestion/load_bronze.py.
+# Here we only *declare* it as a dbt "source" so silver can reference it with
+# {{ source('bronze', 'ais_positions_raw') }}. This gives us lineage (dbt knows
+# silver depends on bronze) without dbt ever touching the raw data.
+version: 2
+
+sources:
+  - name: bronze
+    schema: bronze
+    description: >
+      Raw AIS position reports, landed exactly as received by
+      ingestion/load_bronze.py. Every column is text (VARCHAR) so nothing is
+      lost or coerced on ingest — cleaning happens downstream in silver.
+    tables:
+      - name: ais_positions_raw
+        description: >
+          One row per raw AIS ping from the NOAA MarineCadastre daily CSV, plus
+          _source_file / _ingested_at provenance columns added by the loader.

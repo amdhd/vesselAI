@@ -1,0 +1,14 @@
+# Connection settings. dbt-duckdb just needs a path to the DuckDB file — the
+# SAME file the Python loader writes bronze into. bronze/silver/gold all live
+# in this one embedded warehouse.
+#
+# NOTE: the path is relative to the dbt/ directory, so run dbt from there:
+#   cd dbt && ../.venv/bin/dbt run --profiles-dir .
+vesselmind:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: ../data/vesselmind.duckdb
+      schema: main        # default schema; silver/gold override via +schema
+      threads: 4

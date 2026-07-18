@@ -1,0 +1,12 @@
+# Dashboard dependencies (Phase 4) — installed in a SEPARATE venv from the
+# pipeline. Streamlit and dbt pin incompatible versions of shared packages
+# (e.g. protobuf 7 vs 6), so keeping them apart avoids a dependency conflict.
+# The dashboard only needs to READ the gold tables, so it needs duckdb, not dbt.
+#
+#   python3.10 -m venv .venv-dashboard
+#   source .venv-dashboard/bin/activate
+#   pip install -r requirements-dashboard.txt
+#   streamlit run dashboard.py
+
+streamlit==1.59.2
+duckdb==1.5.4
