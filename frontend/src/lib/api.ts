@@ -409,6 +409,16 @@ const analyticsHttp = axios.create({
   baseURL: (import.meta.env.VITE_ANALYTICS_API_URL as string) || 'http://localhost:8000',
 })
 
+// The analytics service now verifies the app-issued JWT, so attach the same
+// bearer token the main API client uses.
+analyticsHttp.interceptors.request.use((config) => {
+  const token = localStorage.getItem('vm_token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
 export interface FleetSummary {
   vessels: number
   position_reports: number
