@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { parseAisPositionReport } from '../lib/aisParser';
-
-const prisma = new PrismaClient();
 
 const AIS_URL = 'wss://stream.aisstream.io/v0/stream';
 

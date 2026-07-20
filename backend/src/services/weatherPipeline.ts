@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { fetchObservation, MonitoredPoint } from '../lib/openMeteo';
 import { MARINE_LOCATIONS } from '../lib/marineLocations';
-
-const prisma = new PrismaClient();
 
 export interface SyncSummary {
   startedAt: string;

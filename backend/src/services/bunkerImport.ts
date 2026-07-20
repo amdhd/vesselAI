@@ -1,8 +1,6 @@
 import { z } from 'zod';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { parseCsv } from '../lib/csv';
-
-const prisma = new PrismaClient();
 
 // Header names are matched case-insensitively. sulfurContent is optional.
 const REQUIRED_COLUMNS = ['imonumber', 'date', 'port', 'supplier', 'fuelgrade', 'quantitymt', 'pricepermt'];

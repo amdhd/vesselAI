@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { MOCK_PORTS } from '../mock/ports';
-
-const prisma = new PrismaClient();
 
 // A vessel is treated as "waiting" if it's effectively stationary near a port —
 // either barely moving (SOG below threshold) or reporting an at-anchor / moored
