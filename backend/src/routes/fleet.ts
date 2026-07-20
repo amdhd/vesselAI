@@ -1,12 +1,11 @@
 import { Router, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { MOCK_FLEET } from '../mock/vessels';
 import { MOCK_EQUIPMENT } from '../mock/equipment';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { fleetVessels, requireVessel } from '../lib/tenant';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Vessel/fleet listing is backed by Postgres via Prisma when the database is
 // reachable and seeded. If it isn't (e.g. running the demo without `docker

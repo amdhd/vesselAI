@@ -1,14 +1,13 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { LoginSchema, RegisterSchema } from '../schemas';
 import { JWT_SECRET, JWT_EXPIRES_IN, DEMO_LOGIN_ENABLED } from '../lib/jwtConfig';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Roles a self-service registrant is permitted to request. Privileged roles
 // (e.g. admin) must never be assignable from a public signup payload.
