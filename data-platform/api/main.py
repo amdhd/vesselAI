@@ -53,7 +53,21 @@ def _resolve_jwt_secret() -> str:
     endpoint. In production set JWT_SECRET explicitly to the value tokens are
     signed with; locally it self-resolves from backend/.env.
     """
-    return os.environ.get("JWT_SECRET") or _secret_from_backend_env() or DEV_FALLBACK_SECRET
+    explicit = os.environ.get("JWT_SECRET") or _secret_from_backend_env()
+    if explicit:
+        return explicit
+
+    # No real secret found. Mirror backend/src/lib/jwtConfig.ts, which refuses to
+    # fall back to a hardcoded secret in production — otherwise a prod deploy that
+    # forgot JWT_SECRET (and has no backend/.env alongside it, the normal case for
+    # a separately-deployed service) would verify forged tokens against a
+    # publicly-known value, leaving the analytics data effectively unauthenticated.
+    if os.environ.get("NODE_ENV") == "production":
+        raise RuntimeError(
+            "JWT_SECRET is not set and no backend/.env was found. Refusing to "
+            "start in production with the insecure dev-only fallback secret."
+        )
+    return DEV_FALLBACK_SECRET
 
 
 JWT_SECRET = _resolve_jwt_secret()
