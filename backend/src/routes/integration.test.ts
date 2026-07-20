@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
+import jwt from 'jsonwebtoken';
 import { createApp } from '../app';
+import { JWT_SECRET } from '../lib/jwtConfig';
 
 // Route-integration tests exercise the real Express app end-to-end (auth
 // middleware, validation, tenant scoping, route handlers) through HTTP,
@@ -112,14 +114,37 @@ describe('POST /api/voyage/calculate-speed', () => {
   });
 });
 
-describe('GET /api/ais/positions (pipeline unavailable)', () => {
-  it('degrades to a clean 503 rather than a stack trace when the DB is unreachable', async () => {
-    const token = await demoToken();
+// A valid app-signed token for a user with no fleet — the default state of a
+// self-service registrant (RegisterSchema assigns fleetId: null).
+function noFleetToken(): string {
+  return jwt.sign(
+    { id: 'u-nofleet', email: 'nofleet@x.com', role: 'fleet_manager', name: 'No Fleet', fleetId: null },
+    JWT_SECRET
+  );
+}
+
+describe('GET /api/ais/positions (fleet-membership gate)', () => {
+  it('degrades to a clean 503 for a fleet member when the DB is unreachable', async () => {
+    const token = await demoToken(); // demo user is in fleet-001
     const res = await request(app)
       .get('/api/ais/positions')
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(503);
     expect(res.body.error).toBeTruthy();
+  });
+
+  it('blocks a user with no fleet with 403 (never reaching the AIS data)', async () => {
+    const res = await request(app)
+      .get('/api/ais/positions')
+      .set('Authorization', `Bearer ${noFleetToken()}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('blocks a no-fleet user on the /near variant too', async () => {
+    const res = await request(app)
+      .get('/api/ais/positions/near?lat=3&lon=101')
+      .set('Authorization', `Bearer ${noFleetToken()}`);
+    expect(res.status).toBe(403);
   });
 });
 

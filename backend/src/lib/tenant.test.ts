@@ -8,6 +8,7 @@ import {
   requireVessel,
   resolveFleetVessel,
   requireFleetAccess,
+  requireFleetMembership,
 } from './tenant';
 
 // vessel-001 and vessel-002 belong to fleet-001, vessel-003 also belongs to
@@ -126,6 +127,26 @@ describe('requireFleetAccess', () => {
   it('rejects a caller with no fleet', () => {
     const res = mockRes();
     expect(requireFleetAccess(mockReq(null), res, OWN_FLEET_ID)).toBe(false);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+});
+
+describe('requireFleetMembership', () => {
+  it('allows any caller that belongs to a fleet', () => {
+    const res = mockRes();
+    expect(requireFleetMembership(mockReq(OWN_FLEET_ID), res)).toBe(true);
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('rejects a caller with a null fleet (a self-service registrant)', () => {
+    const res = mockRes();
+    expect(requireFleetMembership(mockReq(null), res)).toBe(false);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it('rejects a caller with no user at all', () => {
+    const res = mockRes();
+    expect(requireFleetMembership(mockReq(undefined), res)).toBe(false);
     expect(res.status).toHaveBeenCalledWith(403);
   });
 });
