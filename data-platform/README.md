@@ -184,6 +184,14 @@ The frontend points at it via `VITE_ANALYTICS_API_URL` (default
 `http://localhost:8000`). Every endpoint is aggregated / top-N, so responses stay
 small no matter how big the raw feed is.
 
+**Auth:** the `/api/analytics/*` endpoints require the same JWT the app issues —
+verified with the shared `JWT_SECRET` (HS256), so a token from the Express
+`/api/auth/login` is accepted here unchanged. Set `JWT_SECRET` to the same value
+the backend signs with (it falls back to the dev-only secret locally). CORS is
+restricted to `ANALYTICS_ALLOWED_ORIGINS` (comma-separated; defaults to the local
+Vite dev + preview ports). `/health` stays open. Auth is covered by
+`api/test_auth.py` (`pip install -r api/requirements.txt httpx pytest && pytest api/test_auth.py`).
+
 ---
 
 ## Layout

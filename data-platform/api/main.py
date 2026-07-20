@@ -12,24 +12,60 @@ Run (from the data-platform/ directory):
     uvicorn api.main:app --port 8000
 """
 
+import os
 from pathlib import Path
 
 import duckdb
-from fastapi import FastAPI, Query
+import jwt
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 DB_PATH = Path(__file__).resolve().parents[1] / "data" / "vesselmind.duckdb"
 
+# Verify the SAME JWT the Express backend issues (HS256, signed with JWT_SECRET),
+# so this service inherits the app's auth instead of being an open data endpoint.
+# The dev fallback mirrors backend/src/lib/jwtConfig.ts so local dev works out of
+# the box; in production set JWT_SECRET to the exact value the API signs tokens with.
+JWT_SECRET = os.environ.get("JWT_SECRET") or "vesselmind-dev-only-insecure-secret"
+
+# Restrict CORS to the app origin(s). Override with ANALYTICS_ALLOWED_ORIGINS
+# (comma-separated) in production; defaults to the local Vite dev + preview ports.
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "ANALYTICS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:4173"
+    ).split(",")
+    if o.strip()
+]
+
 app = FastAPI(title="VesselMind Analytics API", version="1.0.0")
 
-# Dev CORS: let the Vite frontend (any localhost port) call us. In production
-# you'd restrict this to the app's origin and put it behind the same auth/proxy.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["GET"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+_bearer = HTTPBearer(auto_error=False)
+
+
+def require_auth(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> None:
+    """Reject any request without a valid app-issued JWT.
+
+    Runs as a route dependency before the query functions, so an unauthenticated
+    caller never reaches DuckDB. A token minted by the Express /api/auth/login
+    endpoint is accepted here unchanged because both sides share JWT_SECRET.
+    """
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    try:
+        jwt.decode(credentials.credentials, JWT_SECRET, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
 def query(sql: str, params: list | None = None) -> list[dict]:
@@ -52,7 +88,7 @@ def health():
     return {"status": "ok", "db_exists": DB_PATH.exists()}
 
 
-@app.get("/api/analytics/summary")
+@app.get("/api/analytics/summary", dependencies=[Depends(require_auth)])
 def summary():
     """Top-line KPIs for the whole dataset (a single row)."""
     return query(
@@ -68,7 +104,7 @@ def summary():
     )[0]
 
 
-@app.get("/api/analytics/vessel-types")
+@app.get("/api/analytics/vessel-types", dependencies=[Depends(require_auth)])
 def vessel_types():
     """Vessel count by decoded type — for a distribution chart."""
     return query(
@@ -81,7 +117,7 @@ def vessel_types():
     )
 
 
-@app.get("/api/analytics/top-vessels")
+@app.get("/api/analytics/top-vessels", dependencies=[Depends(require_auth)])
 def top_vessels(limit: int = Query(15, ge=1, le=100)):
     """The busiest vessels by estimated distance travelled."""
     return query(
@@ -98,7 +134,7 @@ def top_vessels(limit: int = Query(15, ge=1, le=100)):
     )
 
 
-@app.get("/api/analytics/idling")
+@app.get("/api/analytics/idling", dependencies=[Depends(require_auth)])
 def idling(limit: int = Query(25, ge=1, le=500)):
     """Longest idle episodes (near-zero speed for an extended period)."""
     return query(
