@@ -65,3 +65,17 @@ export function requireFleetAccess(
   }
   return true;
 }
+
+// Require the caller to belong to *some* fleet. Used for operational surfaces
+// that aren't per-vessel-owned records — e.g. the live AIS map, which is public
+// broadcast data scoped to the fleet's operating area rather than data any one
+// fleet owns. A user with no fleet (the default for a self-service registrant)
+// has no operational context — fleetVessels() already returns [] for them
+// everywhere else — so they must not see the operational map either.
+export function requireFleetMembership(req: AuthenticatedRequest, res: Response): boolean {
+  if (!req.user?.fleetId) {
+    res.status(403).json({ error: 'You are not assigned to a fleet' });
+    return false;
+  }
+  return true;
+}
