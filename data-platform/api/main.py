@@ -21,13 +21,42 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-DB_PATH = Path(__file__).resolve().parents[1] / "data" / "vesselmind.duckdb"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DB_PATH = REPO_ROOT / "data-platform" / "data" / "vesselmind.duckdb"
 
-# Verify the SAME JWT the Express backend issues (HS256, signed with JWT_SECRET),
-# so this service inherits the app's auth instead of being an open data endpoint.
-# The dev fallback mirrors backend/src/lib/jwtConfig.ts so local dev works out of
-# the box; in production set JWT_SECRET to the exact value the API signs tokens with.
-JWT_SECRET = os.environ.get("JWT_SECRET") or "vesselmind-dev-only-insecure-secret"
+# The dev-only fallback mirrors backend/src/lib/jwtConfig.ts.
+DEV_FALLBACK_SECRET = "vesselmind-dev-only-insecure-secret"
+
+
+def _secret_from_backend_env() -> str | None:
+    """Read JWT_SECRET out of backend/.env, if that file sets one.
+
+    Lets `uvicorn api.main:app` (any launcher — CLI, launch.json, a script)
+    verify the exact tokens the Express backend signs without the caller having
+    to export the secret first. Env var still wins, so production/CI can override.
+    A tiny hand-rolled parser avoids adding a python-dotenv dependency.
+    """
+    env_path = REPO_ROOT / "backend" / ".env"
+    if not env_path.exists():
+        return None
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if line.startswith("JWT_SECRET="):
+            return line.split("=", 1)[1].strip().strip("'\"") or None
+    return None
+
+
+def _resolve_jwt_secret() -> str:
+    """Env var > backend/.env > dev-only fallback.
+
+    So this service inherits the app's auth instead of being an open data
+    endpoint. In production set JWT_SECRET explicitly to the value tokens are
+    signed with; locally it self-resolves from backend/.env.
+    """
+    return os.environ.get("JWT_SECRET") or _secret_from_backend_env() or DEV_FALLBACK_SECRET
+
+
+JWT_SECRET = _resolve_jwt_secret()
 
 # Restrict CORS to the app origin(s). Override with ANALYTICS_ALLOWED_ORIGINS
 # (comma-separated) in production; defaults to the local Vite dev + preview ports.
