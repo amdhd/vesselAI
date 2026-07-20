@@ -101,7 +101,8 @@ A demo is only useful if you're honest about where the edges are. Here's the act
 | Claude integration (all 6 modules) | Real API calls, real prompts, real streaming — with a canned fallback on failure, flagged via an `X-AI-Fallback` header/field so degraded responses are never silently indistinguishable from real ones |
 | Voyage agent (tool-use loop) | Real — multi-step Claude tool-use with a deterministic physics fallback (`services/voyageAgent.ts`) |
 | Marine weather | **Real — live Open-Meteo Marine ingestion** into Postgres (`services/weatherPipeline.ts`), keyless |
-| AIS vessel positions | **Real — live aisstream.io WebSocket** upserted into Postgres (`services/aisStream.ts`) |
+| AIS vessel positions | **Real — live aisstream.io WebSocket** upserted into Postgres (`services/aisStream.ts`); the operational surface is gated on fleet membership |
+| Fleet Analytics | **Real — a separate DuckDB medallion pipeline** (NOAA batch → bronze/silver/gold, dbt-tested) served by a JWT-secured FastAPI layer (`data-platform/`) |
 | Bunker procurement | **Real — ERP-style CSV import** with per-row validation (`services/bunkerImport.ts`) |
 | Equipment sensor telemetry, SIRE findings, port congestion, voyage history | Fixture data, generated with real-ish statistical variation (trends, noise, seeded anomalies) |
 
@@ -111,11 +112,15 @@ In a real engagement, swapping the remaining fixtures for a customer's SCADA fee
 
 ## Engineering Notes
 
-Two pieces of this codebase's history are worth walking through in an interview more than the feature list is.
+Three pieces of this codebase's history are worth walking through in an interview more than the feature list is.
 
 **Security hardening arc.** An early version had a `demo_token_*` bearer-token prefix that bypassed real JWT verification and granted `fleet_manager` access to anyone who guessed it — added to make demo mode frictionless, and a real vulnerability. I found it, removed it, and followed up with IDOR fixes (a fleet-scoped tenant-isolation helper — `backend/src/lib/tenant.ts` — enforced consistently across every vessel/fleet/equipment route), prompt-injection guardrails on every AI chat surface, and per-user AI rate limiting. The commit history (`a7fc00b` → `5b62621`) is a legible before/after if you want to see the reasoning, not just the diff.
 
 **The contract audit.** After the auth work, I went module-by-module through the live app — not reading code, actually clicking through every tab — and found that roughly a third of the app was silently broken: frontend and backend had drifted apart on API paths, response shapes (arrays wrapped in objects, `camelCase` vs different field names entirely, nested vs flat), and even units (an uppercase `'CRITICAL'` congestion enum on one side, lowercase `'congested'` on the other). Some of it 404'd. Most of it didn't — it just silently rendered `NaN`, blank charts, or crashed the whole React tree with no error boundary to catch it. I fixed each one at its root — reshaping API responses to match real consumer contracts rather than patching around them in the UI — and verified every fix live in a browser, not just by reading the diff. That's the muscle this role actually needs: not "does the code compile," but "does the demo you're about to show a customer actually work."
+
+**Review-driven hardening.** I ran a security-and-quality review over the merged code and fixed what it surfaced, each as its own reviewed PR: a **single shared PrismaClient** (six modules each constructed their own — six connection pools that would exhaust Postgres `max_connections` under load); **JWT auth + a CORS allowlist on the analytics service** (the FastAPI/DuckDB layer was reachable unauthenticated — it now verifies the *same* app-issued token via a shared `JWT_SECRET`); and a **fleet-membership gate on the live AIS map** (a self-service registrant with no fleet could read the operational map even though they see zero vessels everywhere else). Notably, I did **not** strictly per-fleet-scope AIS — it's public broadcast data about every vessel in the operating area, so faking ownership would blank the map; the right fix was to gate the *surface*, not fake the *data*, and to be able to say so.
+
+That review also made the **two-plane data architecture** explicit, which is the part worth drawing on a whiteboard: AIS lives in two stores on purpose — a real-time **operational** store (Postgres `AisVesselPosition`, fed by the aisstream.io live feed, one row per vessel, powers the live map) alongside an **analytical** warehouse (DuckDB medallion pipeline, fed by NOAA batch files, millions of rows → small aggregates, powers the Fleet Analytics page). That's the standard hot-path/cold-path split every real data platform has — operational OLTP next to analytical OLAP — not redundancy.
 
 If you want specifics: `git log --oneline` tells the story in order, and every commit message explains *why*, not just *what*.
 
