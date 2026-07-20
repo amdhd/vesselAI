@@ -177,7 +177,11 @@ Run the API (from `data-platform/`, after building the warehouse with dbt):
 
 ```bash
 pip install -r api/requirements.txt        # into .venv, or its own venv
-uvicorn api.main:app --port 8000
+
+# Start with the SAME JWT_SECRET the backend signs tokens with, or every
+# authenticated request 401s (see the gotcha below).
+JWT_SECRET="$(grep -E '^JWT_SECRET=' ../backend/.env | cut -d= -f2-)" \
+  uvicorn api.main:app --port 8000
 ```
 
 The frontend points at it via `VITE_ANALYTICS_API_URL` (default
@@ -191,6 +195,15 @@ the backend signs with (it falls back to the dev-only secret locally). CORS is
 restricted to `ANALYTICS_ALLOWED_ORIGINS` (comma-separated; defaults to the local
 Vite dev + preview ports). `/health` stays open. Auth is covered by
 `api/test_auth.py` (`pip install -r api/requirements.txt httpx pytest && pytest api/test_auth.py`).
+
+> **Gotcha — "Couldn't reach the analytics API" / everything 401s.** The API
+> defaults to the dev-only fallback secret, but if `backend/.env` sets a real
+> `JWT_SECRET`, tokens the app issues won't verify against the fallback and every
+> `/api/analytics/*` call returns 401 (the Fleet Analytics page then shows the
+> "Couldn't reach the analytics API" banner). Start uvicorn with the **same**
+> `JWT_SECRET` the backend uses — the run command above reads it straight from
+> `backend/.env`. `curl -s localhost:8000/health` confirms the process is up;
+> a 200 there with 401s on the data routes means the secrets don't match.
 
 ---
 
