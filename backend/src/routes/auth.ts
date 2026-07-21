@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { logger } from '../lib/logger';
 import { validate } from '../middleware/validate';
 import { LoginSchema, RegisterSchema } from '../schemas';
 import { JWT_SECRET, JWT_EXPIRES_IN, DEMO_LOGIN_ENABLED } from '../lib/jwtConfig';
@@ -86,7 +87,7 @@ router.post('/login', validate(LoginSchema), async (req: Request, res: Response)
       user: userWithoutPassword,
     });
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error({ err: error }, 'Login error');
     res.status(500).json({ error: 'Authentication failed' });
   }
 });
@@ -136,7 +137,7 @@ router.post('/register', validate(RegisterSchema), async (req: Request, res: Res
       user: userWithoutPassword,
     });
   } catch (error) {
-    console.error('Register error:', error);
+    logger.error({ err: error }, 'Register error');
     res.status(500).json({ error: 'Registration failed' });
   }
 });
@@ -185,7 +186,7 @@ router.get('/me', authenticate, async (req: AuthenticatedRequest, res: Response)
 
     res.json({ user });
   } catch (error) {
-    console.error('Get me error:', error);
+    logger.error({ err: error }, 'Get me error');
     res.status(500).json({ error: 'Failed to fetch user' });
   }
 });

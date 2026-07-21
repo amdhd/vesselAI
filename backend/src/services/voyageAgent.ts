@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
+import { logger } from '../lib/logger';
+import { aiRequestsTotal } from '../lib/metrics';
 import { anthropic, AI_MODEL } from './aiService';
 import { SYSTEM_GUARDRAILS } from '../lib/aiGuard';
 import { computeFuelConsumption, VesselFuelParams } from '../lib/fuelModel';
@@ -310,6 +312,10 @@ export async function runVoyageAgent(
         messages,
         tools: TOOLS,
       });
+      // Each loop iteration is one real model call — count it so the agent's
+      // (multi-call) cost shows up in ai_requests_total alongside the single-call
+      // generateJson endpoints.
+      aiRequestsTotal.inc({ label: 'voyageAgent', outcome: 'success' });
       messages.push({ role: 'assistant', content: resp.content });
 
       if (resp.stop_reason !== 'tool_use') {
@@ -340,7 +346,8 @@ export async function runVoyageAgent(
 
     return { recommendation: 'The agent did not converge within the step limit.', steps: MAX_STEPS, toolCalls, fallback: false, incomplete: true };
   } catch (err) {
-    console.error('[voyage-agent] error, using deterministic fallback:', err instanceof Error ? err.message : err);
+    aiRequestsTotal.inc({ label: 'voyageAgent', outcome: 'error' });
+    logger.warn({ err }, 'voyage-agent error, using deterministic fallback');
     return deterministicPlan(vessel, params);
   }
 }

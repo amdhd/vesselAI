@@ -1,0 +1,76 @@
+# Production-style compose: multi-stage non-root images, migrations run as a
+# one-off before the API starts, secrets supplied from the environment (never
+# defaulted). Bring up with an env file that defines the required secrets:
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# Required in the env file: POSTGRES_PASSWORD, JWT_SECRET (>=32 chars),
+# ANTHROPIC_API_KEY. See backend/.env.example for the full list.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vesselmind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-vesselmind}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-vesselmind}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # One-off: apply migrations against a fresh/updated DB, then exit. Uses the
+  # `build` stage because it still has the Prisma CLI (pruned from runtime).
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+      target: build
+    command: npx prisma migrate deploy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-vesselmind}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-vesselmind}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-vesselmind}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-vesselmind}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required (min 32 chars)}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
+      # Behind the nginx frontend proxy → trust one hop so req.ip is the real client.
+      TRUST_PROXY: '1'
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        # Same-origin: nginx proxies /api to the backend service.
+        VITE_API_URL: /api
+    restart: unless-stopped
+    ports:
+      - '${WEB_PORT:-8080}:8080'
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

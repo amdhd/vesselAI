@@ -7,6 +7,7 @@ import {
 } from '../mock/equipment';
 import { getSensorDataForEquipment } from '../mock/sensorData';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { logger } from '../lib/logger';
 import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
 import { requireVessel, canAccessVessel } from '../lib/tenant';
@@ -275,7 +276,7 @@ Return JSON: {
 }`,
       maxTokens: 1000,
       fallback: mockAnalysis.analysis,
-      onError: (error) => console.error('Anomaly analysis Claude error:', error),
+      onError: (error) => logger.error({ err: error }, 'Anomaly analysis Claude error'),
     });
     res.json({
       equipmentId,
@@ -284,7 +285,7 @@ Return JSON: {
       anomalySummary: mockAnalysis.anomalySummary,
     });
   } catch (error) {
-    console.error('Anomaly analysis error:', error);
+    logger.error({ err: error }, 'Anomaly analysis error');
     res.json(mockAnalysis);
   }
 });

@@ -1,6 +1,9 @@
 import { prisma } from '../lib/prisma';
 import { fetchObservation, MonitoredPoint } from '../lib/openMeteo';
 import { MARINE_LOCATIONS } from '../lib/marineLocations';
+import { childLogger } from '../lib/logger';
+
+const log = childLogger({ mod: 'weather' });
 
 export interface SyncSummary {
   startedAt: string;
@@ -56,7 +59,7 @@ export async function syncWeather(locations: MonitoredPoint[] = MARINE_LOCATIONS
     failed: errors.length,
     errors,
   };
-  console.log('[weather pipeline]', JSON.stringify({ ...summary, errors: errors.length }));
+  log.info({ ...summary, errors: errors.length }, 'weather ingestion run complete');
   return summary;
 }
 

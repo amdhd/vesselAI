@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1
+
+# Production image for the VesselMind web app.
+# Stage 1 builds the static bundle; stage 2 serves it from a non-root nginx.
+
+# ---- build ----
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+# Baked into the bundle at build time. Defaults to same-origin "/api" so the
+# nginx below can reverse-proxy the API (no CORS, no hardcoded backend host).
+ARG VITE_API_URL=/api
+ENV VITE_API_URL=$VITE_API_URL
+RUN npm run build
+
+# ---- runtime: non-root nginx (uid 101, listens on 8080) ----
+FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 8080

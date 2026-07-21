@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { env } from './config/env';
+import { logger } from './lib/logger';
 import { createApp } from './app';
 import { syncWeather } from './services/weatherPipeline';
 import { startAisStream } from './services/aisStream';
@@ -12,7 +14,7 @@ import { startAisStream } from './services/aisStream';
 const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: env.FRONTEND_URL,
     methods: ['GET', 'POST'],
   },
 });
@@ -22,12 +24,12 @@ httpServer.on('request', app);
 
 // Socket.io for real-time vessel tracking
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  logger.debug({ socketId: socket.id }, 'socket client connected');
   socket.on('subscribe:fleet', (fleetId: string) => {
     socket.join(`fleet:${fleetId}`);
   });
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+    logger.debug({ socketId: socket.id }, 'socket client disconnected');
   });
 });
 
@@ -39,25 +41,24 @@ setInterval(() => {
 // Scheduled Open-Meteo Marine ingestion. Off by default; enable with
 // ENABLE_WEATHER_SYNC=true once DATABASE_URL points at a reachable Postgres.
 // Runs once on boot, then on WEATHER_SYNC_INTERVAL_MS (default 15 min).
-if (process.env.ENABLE_WEATHER_SYNC === 'true') {
-  const intervalMs = Number(process.env.WEATHER_SYNC_INTERVAL_MS) || 15 * 60 * 1000;
+if (env.ENABLE_WEATHER_SYNC) {
+  const intervalMs = env.WEATHER_SYNC_INTERVAL_MS;
   const runSync = () => {
-    syncWeather().catch((err) => console.error('[weather] scheduled sync error:', err));
+    syncWeather().catch((err) => logger.error({ err }, 'scheduled weather sync failed'));
   };
   runSync();
   setInterval(runSync, intervalMs);
-  console.log(`[weather] scheduled ingestion every ${Math.round(intervalMs / 1000)}s`);
+  logger.info({ intervalSeconds: Math.round(intervalMs / 1000) }, 'weather ingestion scheduled');
 }
 
 // Live AIS vessel-position streaming from aisstream.io. Off by default; enable
 // with ENABLE_AIS_STREAM=true and a AISSTREAM_API_KEY in the environment.
-if (process.env.ENABLE_AIS_STREAM === 'true') {
-  startAisStream(process.env.AISSTREAM_API_KEY);
+if (env.ENABLE_AIS_STREAM) {
+  startAisStream(env.AISSTREAM_API_KEY);
 }
 
-const PORT = process.env.PORT || 3001;
-httpServer.listen(PORT, () => {
-  console.log(`VesselMind API running on port ${PORT}`);
+httpServer.listen(env.PORT, () => {
+  logger.info({ port: env.PORT, env: env.NODE_ENV }, 'VesselMind API listening');
 });
 
 export { io };

@@ -2,11 +2,15 @@
 // time (aiService constructs the Anthropic client, jwtConfig reads JWT_SECRET).
 // A later dotenv.config() would run after those and leave the values undefined.
 import 'dotenv/config';
-import express, { Application } from 'express';
+import express, { Application, Request, Response } from 'express';
 import helmet from 'helmet';
 import compression from 'compression';
 import cors from 'cors';
+import pinoHttp from 'pino-http';
 import type { Server as SocketIOServer } from 'socket.io';
+import { env } from './config/env';
+import { logger } from './lib/logger';
+import { metricsMiddleware, registry } from './lib/metrics';
 import { apiLimiter, authLimiter } from './middleware/rateLimiter';
 import { errorHandler, notFound } from './middleware/errorHandler';
 import authRoutes from './routes/auth';
@@ -37,7 +41,7 @@ export function createApp(io?: SocketIOServer): Application {
   // reflects the real client for rate limiting. Left OFF by default: trusting
   // X-Forwarded-For when NOT behind a proxy would let clients spoof their IP
   // and bypass IP-based limits. Accepts a hop count or 'true'/'false'.
-  const trustProxyEnv = process.env.TRUST_PROXY;
+  const trustProxyEnv = env.TRUST_PROXY;
   if (trustProxyEnv !== undefined) {
     const asNumber = Number(trustProxyEnv);
     app.set('trust proxy', Number.isNaN(asNumber) ? trustProxyEnv === 'true' : asNumber);
@@ -46,6 +50,36 @@ export function createApp(io?: SocketIOServer): Application {
   }
 
   app.use(helmet());
+
+  // Structured per-request logging (attaches req.log, redacts auth headers via
+  // the logger's redact config). Health/metrics are logged at debug so probes
+  // and scrapes don't flood info-level logs.
+  app.use(
+    pinoHttp({
+      logger,
+      customLogLevel: (req, res, err) => {
+        if (req.url === '/api/health' || req.url === '/metrics') return 'debug';
+        if (res.statusCode >= 500 || err) return 'error';
+        if (res.statusCode >= 400) return 'warn';
+        return 'info';
+      },
+    })
+  );
+
+  // Record request latency into the Prometheus histogram.
+  app.use(metricsMiddleware);
+
+  // Metrics scrape endpoint. Optionally protected with a bearer token — set
+  // METRICS_TOKEN in production so the series aren't world-readable.
+  app.get('/metrics', async (req: Request, res: Response) => {
+    if (env.METRICS_TOKEN && req.headers.authorization !== `Bearer ${env.METRICS_TOKEN}`) {
+      res.status(401).end();
+      return;
+    }
+    res.setHeader('Content-Type', registry.contentType);
+    res.end(await registry.metrics());
+  });
+
   app.use(apiLimiter);
   app.use(compression({
     // Skip SSE streams — compression buffers responses and breaks streaming
@@ -56,7 +90,7 @@ export function createApp(io?: SocketIOServer): Application {
     },
   }));
   app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: env.FRONTEND_URL,
     credentials: true,
   }));
   // Bodies are small JSON payloads (chat messages, form fields). Keep the

@@ -1,6 +1,7 @@
 import { Router, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth';
+import { logger } from '../lib/logger';
 import { importBunkerCsv } from '../services/bunkerImport';
 
 const router = Router();
@@ -37,7 +38,7 @@ router.post(
       }
       res.status(result.imported > 0 ? 201 : 200).json(result);
     } catch (err) {
-      console.error('[import] bunker import failed:', err);
+      logger.error({ err: err }, '[import] bunker import failed');
       res.status(500).json({ error: 'Import failed' });
     }
   }

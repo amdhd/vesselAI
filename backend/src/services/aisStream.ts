@@ -1,5 +1,8 @@
 import { prisma } from '../lib/prisma';
 import { parseAisPositionReport } from '../lib/aisParser';
+import { childLogger } from '../lib/logger';
+
+const log = childLogger({ mod: 'ais' });
 
 const AIS_URL = 'wss://stream.aisstream.io/v0/stream';
 
@@ -50,7 +53,7 @@ async function upsertPosition(raw: unknown): Promise<void> {
 function connect(apiKey: string, boundingBoxes: number[][][]): void {
   const WebSocketImpl = (globalThis as { WebSocket?: WebSocketCtor }).WebSocket;
   if (!WebSocketImpl) {
-    console.error('[ais] no global WebSocket available (needs Node >= 22); stream disabled');
+    log.error('no global WebSocket available (needs Node >= 22); stream disabled');
     return;
   }
 
@@ -64,7 +67,7 @@ function connect(apiKey: string, boundingBoxes: number[][][]): void {
     reconnectDelay = INITIAL_RECONNECT_MS;
     // Subscription payload carries the API key — never log this object.
     ws.send(JSON.stringify({ APIKey: apiKey, BoundingBoxes: boundingBoxes, FilterMessageTypes: ['PositionReport'] }));
-    console.log('[ais] connected and subscribed');
+    log.info('connected and subscribed');
   };
 
   ws.onmessage = (event) => {
@@ -76,16 +79,16 @@ function connect(apiKey: string, boundingBoxes: number[][][]): void {
     } catch {
       return; // ignore non-JSON frames
     }
-    upsertPosition(raw).catch((err) => console.error('[ais] upsert error:', err));
+    upsertPosition(raw).catch((err) => log.error({ err }, 'upsert error'));
   };
 
   ws.onerror = () => {
     // Do not log the error object — it can echo the request/subscription.
-    console.error('[ais] socket error');
+    log.error('socket error');
   };
 
   ws.onclose = () => {
-    console.warn(`[ais] disconnected; reconnecting in ${reconnectDelay}ms`);
+    log.warn({ reconnectMs: reconnectDelay }, 'disconnected; reconnecting');
     setTimeout(() => connect(apiKey, boundingBoxes), reconnectDelay);
     reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_MS);
   };
@@ -94,7 +97,7 @@ function connect(apiKey: string, boundingBoxes: number[][][]): void {
 /** Start the AIS ingestion stream. No-op (with a warning) if the key is missing. */
 export function startAisStream(apiKey: string | undefined, boundingBoxes: number[][][] = DEFAULT_BOUNDING_BOXES): void {
   if (!apiKey) {
-    console.warn('[ais] AISSTREAM_API_KEY not set; stream disabled');
+    log.warn('AISSTREAM_API_KEY not set; stream disabled');
     return;
   }
   connect(apiKey, boundingBoxes);
