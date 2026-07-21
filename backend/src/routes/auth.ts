@@ -27,6 +27,27 @@ function generateToken(user: { id: string; email: string; role: string; fleetId?
   );
 }
 
+// The demo account is honoured on two paths — DB unreachable, and DB reachable
+// but unseeded — so keep the credential check and canned payload in one place.
+const DEMO_USER = {
+  id: 'user-001',
+  email: 'demo@petronas.com',
+  name: 'Captain Ahmad Fauzi',
+  role: 'fleet_manager',
+  fleetId: 'fleet-001',
+} as const;
+
+// If the request carries valid demo credentials (and demo login is enabled),
+// write the token response and return true so the caller can stop. Returns
+// false otherwise, leaving the response untouched.
+function tryDemoLogin(email: string, password: string, res: Response): boolean {
+  if (!DEMO_LOGIN_ENABLED || email !== DEMO_USER.email || password !== 'demo123') {
+    return false;
+  }
+  res.json({ token: generateToken(DEMO_USER), user: DEMO_USER });
+  return true;
+}
+
 // POST /api/auth/login
 router.post('/login', validate(LoginSchema), async (req: Request, res: Response): Promise<void> => {
   try {
@@ -38,37 +59,15 @@ router.post('/login', validate(LoginSchema), async (req: Request, res: Response)
     try {
       user = await prisma.user.findUnique({ where: { email } });
     } catch {
-      // DB not connected - use demo fallback (non-production only)
-      if (DEMO_LOGIN_ENABLED && email === 'demo@petronas.com' && password === 'demo123') {
-        const mockUser = {
-          id: 'user-001',
-          email: 'demo@petronas.com',
-          name: 'Captain Ahmad Fauzi',
-          role: 'fleet_manager',
-          fleetId: 'fleet-001',
-        };
-        const token = generateToken(mockUser);
-        res.json({ token, user: mockUser });
-        return;
-      }
+      // DB not connected — use demo fallback (non-production only)
+      if (tryDemoLogin(email, password, res)) return;
       res.status(503).json({ error: 'Database unavailable. Use demo@petronas.com / demo123' });
       return;
     }
 
     if (!user) {
       // DB connected but not seeded — still allow demo credentials (non-production only)
-      if (DEMO_LOGIN_ENABLED && email === 'demo@petronas.com' && password === 'demo123') {
-        const mockUser = {
-          id: 'user-001',
-          email: 'demo@petronas.com',
-          name: 'Captain Ahmad Fauzi',
-          role: 'fleet_manager',
-          fleetId: 'fleet-001',
-        };
-        const token = generateToken(mockUser);
-        res.json({ token, user: mockUser });
-        return;
-      }
+      if (tryDemoLogin(email, password, res)) return;
       res.status(401).json({ error: 'Invalid email or password' });
       return;
     }
