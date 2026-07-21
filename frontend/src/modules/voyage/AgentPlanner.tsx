@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Bot, Loader2, Wrench, Sparkles, AlertTriangle } from 'lucide-react'
 import { useFleet } from '@/context/FleetContext'
-import { voyageApi, type AgentPlanResult } from '@/lib/api'
+import { voyageApi, type AgentPlanResult, type AgentToolCall } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import ChatMarkdown from '@/components/ui/ChatMarkdown'
 
@@ -77,6 +77,9 @@ export default function AgentPlanner() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<AgentPlanResult | null>(null)
+  // Tool calls accumulated live from the SSE stream, plus the current step tick.
+  const [streamedCalls, setStreamedCalls] = useState<AgentToolCall[]>([])
+  const [activeStep, setActiveStep] = useState(0)
 
   const handleRun = async () => {
     if (!selectedVessel) {
@@ -90,21 +93,67 @@ export default function AgentPlanner() {
     setError('')
     setLoading(true)
     setResult(null)
+    setStreamedCalls([])
+    setActiveStep(0)
+
     try {
-      const plan = await voyageApi.agentPlan({
+      const res = await voyageApi.agentPlanStream({
         vesselId: selectedVessel.id,
         departurePort,
         destinationPort,
         cargoLoad,
         speedPreference,
       })
-      setResult(plan)
+      if (!res.ok || !res.body) {
+        throw new Error(`stream failed (${res.status})`)
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      // Parse SSE frames: each is "data: <json>\n\n"; "[DONE]" ends the stream.
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        let sep: number
+        while ((sep = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, sep).trim()
+          buffer = buffer.slice(sep + 2)
+          if (!frame.startsWith('data:')) continue
+          const payload = frame.slice(5).trim()
+          if (payload === '[DONE]') continue
+
+          const ev = JSON.parse(payload) as
+            | { type: 'model'; step: number }
+            | ({ type: 'tool' } & AgentToolCall)
+            | ({ type: 'done' } & AgentPlanResult)
+            | { type: 'error'; error: string }
+
+          if (ev.type === 'model') {
+            setActiveStep(ev.step)
+          } else if (ev.type === 'tool') {
+            setStreamedCalls((prev) => [...prev, { tool: ev.tool, input: ev.input, output: ev.output }])
+          } else if (ev.type === 'done') {
+            setResult(ev)
+          } else if (ev.type === 'error') {
+            setError(ev.error)
+          }
+        }
+      }
     } catch {
       setError('The agent request failed. Is the backend running?')
     } finally {
       setLoading(false)
+      setActiveStep(0)
     }
   }
+
+  // During the run, render the tools streamed so far; once done, the authoritative
+  // trace from the final event (identical data, reconciled).
+  const traceCalls: AgentToolCall[] = result ? result.toolCalls : streamedCalls
 
   return (
     <div className="space-y-5">
@@ -203,60 +252,69 @@ export default function AgentPlanner() {
         </button>
       </div>
 
-      {/* Result */}
+      {/* Recommendation — appears once the agent converges */}
       {result && (
-        <div className="space-y-4">
-          {/* Recommendation */}
-          <div className="card border-teal-600/60">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-teal-400 flex items-center gap-2">
-                <Sparkles className="w-4 h-4" /> Agent Recommendation
-              </h3>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-[#5c6470] border border-navy-600 px-2 py-0.5 rounded-[2px]">
-                  {result.steps} step{result.steps !== 1 ? 's' : ''} · {result.toolCalls.length} tool calls
-                </span>
-                {result.fallback && (
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-status-amber border border-status-amber/50 px-2 py-0.5 rounded-[2px] flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3" /> Fallback
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="text-[#e2e4e7] text-sm leading-relaxed">
-              <ChatMarkdown content={result.recommendation} />
-            </div>
-          </div>
-
-          {/* Tool-call trace */}
-          <div className="card">
-            <h3 className="font-semibold text-white text-sm mb-4 flex items-center gap-2">
-              <Wrench className="w-4 h-4 text-gray-400" /> Reasoning trace — tools the agent called
+        <div className="card border-teal-600/60">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-teal-400 flex items-center gap-2">
+              <Sparkles className="w-4 h-4" /> Agent Recommendation
             </h3>
-            <ol className="space-y-3">
-              {result.toolCalls.map((call, i) => (
-                <li key={i} className="border border-navy-700 rounded-[2px] overflow-hidden">
-                  <div className="flex items-center gap-2 px-3 py-2 bg-navy-700/40 border-b border-navy-700">
-                    <span className="w-5 h-5 shrink-0 bg-teal-600/20 rounded-[2px] flex items-center justify-center text-[11px] font-mono text-teal-400">
-                      {i + 1}
-                    </span>
-                    <span className="text-[13px] font-semibold text-[#e2e4e7]">{TOOL_LABELS[call.tool] ?? call.tool}</span>
-                    <span className="text-[11px] font-mono text-[#5c6470]">{call.tool}</span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-navy-700">
-                    <div className="p-3.5">
-                      <p className="text-[10px] uppercase tracking-[0.08em] text-[#5c6470] mb-2">Input</p>
-                      <DataView data={call.input} />
-                    </div>
-                    <div className="p-3.5">
-                      <p className="text-[10px] uppercase tracking-[0.08em] text-[#5c6470] mb-2">Output</p>
-                      <DataView data={call.output} />
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ol>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#5c6470] border border-navy-600 px-2 py-0.5 rounded-[2px]">
+                {result.steps} step{result.steps !== 1 ? 's' : ''} · {result.toolCalls.length} tool calls
+              </span>
+              {result.fallback && (
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-status-amber border border-status-amber/50 px-2 py-0.5 rounded-[2px] flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" /> Fallback
+                </span>
+              )}
+            </div>
           </div>
+          <div className="text-[#e2e4e7] text-sm leading-relaxed">
+            <ChatMarkdown content={result.recommendation} />
+          </div>
+        </div>
+      )}
+
+      {/* Reasoning trace — streams in live, then persists after the run */}
+      {(traceCalls.length > 0 || loading) && (
+        <div className="card">
+          <h3 className="font-semibold text-white text-sm mb-4 flex items-center gap-2">
+            <Wrench className="w-4 h-4 text-gray-400" /> Reasoning trace — tools the agent called
+          </h3>
+          <ol className="space-y-3">
+            {traceCalls.map((call, i) => (
+              <li key={i} className="border border-navy-700 rounded-[2px] overflow-hidden animate-in fade-in duration-300">
+                <div className="flex items-center gap-2 px-3 py-2 bg-navy-700/40 border-b border-navy-700">
+                  <span className="w-5 h-5 shrink-0 bg-teal-600/20 rounded-[2px] flex items-center justify-center text-[11px] font-mono text-teal-400">
+                    {i + 1}
+                  </span>
+                  <span className="text-[13px] font-semibold text-[#e2e4e7]">{TOOL_LABELS[call.tool] ?? call.tool}</span>
+                  <span className="text-[11px] font-mono text-[#5c6470]">{call.tool}</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-navy-700">
+                  <div className="p-3.5">
+                    <p className="text-[10px] uppercase tracking-[0.08em] text-[#5c6470] mb-2">Input</p>
+                    <DataView data={call.input} />
+                  </div>
+                  <div className="p-3.5">
+                    <p className="text-[10px] uppercase tracking-[0.08em] text-[#5c6470] mb-2">Output</p>
+                    <DataView data={call.output} />
+                  </div>
+                </div>
+              </li>
+            ))}
+
+            {/* Live "the agent is working" tick while streaming, before the result lands */}
+            {loading && !result && (
+              <li className="flex items-center gap-2 px-3 py-2.5 text-[12.5px] text-[#767d88]">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-400" />
+                {activeStep > 0
+                  ? `Reasoning — step ${activeStep}${traceCalls.length > 0 ? ` · ${traceCalls.length} tool call${traceCalls.length !== 1 ? 's' : ''} so far` : ''}…`
+                  : 'Starting the agent…'}
+              </li>
+            )}
+          </ol>
         </div>
       )}
     </div>
