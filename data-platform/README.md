@@ -180,6 +180,12 @@ pip install -r api/requirements.txt        # into .venv, or its own venv
 uvicorn api.main:app --port 8000
 ```
 
+No `JWT_SECRET` needed for local dev: the API self-resolves it from
+`backend/.env` (env var > `backend/.env` > dev-only fallback), so it verifies the
+exact tokens the backend signs without you exporting anything. In production, set
+`JWT_SECRET` explicitly to override. The whole stack (frontend + backend +
+analytics-api) also starts together via `.claude/launch.json`.
+
 The frontend points at it via `VITE_ANALYTICS_API_URL` (default
 `http://localhost:8000`). Every endpoint is aggregated / top-N, so responses stay
 small no matter how big the raw feed is.
@@ -191,6 +197,16 @@ the backend signs with (it falls back to the dev-only secret locally). CORS is
 restricted to `ANALYTICS_ALLOWED_ORIGINS` (comma-separated; defaults to the local
 Vite dev + preview ports). `/health` stays open. Auth is covered by
 `api/test_auth.py` (`pip install -r api/requirements.txt httpx pytest && pytest api/test_auth.py`).
+
+> **Gotcha — "Couldn't reach the analytics API" / everything 401s.** This means
+> the API is verifying tokens with a *different* `JWT_SECRET` than the backend
+> signs them with: `/health` returns 200 but every `/api/analytics/*` call 401s,
+> and the Fleet Analytics page shows the "Couldn't reach the analytics API"
+> banner. Locally the API self-resolves the secret from `backend/.env`, so this
+> only bites when they genuinely diverge — e.g. an env var overrides it, the API
+> and backend read different `.env` files, or in production where you must set
+> `JWT_SECRET` explicitly on both. Triage: `curl -s localhost:8000/health` (200 =
+> process up); a 200 there with 401s on the data routes means the secrets differ.
 
 ---
 
