@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth';
+import { logger } from '../lib/logger';
 import { syncWeather, getLatestObservations, getObservationsNear } from '../services/weatherPipeline';
 import { fetchObservation } from '../lib/openMeteo';
 import { MARINE_LOCATIONS } from '../lib/marineLocations';
@@ -42,7 +43,7 @@ router.post('/sync', authenticate, requireRole(['fleet_manager']), async (_req: 
     // total failure from a partial run.
     res.status(summary.ingested === 0 && summary.failed > 0 ? 502 : 200).json(summary);
   } catch (err) {
-    console.error('[weather] sync failed:', err);
+    logger.error({ err: err }, '[weather] sync failed');
     res.status(502).json({ error: 'Weather sync failed' });
   }
 });

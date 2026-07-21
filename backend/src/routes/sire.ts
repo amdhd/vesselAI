@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getSireDocumentsByVesselId } from '../mock/sireDocuments';
 import { getFindingsByVesselId, getInspectionsByVesselId, getOpenFindings } from '../mock/findings';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { logger } from '../lib/logger';
 import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
 import { requireVessel, resolveFleetVessel } from '../lib/tenant';
@@ -253,7 +254,7 @@ Return JSON: {
 }`,
     maxTokens: 2000,
     fallback: mockReport,
-    onError: (error) => console.error('SIRE report generation error:', error),
+    onError: (error) => logger.error({ err: error }, 'SIRE report generation error'),
   });
   res.json({
     ...result,
@@ -344,7 +345,7 @@ Respond as the inspector would in an actual inspection — direct, professional,
     system: systemPrompt,
     messages,
     fallbackText: 'I apologize for the interruption. As Inspector Mitchell, I would like to continue reviewing your Oil Record Book. Please have it ready for the next session.',
-    onError: (error) => console.error('Inspector simulation streaming error:', error),
+    onError: (error) => logger.error({ err: error }, 'Inspector simulation streaming error'),
   });
 });
 

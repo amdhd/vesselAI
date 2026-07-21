@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { logger } from '../lib/logger';
 import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
 import { requireVessel, resolveFleetVessel } from '../lib/tenant';
@@ -58,7 +59,7 @@ Vessel specifications:
     system: systemPrompt,
     messages,
     fallbackText: `I apologize, the AI service is temporarily unavailable. For technical questions about ${vessel.name}, please refer to the vessel's onboard documentation or contact the technical superintendent.`,
-    onError: (error) => console.error('Knowledge chat streaming error:', error),
+    onError: (error) => logger.error({ err: error }, 'Knowledge chat streaming error'),
   });
 });
 
@@ -163,7 +164,7 @@ Return JSON: {
 }`,
     maxTokens: 1500,
     fallback: mockReport,
-    onError: (error) => console.error('Defect report generation error:', error),
+    onError: (error) => logger.error({ err: error }, 'Defect report generation error'),
   });
   res.json({
     ...result,
@@ -227,7 +228,7 @@ Parts on Order: ${partsOnOrder || 'None'}
 Return JSON: {"reportText": "full formatted handover report", "summary": "brief 1-2 sentence summary"}`,
     maxTokens: 1500,
     fallback: mockHandover,
-    onError: (error) => console.error('Handover report generation error:', error),
+    onError: (error) => logger.error({ err: error }, 'Handover report generation error'),
   });
   res.json({
     ...result,

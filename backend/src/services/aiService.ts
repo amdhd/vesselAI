@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Response } from 'express';
+import { logger } from '../lib/logger';
+import { aiRequestsTotal } from '../lib/metrics';
 
 export const AI_MODEL = 'claude-sonnet-4-6';
 
@@ -38,17 +40,18 @@ interface AiUsage {
  * response (e.g. a rate-limit error) — nothing to log in that case.
  */
 function logUsage(label: string, usage?: AiUsage | null): void {
+  aiRequestsTotal.inc({ label, outcome: 'success' });
   if (!usage) return;
-  console.log(
-    '[AI usage]',
-    JSON.stringify({
+  logger.info(
+    {
       label,
       model: AI_MODEL,
       input_tokens: usage.input_tokens ?? 0,
       output_tokens: usage.output_tokens ?? 0,
       cache_read_input_tokens: usage.cache_read_input_tokens ?? 0,
       cache_creation_input_tokens: usage.cache_creation_input_tokens ?? 0,
-    })
+    },
+    'ai usage'
   );
 }
 
@@ -61,13 +64,12 @@ function logUsage(label: string, usage?: AiUsage | null): void {
 function classifyAiError(label: string, error: unknown): { rateLimited: boolean; retryAfter?: string } {
   if (error instanceof Anthropic.RateLimitError) {
     const retryAfter = extractRetryAfter(error);
-    console.warn(
-      '[AI rate-limited]',
-      JSON.stringify({ label, model: AI_MODEL, status: error.status, retryAfter: retryAfter ?? null })
-    );
+    aiRequestsTotal.inc({ label, outcome: 'rate_limited' });
+    logger.warn({ label, model: AI_MODEL, status: error.status, retryAfter: retryAfter ?? null }, 'ai rate-limited');
     return { rateLimited: true, retryAfter };
   }
-  console.error(`[AI error] ${label}:`, error);
+  aiRequestsTotal.inc({ label, outcome: 'error' });
+  logger.error({ err: error, label }, 'ai error');
   return { rateLimited: false };
 }
 

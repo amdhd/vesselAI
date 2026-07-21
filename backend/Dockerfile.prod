@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1
+
+# Production image for the VesselMind API.
+# Stages:
+#   deps    — full install + generated Prisma client
+#   build   — compiled TypeScript (retains dev deps incl. the Prisma CLI, so a
+#             migrate one-off can target this stage: `prisma migrate deploy`)
+#   prune   — production-only node_modules (keeps the generated Prisma client)
+#   runtime — slim, non-root final image
+
+# ---- deps ----
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY prisma ./prisma
+RUN npx prisma generate
+
+# ---- build ----
+FROM deps AS build
+COPY . .
+RUN npm run build
+
+# ---- prune (production node_modules only; generated client is preserved) ----
+FROM build AS prune
+RUN npm prune --omit=dev
+
+# ---- runtime: slim, non-root ----
+FROM node:20-alpine AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+
+# dumb-init gives us a real PID 1 that reaps zombies and forwards SIGTERM,
+# so the orchestrator can shut the app down cleanly.
+RUN apk add --no-cache dumb-init
+
+COPY --from=prune /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/package.json ./package.json
+
+# node:alpine ships an unprivileged `node` user — run as it, never as root.
+USER node
+
+EXPOSE 3001
+
+# Liveness probe hits the app's own health endpoint (Node 20 has global fetch).
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3001)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["dumb-init", "node", "dist/server.js"]

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { MOCK_VOYAGES } from '../mock/voyages';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { logger } from '../lib/logger';
 import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
 import { requireVessel, resolveFleetVessel } from '../lib/tenant';
@@ -330,7 +331,7 @@ Provide specific, actionable advice. Reference regulation numbers when relevant 
     system: systemPrompt,
     messages,
     fallbackText: 'I apologize, the AI service is temporarily unavailable. For CII compliance, I recommend reviewing your vessel speed profile and considering weather routing optimization to reduce fuel consumption and improve your carbon intensity rating.',
-    onError: (error) => console.error('Compliance chat streaming error:', error),
+    onError: (error) => logger.error({ err: error }, 'Compliance chat streaming error'),
   });
 });
 

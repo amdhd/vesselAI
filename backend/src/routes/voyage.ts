@@ -3,6 +3,7 @@ import { MOCK_ACTIVE_VOYAGES, getVoyagesByVesselId } from '../mock/voyages';
 import { MOCK_VESSELS } from '../mock/vessels';
 import { MOCK_WEATHER_ROUTES, getRouteWeather } from '../mock/weatherRoutes';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { logger } from '../lib/logger';
 import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
 import { requireVessel, resolveFleetVessel, requireFleetAccess, canAccessVessel } from '../lib/tenant';
@@ -118,7 +119,7 @@ Respond with JSON only (no markdown): {
   "aiRoute": {"distance": number, "fuel": number, "cost": number, "co2": number, "eta": "ISO date string", "savings": number, "costSavings": number, "reasoning": "3-4 sentences explaining the AI recommendation"}
 }`,
     fallback: fallbackCore,
-    onError: (error) => console.error('Route optimization Claude error:', error),
+    onError: (error) => logger.error({ err: error }, 'Route optimization Claude error'),
   });
 
   res.json({
@@ -177,7 +178,7 @@ router.post('/agent-plan/stream', authenticate, aiLimiter, validate(OptimizeRout
     );
     send({ type: 'done', ...plan });
   } catch (err) {
-    console.error('[voyage-agent] stream error:', err instanceof Error ? err.message : err);
+    logger.error({ err }, 'voyage-agent stream error');
     send({ type: 'error', error: 'Agent run failed' });
   }
   res.write('data: [DONE]\n\n');
@@ -311,7 +312,7 @@ Basic ETA: ${etaBasic}
 Return JSON: {"basicEta": "ISO", "aiEta": "ISO", "confidence": number, "factors": ["string"], "recommendation": "string"}`,
     maxTokens: 800,
     fallback: mockEta,
-    onError: (error) => console.error('ETA prediction error:', error),
+    onError: (error) => logger.error({ err: error }, 'ETA prediction error'),
   });
   res.json(result);
 });
@@ -372,7 +373,7 @@ ${additionalInfo ? `Additional info: ${additionalInfo}` : ''}
 Return JSON: {"subject": "string", "body": "string"}`,
     maxTokens: 1000,
     fallback: mockMessage,
-    onError: (error) => console.error('Agent message generation error:', error),
+    onError: (error) => logger.error({ err: error }, 'Agent message generation error'),
   });
   res.json({ ...result, type: messageType, recipient: 'Port Agent' });
 });
