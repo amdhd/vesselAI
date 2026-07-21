@@ -22,6 +22,23 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    services:
+      # Ephemeral Postgres used to prove the migration chain applies cleanly.
+      # The test step deliberately runs WITHOUT DATABASE_URL (see below), so the
+      # service does not need to persist anything between steps.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vesselmind
+          POSTGRES_PASSWORD: vesselmind_secret
+          POSTGRES_DB: vesselmind_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vesselmind"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -36,9 +53,18 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      - name: Apply migrations (validate the migration chain on fresh Postgres)
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://vesselmind:vesselmind_secret@localhost:5432/vesselmind_test
+
       - name: Typecheck
         run: npx tsc --noEmit
 
+      # NOTE: no DATABASE_URL here on purpose. The integration suite exercises
+      # the app's DB-unreachable graceful-degradation paths (503 / demo-cred
+      # fallback), which require Prisma to have no reachable DB. Pointing these
+      # tests at the Postgres service above would flip those assertions.
       - name: Test
         run: npm test
 
