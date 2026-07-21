@@ -241,6 +241,9 @@ router.post('/predict-eta', authenticate, aiLimiter, validate(PredictEtaSchema),
     return;
   }
 
+  // `||` (not `??`) on purpose: a currentSpeed of 0 (stopped vessel) must fall
+  // through to a non-zero planned speed, otherwise the ETA below divides by
+  // zero and produces an invalid date.
   const speed = currentSpeed || voyage.actualSpeed || voyage.plannedSpeed;
   const remainingDistance = voyage.plannedDistance * 0.4; // Estimate 40% remaining
   const remainingHours = remainingDistance / speed;

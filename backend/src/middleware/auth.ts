@@ -35,7 +35,10 @@ export const authenticate = (
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    // Pin the algorithm: tokens are HMAC-signed (jwtConfig uses a symmetric
+    // secret), so only HS256 is ever valid. Restricting the accepted set is
+    // defence-in-depth against algorithm-confusion tricks.
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as JwtPayload;
     req.user = {
       id: decoded.id,
       email: decoded.email,

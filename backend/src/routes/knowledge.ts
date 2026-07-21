@@ -78,11 +78,6 @@ router.post('/upload-document', authenticate, validate(UploadDocumentSchema), (r
     message: 'Document uploaded and queued for indexing. It will be available for AI queries within 5 minutes.',
   };
 
-  // Simulate processing completion after "upload"
-  setTimeout(() => {
-    mockDocument.status = 'indexed';
-  }, 5000);
-
   res.status(201).json(mockDocument);
 });
 
