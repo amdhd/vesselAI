@@ -146,6 +146,44 @@ router.post('/agent-plan', authenticate, aiLimiter, validate(OptimizeRouteSchema
   res.json(plan);
 });
 
+// POST /api/voyage/agent-plan/stream
+// Same agentic planner as /agent-plan, but streams the reasoning trace over SSE:
+// a `model` tick when each step begins, a `tool` event as each tool resolves,
+// then a final `done` event carrying the recommendation + authoritative trace.
+// Lets the UI render tool calls live instead of blocking on the whole ~30s run.
+router.post('/agent-plan/stream', authenticate, aiLimiter, validate(OptimizeRouteSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const { vesselId, departurePort, destinationPort, cargoLoad, speedPreference } = req.body;
+  // Validate + tenant-resolve BEFORE switching to SSE, so failures are clean JSON.
+  if (!departurePort || !destinationPort) {
+    res.status(400).json({ error: 'departurePort and destinationPort are required' });
+    return;
+  }
+  const vessel = resolveFleetVessel(req, vesselId);
+  if (!vessel) {
+    res.status(403).json({ error: 'No accessible vessel for your fleet' });
+    return;
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  const send = (event: unknown) => res.write(`data: ${JSON.stringify(event)}\n\n`);
+
+  try {
+    const plan = await runVoyageAgent(
+      vessel as AgentVessel,
+      { departurePort, destinationPort, cargoLoad, speedPreference },
+      (ev) => send(ev)
+    );
+    send({ type: 'done', ...plan });
+  } catch (err) {
+    console.error('[voyage-agent] stream error:', err instanceof Error ? err.message : err);
+    send({ type: 'error', error: 'Agent run failed' });
+  }
+  res.write('data: [DONE]\n\n');
+  res.end();
+});
+
 // GET /api/voyage/history/:vesselId
 router.get('/history/:vesselId', authenticate, (req: AuthenticatedRequest, res: Response) => {
   const { vesselId } = req.params;

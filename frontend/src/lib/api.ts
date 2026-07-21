@@ -141,6 +141,31 @@ export const voyageApi = {
     })
     return data
   },
+  // Streaming variant of agentPlan — returns the raw fetch Response so the
+  // caller can read the SSE reasoning trace (tool events) as it happens.
+  agentPlanStream: (params: {
+    vesselId?: string
+    departurePort: string
+    destinationPort: string
+    cargoLoad?: number
+    speedPreference: 'eco' | 'normal' | 'fast'
+  }) => {
+    const token = localStorage.getItem('vm_token')
+    return fetch(`${BASE_URL}/voyage/agent-plan/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        vesselId: params.vesselId,
+        departurePort: params.departurePort,
+        destinationPort: params.destinationPort,
+        cargoLoad: params.cargoLoad,
+        speedPreference: SPEED_PREFERENCE_TO_BACKEND[params.speedPreference],
+      }),
+    })
+  },
   getHistory: async (vesselId: string): Promise<VoyageHistoryRecord[]> => {
     const { data } = await api.get<VoyageHistoryRecord[]>(`/voyage/history/${vesselId}`)
     return data

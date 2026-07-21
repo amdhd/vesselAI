@@ -44,6 +44,12 @@ export interface AgentPlan {
   incomplete?: boolean;
 }
 
+// Progress events emitted live as the agent works, so a caller (e.g. an SSE
+// endpoint) can stream the reasoning trace instead of blocking for the whole run.
+export type AgentStreamEvent =
+  | { type: 'model'; step: number } // a model turn started (a "thinking" tick)
+  | { type: 'tool'; index: number; tool: string; input: unknown; output: unknown };
+
 // ── Port geo lookup ───────────────────────────────────────────────────────────
 interface PortCoords {
   name: string;
@@ -271,7 +277,11 @@ export function deterministicPlan(vessel: AgentVessel, params: AgentParams): Age
  * multiple steps, then returns a recommendation plus the full tool-call trace.
  * Falls back to a deterministic plan on any API failure.
  */
-export async function runVoyageAgent(vessel: AgentVessel, params: AgentParams): Promise<AgentPlan> {
+export async function runVoyageAgent(
+  vessel: AgentVessel,
+  params: AgentParams,
+  onEvent?: (ev: AgentStreamEvent) => void
+): Promise<AgentPlan> {
   const ctx: ToolContext = { vessel };
 
   const system =
@@ -292,6 +302,7 @@ export async function runVoyageAgent(vessel: AgentVessel, params: AgentParams): 
 
   try {
     for (let step = 1; step <= MAX_STEPS; step++) {
+      onEvent?.({ type: 'model', step });
       const resp = await anthropic.messages.create({
         model: AI_MODEL,
         max_tokens: 2048,
@@ -320,6 +331,7 @@ export async function runVoyageAgent(vessel: AgentVessel, params: AgentParams): 
             output = { error: err instanceof Error ? err.message : 'tool execution failed' };
           }
           toolCalls.push({ tool: block.name, input: block.input, output });
+          onEvent?.({ type: 'tool', index: toolCalls.length, tool: block.name, input: block.input, output });
           results.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(output) });
         }
       }
