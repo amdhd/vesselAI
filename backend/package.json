@@ -9,7 +9,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "ts-node prisma/seed.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval:agent": "ts-node evals/run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
