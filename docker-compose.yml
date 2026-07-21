@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -25,7 +23,10 @@ services:
     container_name: vesselmind-api
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-vesselmind}:${POSTGRES_PASSWORD:-vesselmind_secret}@postgres:5432/${POSTGRES_DB:-vesselmind}
-      JWT_SECRET: ${JWT_SECRET:-change_me_in_production}
+      # Dev-only default is >=32 chars so jwtConfig.ts actually accepts it
+      # (shorter values are rejected and silently fall back to the dev secret).
+      # Override with a real secret in any non-local environment.
+      JWT_SECRET: ${JWT_SECRET:-vesselmind-dev-only-insecure-secret-change-me}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       PORT: 3001

@@ -5,10 +5,20 @@ on:
     branches: [main]
   pull_request:
 
+# Least-privilege default token: this pipeline only needs to read the repo.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref (e.g. rapid pushes to a PR).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: Backend — typecheck + test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: backend
@@ -35,6 +45,7 @@ jobs:
   frontend:
     name: Frontend — typecheck + test + build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: frontend
