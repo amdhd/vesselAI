@@ -1,0 +1,79 @@
+<section class="page">
+  <div class="page-head">
+    <div>
+      <h2>Fleet Vessels</h2>
+      <p class="sub">{{ sorted().length }} vessel(s) matching current filters</p>
+    </div>
+    <a routerLink="/vessels/new" class="btn btn-primary">+ New vessel</a>
+  </div>
+
+  <!-- Toolbar: server-side search + client-side filters -->
+  <div class="toolbar">
+    <div class="search">
+      <span class="search-icon">🔍</span>
+      <!-- [formControl] binds this input to the RxJS-driven FormControl. -->
+      <input [formControl]="search" type="search" placeholder="Search name, IMO, type, flag…" />
+      @if (loading()) { <span class="spinner" aria-label="Loading"></span> }
+    </div>
+
+    <label class="filter">
+      <span>Status</span>
+      <select (change)="onStatusFilter($any($event.target).value)">
+        <option value="all">All</option>
+        @for (s of statuses(); track s) { <option [value]="s">{{ s }}</option> }
+      </select>
+    </label>
+
+    <label class="filter">
+      <span>Type</span>
+      <select (change)="onTypeFilter($any($event.target).value)">
+        <option value="all">All</option>
+        @for (t of types(); track t) { <option [value]="t">{{ t }}</option> }
+      </select>
+    </label>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <!-- Clicking a header toggles sort on that column. The ▲/▼ shows the
+               active column + direction. -->
+          <th (click)="toggleSort('name')" class="sortable">Name @if (sortKey()==='name') {<i>{{ sortDir()==='asc' ? '▲':'▼' }}</i>}</th>
+          <th>IMO</th>
+          <th (click)="toggleSort('type')" class="sortable">Type @if (sortKey()==='type') {<i>{{ sortDir()==='asc' ? '▲':'▼' }}</i>}</th>
+          <th (click)="toggleSort('flag')" class="sortable">Flag @if (sortKey()==='flag') {<i>{{ sortDir()==='asc' ? '▲':'▼' }}</i>}</th>
+          <th (click)="toggleSort('builtYear')" class="sortable num">Built @if (sortKey()==='builtYear') {<i>{{ sortDir()==='asc' ? '▲':'▼' }}</i>}</th>
+          <th (click)="toggleSort('dwt')" class="sortable num">DWT @if (sortKey()==='dwt') {<i>{{ sortDir()==='asc' ? '▲':'▼' }}</i>}</th>
+          <th (click)="toggleSort('currentSpeed')" class="sortable num">Speed @if (sortKey()==='currentSpeed') {<i>{{ sortDir()==='asc' ? '▲':'▼' }}</i>}</th>
+          <th (click)="toggleSort('status')" class="sortable">Status @if (sortKey()==='status') {<i>{{ sortDir()==='asc' ? '▲':'▼' }}</i>}</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (v of pageRows(); track v.id) {
+          <tr>
+            <td class="strong">{{ v.name }}</td>
+            <td class="mono">{{ v.imoNumber }}</td>
+            <td>{{ v.type }}</td>
+            <td>{{ v.flag }}</td>
+            <td class="num">{{ v.builtYear }}</td>
+            <td class="num">{{ v.dwt | number }}</td>
+            <td class="num">{{ v.currentSpeed | number:'1.1-1' }} kn</td>
+            <td><span class="pill pill-{{ v.status }}">{{ v.status.replace('_', ' ') }}</span></td>
+            <td><a [routerLink]="['/vessels', v.id, 'edit']" class="edit-link">Edit</a></td>
+          </tr>
+        } @empty {
+          <tr><td colspan="9" class="empty">No vessels match your search.</td></tr>
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  <div class="pager">
+    <button class="btn btn-ghost" (click)="prevPage()" [disabled]="page() === 1">‹ Prev</button>
+    <span class="page-label">Page {{ page() }} of {{ totalPages() }}</span>
+    <button class="btn btn-ghost" (click)="nextPage()" [disabled]="page() === totalPages()">Next ›</button>
+  </div>
+</section>
