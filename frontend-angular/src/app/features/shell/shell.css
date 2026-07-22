@@ -1,0 +1,48 @@
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0 1.5rem;
+  height: 60px;
+  background: var(--navy-800);
+  color: #fff;
+  box-shadow: var(--shadow-md);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.brand { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; }
+.brand .logo { font-size: 1.3rem; }
+.brand .name { font-size: 1.05rem; }
+.brand .env {
+  font-size: 0.65rem;
+  background: var(--teal-600);
+  padding: 0.1rem 0.4rem;
+  border-radius: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.nav { display: flex; gap: 0.4rem; margin-left: 0.5rem; }
+.nav a {
+  color: #cdd8e3;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.nav a:hover { background: rgba(255, 255, 255, 0.08); text-decoration: none; }
+.nav a.active { background: var(--teal-600); color: #fff; }
+
+.user { margin-left: auto; display: flex; align-items: center; gap: 1rem; }
+.who { display: flex; flex-direction: column; line-height: 1.15; text-align: right; }
+.uname { font-size: 0.85rem; font-weight: 600; }
+.urole { font-size: 0.72rem; color: #9fb0c2; text-transform: capitalize; }
+
+.content { max-width: 1200px; margin: 0 auto; padding: 1.75rem 1.5rem; }
+
+@media (max-width: 620px) {
+  .topbar { gap: 0.75rem; padding: 0 0.85rem; }
+  .who { display: none; }
+  .brand .name { display: none; }
+}

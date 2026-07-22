@@ -29,6 +29,53 @@ export const RegisterSchema = z.object({
   role: z.string().max(50).optional(),
 });
 
+// ── Vessels ──────────────────────────────────────────────────────────────────
+// Create/update payloads for the vessel CRUD surface consumed by the Angular
+// ops dashboard's reactive form. fleetId is intentionally NOT accepted: the new
+// vessel is always scoped to the caller's own fleet (see routes/fleet.ts), so a
+// client cannot inject a vessel into another tenant's fleet.
+export const VesselCreateSchema = z.object({
+  name: z.string().min(1).max(120),
+  imoNumber: z.string().regex(/^\d{7}$/, 'IMO number must be exactly 7 digits'),
+  type: z.string().min(1).max(80),
+  flag: z.string().min(1).max(80),
+  builtYear: z.number().int().min(1950).max(new Date().getFullYear() + 1),
+  dwt: z.number().min(0).max(1_000_000),
+  engineType: z.string().max(120).optional().default(''),
+  enginePower: z.number().min(0).max(200_000).optional().default(0),
+  maxSpeed: z.number().min(0).max(40),
+  designSpeed: z.number().min(0).max(40),
+  fuelCapacity: z.number().min(0).max(50_000).optional().default(0),
+  status: z.string().max(40).optional().default('active'),
+})
+  // Cross-field rule mirrored on the client as a custom Angular group validator:
+  // a vessel's economical design speed can never exceed its maximum speed.
+  .refine((v) => v.designSpeed <= v.maxSpeed, {
+    message: 'designSpeed cannot exceed maxSpeed',
+    path: ['designSpeed'],
+  });
+
+// All fields optional for a partial edit (PATCH). We re-check the speed rule
+// only when both values are present in the patch.
+export const VesselUpdateSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  imoNumber: z.string().regex(/^\d{7}$/, 'IMO number must be exactly 7 digits').optional(),
+  type: z.string().min(1).max(80).optional(),
+  flag: z.string().min(1).max(80).optional(),
+  builtYear: z.number().int().min(1950).max(new Date().getFullYear() + 1).optional(),
+  dwt: z.number().min(0).max(1_000_000).optional(),
+  engineType: z.string().max(120).optional(),
+  enginePower: z.number().min(0).max(200_000).optional(),
+  maxSpeed: z.number().min(0).max(40).optional(),
+  designSpeed: z.number().min(0).max(40).optional(),
+  fuelCapacity: z.number().min(0).max(50_000).optional(),
+  status: z.string().max(40).optional(),
+})
+  .refine((v) => v.maxSpeed === undefined || v.designSpeed === undefined || v.designSpeed <= v.maxSpeed, {
+    message: 'designSpeed cannot exceed maxSpeed',
+    path: ['designSpeed'],
+  });
+
 // ── Voyage ───────────────────────────────────────────────────────────────────
 export const OptimizeRouteSchema = z.object({
   vesselId: z.string().max(50).optional(),

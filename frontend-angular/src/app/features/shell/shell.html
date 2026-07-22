@@ -1,0 +1,29 @@
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">⚓</span>
+    <span class="name">VesselMind</span>
+    <span class="env">Ops</span>
+  </div>
+
+  <nav class="nav">
+    <!-- routerLinkActive adds the "active" class to whichever link matches the
+         current URL; [routerLinkActiveOptions] makes dashboard match exactly. -->
+    <a routerLink="/dashboard" routerLinkActive="active">Dashboard</a>
+    <a routerLink="/vessels" routerLinkActive="active">Vessels</a>
+  </nav>
+
+  <div class="user">
+    @if (user(); as u) {
+      <div class="who">
+        <span class="uname">{{ u.name }}</span>
+        <span class="urole">{{ u.role }}</span>
+      </div>
+    }
+    <button class="btn btn-ghost" (click)="logout()">Sign out</button>
+  </div>
+</header>
+
+<main class="content">
+  <!-- Child routes (dashboard / vessels / form) render here. -->
+  <router-outlet />
+</main>
