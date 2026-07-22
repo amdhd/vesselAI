@@ -1,0 +1,41 @@
+<!--
+  `[formGroup]` binds this <form> to the reactive form model in the component;
+  `formControlName` links each input to a control. `(ngSubmit)` fires the
+  submit() handler. The @if blocks show validation messages, but only once the
+  control has been touched — so the user isn't scolded before they've typed.
+-->
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="brand">
+      <span class="logo">⚓</span>
+      <div>
+        <h1>VesselMind</h1>
+        <p class="tagline">Fleet Operations Dashboard</p>
+      </div>
+    </div>
+
+    <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+      <label class="field">
+        <span>Email</span>
+        <input type="email" formControlName="email" autocomplete="username" placeholder="you@fleet.com" />
+        @if (form.controls.email.touched && form.controls.email.invalid) {
+          <small class="err">Enter a valid email address.</small>
+        }
+      </label>
+
+      <label class="field">
+        <span>Password</span>
+        <input type="password" formControlName="password" autocomplete="current-password" placeholder="••••••••" />
+        @if (form.controls.password.touched && form.controls.password.invalid) {
+          <small class="err">Password is required.</small>
+        }
+      </label>
+
+      <button type="submit" class="btn btn-primary block" [disabled]="submitting()">
+        {{ submitting() ? 'Signing in…' : 'Sign in' }}
+      </button>
+    </form>
+
+    <p class="demo-hint">Demo account: <code>demo&#64;petronas.com</code> / <code>demo123</code></p>
+  </div>
+</div>

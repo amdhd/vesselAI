@@ -1,0 +1,54 @@
+<section class="page">
+  <div class="page-head">
+    <div>
+      <h2>Fleet Overview</h2>
+      <p class="sub">Live operational summary across the fleet</p>
+    </div>
+    <a routerLink="/vessels" class="btn btn-ghost">View all vessels →</a>
+  </div>
+
+  <!-- KPI cards. Each value is a computed() signal, called as a function. -->
+  <div class="cards">
+    <div class="card kpi">
+      <span class="kpi-label">Total vessels</span>
+      <span class="kpi-value">{{ total() }}</span>
+    </div>
+    <div class="card kpi">
+      <span class="kpi-label">Underway</span>
+      <span class="kpi-value teal">{{ underway() }}</span>
+      <span class="kpi-foot">{{ idle() }} stationary</span>
+    </div>
+    <div class="card kpi">
+      <span class="kpi-label">Avg speed (underway)</span>
+      <span class="kpi-value">{{ avgSpeedUnderway() | number:'1.1-1' }}<small> kn</small></span>
+    </div>
+    <div class="card kpi">
+      <span class="kpi-label">Total deadweight</span>
+      <span class="kpi-value">{{ totalDwt() | number }}<small> t</small></span>
+    </div>
+  </div>
+
+  <div class="cards two">
+    <div class="card">
+      <h3>By status</h3>
+      @for (row of byStatus(); track row.key) {
+        <div class="bar-row">
+          <span class="bar-label"><span class="pill pill-{{ row.key }}">{{ row.key.replace('_',' ') }}</span></span>
+          <div class="bar-track"><div class="bar-fill status-{{ row.key }}" [style.width.%]="barPct(row.count)"></div></div>
+          <span class="bar-count">{{ row.count }}</span>
+        </div>
+      }
+    </div>
+
+    <div class="card">
+      <h3>By type</h3>
+      @for (row of byType(); track row.key) {
+        <div class="bar-row">
+          <span class="bar-label type">{{ row.key }}</span>
+          <div class="bar-track"><div class="bar-fill teal" [style.width.%]="barPct(row.count)"></div></div>
+          <span class="bar-count">{{ row.count }}</span>
+        </div>
+      }
+    </div>
+  </div>
+</section>

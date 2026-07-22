@@ -1,0 +1,80 @@
+/* ---------------------------------------------------------------------------
+   Global design tokens + a few element resets. Component-specific styling lives
+   in each component's own .css file (Angular scopes those styles to the
+   component via view encapsulation), so this file only holds things that are
+   genuinely global: CSS custom properties, typography, and base element resets.
+   --------------------------------------------------------------------------- */
+:root {
+  --navy-900: #0b1f33;
+  --navy-800: #12324f;
+  --navy-700: #1b4568;
+  --teal-500: #17a2b8;
+  --teal-600: #128199;
+  --slate-50: #f5f7fa;
+  --slate-100: #e9eef3;
+  --slate-200: #d5dde5;
+  --slate-400: #94a3b8;
+  --slate-600: #556374;
+  --slate-800: #24313f;
+  --green-500: #1f9d55;
+  --amber-500: #d97706;
+  --red-500: #dc2626;
+  --blue-500: #2563eb;
+  --shadow-sm: 0 1px 2px rgba(11, 31, 51, 0.08);
+  --shadow-md: 0 4px 14px rgba(11, 31, 51, 0.10);
+  --radius: 10px;
+  --font: 'Segoe UI', system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: var(--font);
+  color: var(--slate-800);
+  background: var(--slate-50);
+}
+
+h1, h2, h3 { color: var(--navy-800); margin: 0 0 0.5rem; }
+
+a { color: var(--teal-600); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button { font-family: inherit; }
+
+/* Shared button styles used across the login form, table and reactive form. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.btn-primary { background: var(--teal-600); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--teal-500); }
+.btn-ghost { background: #fff; color: var(--navy-800); border-color: var(--slate-200); }
+.btn-ghost:hover:not(:disabled) { background: var(--slate-100); }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Status pills — colour maps to a vessel's operational status. */
+.pill {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: capitalize;
+  letter-spacing: 0.02em;
+}
+.pill-active { background: #e3f6ec; color: var(--green-500); }
+.pill-in_transit { background: #e5efff; color: var(--blue-500); }
+.pill-anchored { background: #fdf0dc; color: var(--amber-500); }
+.pill-maintenance { background: #fde8e8; color: var(--red-500); }
+.pill-idle { background: var(--slate-100); color: var(--slate-600); }
