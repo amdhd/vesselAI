@@ -1,0 +1,99 @@
+<section class="page">
+  <div class="form-head">
+    <h2>{{ heading() }}</h2>
+    <a routerLink="/vessels" class="btn btn-ghost">← Back to list</a>
+  </div>
+
+  <form [formGroup]="form" (ngSubmit)="submit()" novalidate class="card">
+    <div class="grid">
+      <label class="field span2">
+        <span>Vessel name *</span>
+        <input formControlName="name" placeholder="MV Merdeka Spirit" />
+        @if (showError('name', 'required')) { <small class="err">Name is required.</small> }
+      </label>
+
+      <label class="field">
+        <span>IMO number *</span>
+        <input formControlName="imoNumber" placeholder="9876543" inputmode="numeric" />
+        @if (showError('imoNumber', 'required')) { <small class="err">IMO number is required.</small> }
+        @if (showError('imoNumber', 'pattern')) { <small class="err">Must be exactly 7 digits.</small> }
+      </label>
+
+      <label class="field">
+        <span>Flag state *</span>
+        <input formControlName="flag" placeholder="Malaysia" />
+        @if (showError('flag', 'required')) { <small class="err">Flag is required.</small> }
+      </label>
+
+      <label class="field">
+        <span>Type *</span>
+        <select formControlName="type">
+          <option value="" disabled>Select a type…</option>
+          @for (t of types; track t) { <option [value]="t">{{ t }}</option> }
+        </select>
+        @if (showError('type', 'required')) { <small class="err">Type is required.</small> }
+      </label>
+
+      <label class="field">
+        <span>Status *</span>
+        <select formControlName="status">
+          @for (s of statuses; track s) { <option [value]="s">{{ s.replace('_', ' ') }}</option> }
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Built year *</span>
+        <input type="number" formControlName="builtYear" placeholder="2018" />
+        @if (showError('builtYear', 'required')) { <small class="err">Built year is required.</small> }
+        @if (showError('builtYear', 'builtYearRange')) {
+          <small class="err">Enter a year between 1950 and {{ maxYear }}.</small>
+        }
+      </label>
+
+      <label class="field">
+        <span>DWT (tonnes) *</span>
+        <input type="number" formControlName="dwt" placeholder="300000" />
+        @if (showError('dwt', 'required')) { <small class="err">DWT is required.</small> }
+        @if (showError('dwt', 'min')) { <small class="err">Must be zero or more.</small> }
+      </label>
+
+      <label class="field">
+        <span>Max speed (kn) *</span>
+        <input type="number" formControlName="maxSpeed" step="0.1" placeholder="16.5" />
+        @if (showError('maxSpeed', 'required')) { <small class="err">Max speed is required.</small> }
+      </label>
+
+      <label class="field">
+        <span>Design speed (kn) *</span>
+        <input type="number" formControlName="designSpeed" step="0.1" placeholder="14.0" />
+        @if (showError('designSpeed', 'required')) { <small class="err">Design speed is required.</small> }
+        <!-- This message comes from the cross-field group validator. -->
+        @if (showError('designSpeed', 'designAboveMax')) {
+          <small class="err">Design speed can't exceed max speed.</small>
+        }
+      </label>
+
+      <label class="field">
+        <span>Engine type</span>
+        <input formControlName="engineType" placeholder="MAN B&amp;W 6G80ME-C" />
+      </label>
+
+      <label class="field">
+        <span>Engine power (kW)</span>
+        <input type="number" formControlName="enginePower" placeholder="31640" />
+      </label>
+
+      <label class="field">
+        <span>Fuel capacity (t)</span>
+        <input type="number" formControlName="fuelCapacity" placeholder="8500" />
+      </label>
+    </div>
+
+    <div class="actions">
+      <a routerLink="/vessels" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-primary" [disabled]="saving()">
+        {{ saving() ? 'Saving…' : (isEdit ? 'Save changes' : 'Create vessel') }}
+      </button>
+    </div>
+  </form>
+</section>
