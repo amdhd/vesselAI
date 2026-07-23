@@ -1,18 +1,18 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState } from 'react'
 import { Bot, Loader2, Wrench, Sparkles, AlertTriangle } from 'lucide-react'
 import { useFleet } from '@/context/FleetContext'
 import { voyageApi, type AgentPlanResult, type AgentToolCall } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import ChatMarkdown from '@/components/ui/ChatMarkdown'
+import { usePersistentVesselState } from '@/hooks/usePersistentVesselState'
 
 const PORTS = ['Singapore', 'Fujairah', 'Port Klang', 'Kerteh', 'Rotterdam', 'Ras Tanura', 'Bintulu']
 
 type SpeedPref = 'eco' | 'normal' | 'fast'
 
-// The planner's inputs + last recommendation are persisted per vessel to
-// localStorage, so switching Voyage tabs (which unmounts this component) or a
-// full reload doesn't lose the agent's result. Transient run state (loading,
-// live stream, errors) is intentionally not persisted.
+// The planner's inputs + last recommendation are persisted per vessel (so
+// switching Voyage tabs or reloading doesn't lose the agent's result); transient
+// run state (loading, live stream, errors) is deliberately kept out of it.
 interface AgentSnapshot {
   departurePort: string
   destinationPort: string
@@ -21,16 +21,12 @@ interface AgentSnapshot {
   result: AgentPlanResult | null
 }
 
-const STORAGE_PREFIX = 'vm_voyage_agent_'
-const storageKeyFor = (vesselId?: string) => `${STORAGE_PREFIX}${vesselId || 'default'}`
-
-function loadSnapshot(key: string): AgentSnapshot | null {
-  try {
-    const raw = localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as AgentSnapshot) : null
-  } catch {
-    return null
-  }
+const DEFAULT_SNAPSHOT: AgentSnapshot = {
+  departurePort: 'Kerteh',
+  destinationPort: 'Singapore',
+  cargoLoad: 75,
+  speedPreference: 'eco',
+  result: null,
 }
 
 const SPEED_OPTIONS = [
@@ -96,49 +92,21 @@ function DataView({ data }: { data: unknown }) {
 
 export default function AgentPlanner() {
   const { selectedVessel } = useFleet()
-  const storageKey = storageKeyFor(selectedVessel?.id)
-  // Lazy initializers hydrate the inputs + last result from localStorage on mount.
-  const [departurePort, setDeparturePort] = useState(() => loadSnapshot(storageKey)?.departurePort ?? 'Kerteh')
-  const [destinationPort, setDestinationPort] = useState(() => loadSnapshot(storageKey)?.destinationPort ?? 'Singapore')
-  const [cargoLoad, setCargoLoad] = useState(() => loadSnapshot(storageKey)?.cargoLoad ?? 75)
-  const [speedPreference, setSpeedPreference] = useState<SpeedPref>(() => loadSnapshot(storageKey)?.speedPreference ?? 'eco')
+  // Inputs + last recommendation persist per vessel; `patchSnapshot` updates one
+  // or more fields at a time. Transient run state below is not persisted.
+  const [snapshot, setSnapshot] = usePersistentVesselState<AgentSnapshot>(
+    'vm_voyage_agent_',
+    selectedVessel?.id,
+    DEFAULT_SNAPSHOT,
+  )
+  const { departurePort, destinationPort, cargoLoad, speedPreference, result } = snapshot
+  const patchSnapshot = (patch: Partial<AgentSnapshot>) => setSnapshot((s) => ({ ...s, ...patch }))
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [result, setResult] = useState<AgentPlanResult | null>(() => loadSnapshot(storageKey)?.result ?? null)
   // Tool calls accumulated live from the SSE stream, plus the current step tick.
   const [streamedCalls, setStreamedCalls] = useState<AgentToolCall[]>([])
   const [activeStep, setActiveStep] = useState(0)
-  // Skip one save right after a vessel switch reloads that vessel's snapshot.
-  const skipNextSaveRef = useRef(false)
-
-  // Reload the selected vessel's saved inputs + result whenever the vessel changes.
-  useEffect(() => {
-    skipNextSaveRef.current = true
-    const snap = loadSnapshot(storageKey)
-    setDeparturePort(snap?.departurePort ?? 'Kerteh')
-    setDestinationPort(snap?.destinationPort ?? 'Singapore')
-    setCargoLoad(snap?.cargoLoad ?? 75)
-    setSpeedPreference(snap?.speedPreference ?? 'eco')
-    setResult(snap?.result ?? null)
-    setStreamedCalls([])
-    setError('')
-  }, [storageKey])
-
-  // Persist inputs + the final recommendation on change.
-  useEffect(() => {
-    if (skipNextSaveRef.current) {
-      skipNextSaveRef.current = false
-      return
-    }
-    try {
-      localStorage.setItem(
-        storageKey,
-        JSON.stringify({ departurePort, destinationPort, cargoLoad, speedPreference, result }),
-      )
-    } catch {
-      /* localStorage full/unavailable — non-fatal */
-    }
-  }, [departurePort, destinationPort, cargoLoad, speedPreference, result, storageKey])
 
   const handleRun = async () => {
     if (!selectedVessel) {
@@ -151,7 +119,7 @@ export default function AgentPlanner() {
     }
     setError('')
     setLoading(true)
-    setResult(null)
+    patchSnapshot({ result: null })
     setStreamedCalls([])
     setActiveStep(0)
 
@@ -196,7 +164,7 @@ export default function AgentPlanner() {
           } else if (ev.type === 'tool') {
             setStreamedCalls((prev) => [...prev, { tool: ev.tool, input: ev.input, output: ev.output }])
           } else if (ev.type === 'done') {
-            setResult(ev)
+            patchSnapshot({ result: ev })
           } else if (ev.type === 'error') {
             setError(ev.error)
           }
@@ -232,7 +200,7 @@ export default function AgentPlanner() {
             <label className="block text-[11.5px] font-semibold tracking-wide text-[#a8adb5] mb-2">Departure Port</label>
             <select
               value={departurePort}
-              onChange={(e) => setDeparturePort(e.target.value)}
+              onChange={(e) => patchSnapshot({ departurePort: e.target.value })}
               className="w-full bg-[#12161a] border border-white/[0.1] rounded-[2px] px-3 py-2.5 text-white focus:outline-none focus:border-teal-600 transition-colors text-sm"
             >
               {PORTS.map((p) => (
@@ -244,7 +212,7 @@ export default function AgentPlanner() {
             <label className="block text-[11.5px] font-semibold tracking-wide text-[#a8adb5] mb-2">Destination Port</label>
             <select
               value={destinationPort}
-              onChange={(e) => setDestinationPort(e.target.value)}
+              onChange={(e) => patchSnapshot({ destinationPort: e.target.value })}
               className="w-full bg-[#12161a] border border-white/[0.1] rounded-[2px] px-3 py-2.5 text-white focus:outline-none focus:border-teal-600 transition-colors text-sm"
             >
               {PORTS.map((p) => (
@@ -262,7 +230,7 @@ export default function AgentPlanner() {
               min={0}
               max={100}
               value={cargoLoad}
-              onChange={(e) => setCargoLoad(Number(e.target.value))}
+              onChange={(e) => patchSnapshot({ cargoLoad: Number(e.target.value) })}
               className="slider-teal w-full cursor-pointer"
               style={{
                 background: `linear-gradient(to right, #3a8c85 0%, #3a8c85 ${cargoLoad}%, #1f2227 ${cargoLoad}%, #1f2227 100%)`,
@@ -275,7 +243,7 @@ export default function AgentPlanner() {
               {SPEED_OPTIONS.map((opt) => (
                 <button
                   key={opt.id}
-                  onClick={() => setSpeedPreference(opt.id)}
+                  onClick={() => patchSnapshot({ speedPreference: opt.id })}
                   className={cn(
                     'py-2.5 rounded-[2px] border text-[13px] font-semibold transition-colors bg-[#12161a]',
                     speedPreference === opt.id ? 'border-teal-600 text-teal-400' : 'border-white/[0.1] text-[#a8adb5] hover:border-white/20'
