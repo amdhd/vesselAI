@@ -12,6 +12,13 @@ import './index.css'
 // 24-hour cache — vessels at sea may be disconnected for extended periods
 const GC_TIME = 1000 * 60 * 60 * 24
 
+// Bump this whenever a persisted query's response shape changes.
+// PersistQueryClient discards any cache whose buster differs, so a stale,
+// wrong-shaped payload from an older build (e.g. a list endpoint cached as a
+// `{ key: [...] }` envelope instead of the unwrapped array) can't rehydrate and
+// crash a view — it's dropped and refetched fresh.
+const CACHE_BUSTER = 'v2-unwrapped-lists'
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -43,7 +50,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <PersistQueryClientProvider
         client={queryClient}
-        persistOptions={{ persister, maxAge: GC_TIME }}
+        persistOptions={{ persister, maxAge: GC_TIME, buster: CACHE_BUSTER }}
       >
         <App />
       </PersistQueryClientProvider>
