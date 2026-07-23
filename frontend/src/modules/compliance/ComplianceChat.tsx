@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, User, Loader2 } from 'lucide-react'
+import { Send, Bot, User, Loader2, Trash2 } from 'lucide-react'
 import { useFleet } from '@/context/FleetContext'
 import { sireApi } from '@/lib/api'
 import { toBackendVesselId } from '@/lib/utils'
@@ -11,6 +11,23 @@ interface ChatMessage {
   content: string
 }
 
+// Chat history is persisted to localStorage, keyed per vessel, so a conversation
+// survives switching Compliance tabs (which unmounts this component) and full
+// page reloads. Mirrors the Knowledge AI Assistant persistence.
+const STORAGE_PREFIX = 'vm_compliance_chat_'
+const storageKeyFor = (vesselId?: string) => `${STORAGE_PREFIX}${vesselId || 'all'}`
+
+function loadHistory(key: string): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as ChatMessage[]) : []
+  } catch {
+    return []
+  }
+}
+
 const EXAMPLE_QUESTIONS = [
   "What's our CII forecast for next quarter?",
   'How many ETS allowances do we need before December?',
@@ -20,15 +37,44 @@ const EXAMPLE_QUESTIONS = [
 
 export default function ComplianceChat() {
   const { selectedVessel } = useFleet()
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const storageKey = storageKeyFor(selectedVessel?.id)
+  // Lazy initializer hydrates the thread from localStorage on first render.
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory(storageKey))
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // Skip one save right after a vessel switch loads a new thread, so we never
+  // persist the previous vessel's thread under the new vessel's key.
+  const skipNextSaveRef = useRef(false)
+
+  // Swap to the selected vessel's saved thread whenever the vessel changes.
+  useEffect(() => {
+    skipNextSaveRef.current = true
+    setMessages(loadHistory(storageKey))
+  }, [storageKey])
+
+  // Persist on every change (new message, each streamed token, clear).
+  useEffect(() => {
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false
+      return
+    }
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(messages))
+    } catch {
+      /* localStorage full/unavailable — non-fatal, chat still works in-session */
+    }
+  }, [messages, storageKey])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  const clearChat = () => {
+    if (isStreaming) return
+    setMessages([])
+  }
 
   const sendMessage = async (content: string) => {
     if (!content.trim() || isStreaming) return
@@ -109,6 +155,17 @@ export default function ComplianceChat() {
         <span className="text-sm text-teal-300">
           Context: <span className="font-semibold">{selectedVessel?.name ?? 'All Vessels'}</span> — CII, EU ETS, MARPOL, FuelEU Maritime regulations
         </span>
+        {messages.length > 0 && (
+          <button
+            onClick={clearChat}
+            disabled={isStreaming}
+            title="Clear this vessel's saved chat history"
+            className="ml-auto flex-shrink-0 flex items-center gap-1.5 text-xs text-gray-400 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Clear
+          </button>
+        )}
       </div>
 
       {/* Messages */}

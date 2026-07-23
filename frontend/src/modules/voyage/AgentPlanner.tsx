@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Bot, Loader2, Wrench, Sparkles, AlertTriangle } from 'lucide-react'
 import { useFleet } from '@/context/FleetContext'
 import { voyageApi, type AgentPlanResult, type AgentToolCall } from '@/lib/api'
@@ -6,6 +6,32 @@ import { cn } from '@/lib/utils'
 import ChatMarkdown from '@/components/ui/ChatMarkdown'
 
 const PORTS = ['Singapore', 'Fujairah', 'Port Klang', 'Kerteh', 'Rotterdam', 'Ras Tanura', 'Bintulu']
+
+type SpeedPref = 'eco' | 'normal' | 'fast'
+
+// The planner's inputs + last recommendation are persisted per vessel to
+// localStorage, so switching Voyage tabs (which unmounts this component) or a
+// full reload doesn't lose the agent's result. Transient run state (loading,
+// live stream, errors) is intentionally not persisted.
+interface AgentSnapshot {
+  departurePort: string
+  destinationPort: string
+  cargoLoad: number
+  speedPreference: SpeedPref
+  result: AgentPlanResult | null
+}
+
+const STORAGE_PREFIX = 'vm_voyage_agent_'
+const storageKeyFor = (vesselId?: string) => `${STORAGE_PREFIX}${vesselId || 'default'}`
+
+function loadSnapshot(key: string): AgentSnapshot | null {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? (JSON.parse(raw) as AgentSnapshot) : null
+  } catch {
+    return null
+  }
+}
 
 const SPEED_OPTIONS = [
   { id: 'eco', label: 'Eco' },
@@ -70,16 +96,49 @@ function DataView({ data }: { data: unknown }) {
 
 export default function AgentPlanner() {
   const { selectedVessel } = useFleet()
-  const [departurePort, setDeparturePort] = useState('Kerteh')
-  const [destinationPort, setDestinationPort] = useState('Singapore')
-  const [cargoLoad, setCargoLoad] = useState(75)
-  const [speedPreference, setSpeedPreference] = useState<'eco' | 'normal' | 'fast'>('eco')
+  const storageKey = storageKeyFor(selectedVessel?.id)
+  // Lazy initializers hydrate the inputs + last result from localStorage on mount.
+  const [departurePort, setDeparturePort] = useState(() => loadSnapshot(storageKey)?.departurePort ?? 'Kerteh')
+  const [destinationPort, setDestinationPort] = useState(() => loadSnapshot(storageKey)?.destinationPort ?? 'Singapore')
+  const [cargoLoad, setCargoLoad] = useState(() => loadSnapshot(storageKey)?.cargoLoad ?? 75)
+  const [speedPreference, setSpeedPreference] = useState<SpeedPref>(() => loadSnapshot(storageKey)?.speedPreference ?? 'eco')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [result, setResult] = useState<AgentPlanResult | null>(null)
+  const [result, setResult] = useState<AgentPlanResult | null>(() => loadSnapshot(storageKey)?.result ?? null)
   // Tool calls accumulated live from the SSE stream, plus the current step tick.
   const [streamedCalls, setStreamedCalls] = useState<AgentToolCall[]>([])
   const [activeStep, setActiveStep] = useState(0)
+  // Skip one save right after a vessel switch reloads that vessel's snapshot.
+  const skipNextSaveRef = useRef(false)
+
+  // Reload the selected vessel's saved inputs + result whenever the vessel changes.
+  useEffect(() => {
+    skipNextSaveRef.current = true
+    const snap = loadSnapshot(storageKey)
+    setDeparturePort(snap?.departurePort ?? 'Kerteh')
+    setDestinationPort(snap?.destinationPort ?? 'Singapore')
+    setCargoLoad(snap?.cargoLoad ?? 75)
+    setSpeedPreference(snap?.speedPreference ?? 'eco')
+    setResult(snap?.result ?? null)
+    setStreamedCalls([])
+    setError('')
+  }, [storageKey])
+
+  // Persist inputs + the final recommendation on change.
+  useEffect(() => {
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false
+      return
+    }
+    try {
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({ departurePort, destinationPort, cargoLoad, speedPreference, result }),
+      )
+    } catch {
+      /* localStorage full/unavailable — non-fatal */
+    }
+  }, [departurePort, destinationPort, cargoLoad, speedPreference, result, storageKey])
 
   const handleRun = async () => {
     if (!selectedVessel) {
