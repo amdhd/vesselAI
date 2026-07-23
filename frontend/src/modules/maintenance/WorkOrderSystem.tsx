@@ -215,6 +215,11 @@ export default function WorkOrderSystem() {
     },
   })
 
+  // Guard against a stale, non-array value rehydrating from the persisted cache
+  // (see EquipmentGrid): `?? []` only covers nullish, so a wrong-typed object
+  // would slip through and throw when filtered.
+  const workOrderList: WorkOrder[] = Array.isArray(workOrders) ? workOrders : []
+
   const { mutate: createWorkOrder, isPending: isCreating } = useMutation({
     mutationFn: (data: Partial<WorkOrder>) => maintenanceApi.createWorkOrder(data),
     onSuccess: () => {
@@ -227,7 +232,7 @@ export default function WorkOrderSystem() {
   })
 
   const getColumnOrders = (status: WorkOrderStatus) =>
-    (workOrders ?? []).filter((wo) => wo.status === status)
+    workOrderList.filter((wo) => wo.status === status)
 
   if (!selectedVessel) {
     return (
@@ -258,7 +263,7 @@ export default function WorkOrderSystem() {
     <>
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <p className="text-gray-400 text-sm">{workOrders?.length ?? 0} total work orders</p>
+          <p className="text-gray-400 text-sm">{workOrderList.length} total work orders</p>
           <button
             onClick={() => setShowModal(true)}
             className="flex items-center gap-2 btn-primary text-sm"

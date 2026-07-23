@@ -1,7 +1,8 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { FleetProvider } from '@/context/FleetContext'
 import MainLayout from '@/components/layout/MainLayout'
+import ErrorBoundary from '@/components/ErrorBoundary'
 import LoginPage from '@/pages/LoginPage'
 import RegisterPage from '@/pages/RegisterPage'
 import DashboardPage from '@/pages/DashboardPage'
@@ -29,6 +30,29 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+// The routed module pages, wrapped in an ErrorBoundary so a render error in one
+// page shows a recoverable card instead of blanking the whole app — the shell
+// (sidebar/topbar from MainLayout) stays mounted. Keyed by pathname so the
+// boundary clears automatically when the user navigates to a different route.
+function RoutedContent() {
+  const location = useLocation()
+  return (
+    <ErrorBoundary resetKey={location.pathname}>
+      <Routes>
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/voyage" element={<VoyagePage />} />
+        <Route path="/maintenance" element={<MaintenancePage />} />
+        <Route path="/compliance" element={<CompliancePage />} />
+        <Route path="/ports" element={<PortsPage />} />
+        <Route path="/knowledge" element={<KnowledgePage />} />
+        <Route path="/sire" element={<SirePage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </ErrorBoundary>
+  )
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -40,17 +64,7 @@ function AppRoutes() {
           <PrivateRoute>
             <FleetProvider>
               <MainLayout>
-                <Routes>
-                  <Route path="/" element={<DashboardPage />} />
-                  <Route path="/voyage" element={<VoyagePage />} />
-                  <Route path="/maintenance" element={<MaintenancePage />} />
-                  <Route path="/compliance" element={<CompliancePage />} />
-                  <Route path="/ports" element={<PortsPage />} />
-                  <Route path="/knowledge" element={<KnowledgePage />} />
-                  <Route path="/sire" element={<SirePage />} />
-                  <Route path="/analytics" element={<AnalyticsPage />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
+                <RoutedContent />
               </MainLayout>
             </FleetProvider>
           </PrivateRoute>

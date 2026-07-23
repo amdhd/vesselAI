@@ -127,9 +127,14 @@ export default function EquipmentGrid() {
     enabled: true,
   })
 
+  // A persisted react-query cache can rehydrate a stale, non-array value here
+  // (e.g. from before the API unwrapped `{ equipment }`), so coerce defensively:
+  // `?? []` only guards nullish, and spreading/filtering a wrong-typed object throws.
+  const equipmentList: Equipment[] = Array.isArray(equipment) ? equipment : []
+
   const { mutate: analyzeAll, isPending: isAnalyzing } = useMutation({
     mutationFn: async () => {
-      const flagged = equipment?.filter((e) => e.status === 'warning' || e.status === 'critical') ?? []
+      const flagged = equipmentList.filter((e) => e.status === 'warning' || e.status === 'critical')
       if (flagged.length === 0) return { analysis: 'No flagged equipment to analyze.' }
       return maintenanceApi.analyzeAnomaly({
         equipmentId: flagged[0].id,
@@ -144,7 +149,7 @@ export default function EquipmentGrid() {
   const alertEquipmentIds = new Set(MOCK_ALERTS.map((a) => a.equipmentId))
 
   // Sort worst health first
-  const sortedEquipment = [...(equipment ?? [])].sort((a, b) => a.healthScore - b.healthScore)
+  const sortedEquipment = [...equipmentList].sort((a, b) => a.healthScore - b.healthScore)
 
   if (!selectedVessel) {
     return (
