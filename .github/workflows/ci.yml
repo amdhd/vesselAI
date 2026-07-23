@@ -91,3 +91,32 @@ jobs:
 
       - name: Typecheck + build
         run: npm run build
+
+  angular:
+    name: Angular — test + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend-angular
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Angular 22's CLI requires Node >= 24.15 (the other jobs pin 20);
+          # setup-node resolves "24" to the latest 24.x, which satisfies it.
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend-angular/package-lock.json
+
+      - run: npm ci
+
+      # Vitest-based unit-test builder (Angular 22 default). --watch=false so the
+      # runner exits instead of watching. `npm run build` runs `ng build`, which
+      # includes the strict-template typecheck.
+      - name: Test
+        run: npx ng test --watch=false
+
+      - name: Build
+        run: npm run build
