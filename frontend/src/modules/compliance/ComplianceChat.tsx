@@ -4,28 +4,12 @@ import { useFleet } from '@/context/FleetContext'
 import { sireApi } from '@/lib/api'
 import { toBackendVesselId } from '@/lib/utils'
 import ChatMarkdown from '@/components/ui/ChatMarkdown'
+import { usePersistentVesselState } from '@/hooks/usePersistentVesselState'
 
 interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
-}
-
-// Chat history is persisted to localStorage, keyed per vessel, so a conversation
-// survives switching Compliance tabs (which unmounts this component) and full
-// page reloads. Mirrors the Knowledge AI Assistant persistence.
-const STORAGE_PREFIX = 'vm_compliance_chat_'
-const storageKeyFor = (vesselId?: string) => `${STORAGE_PREFIX}${vesselId || 'all'}`
-
-function loadHistory(key: string): ChatMessage[] {
-  try {
-    const raw = localStorage.getItem(key)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as ChatMessage[]) : []
-  } catch {
-    return []
-  }
 }
 
 const EXAMPLE_QUESTIONS = [
@@ -37,35 +21,17 @@ const EXAMPLE_QUESTIONS = [
 
 export default function ComplianceChat() {
   const { selectedVessel } = useFleet()
-  const storageKey = storageKeyFor(selectedVessel?.id)
-  // Lazy initializer hydrates the thread from localStorage on first render.
-  const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory(storageKey))
+  // Thread is persisted per vessel so it survives tab/module switches and
+  // reloads (see the hook for the full rationale).
+  const [messages, setMessages] = usePersistentVesselState<ChatMessage[]>(
+    'vm_compliance_chat_',
+    selectedVessel?.id,
+    [],
+  )
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  // Skip one save right after a vessel switch loads a new thread, so we never
-  // persist the previous vessel's thread under the new vessel's key.
-  const skipNextSaveRef = useRef(false)
-
-  // Swap to the selected vessel's saved thread whenever the vessel changes.
-  useEffect(() => {
-    skipNextSaveRef.current = true
-    setMessages(loadHistory(storageKey))
-  }, [storageKey])
-
-  // Persist on every change (new message, each streamed token, clear).
-  useEffect(() => {
-    if (skipNextSaveRef.current) {
-      skipNextSaveRef.current = false
-      return
-    }
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(messages))
-    } catch {
-      /* localStorage full/unavailable — non-fatal, chat still works in-session */
-    }
-  }, [messages, storageKey])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })

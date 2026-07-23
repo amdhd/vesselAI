@@ -4,29 +4,12 @@ import { useFleet } from '../../context/FleetContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import { toBackendVesselId } from '../../lib/utils'
 import ChatMarkdown from '../../components/ui/ChatMarkdown'
+import { usePersistentVesselState } from '../../hooks/usePersistentVesselState'
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
-}
-
-// Chat history is persisted to localStorage, keyed per vessel, so a conversation
-// survives switching tabs/modules (which unmounts this component) and full page
-// reloads. Each vessel keeps its own thread since the AI answers with that
-// vessel's context loaded.
-const STORAGE_PREFIX = 'vm_knowledge_chat_'
-const storageKeyFor = (vesselId?: string) => `${STORAGE_PREFIX}${vesselId || 'default'}`
-
-function loadHistory(key: string): Message[] {
-  try {
-    const raw = localStorage.getItem(key)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as Message[]) : []
-  } catch {
-    return []
-  }
 }
 
 const EXAMPLE_PROMPTS = [
@@ -38,37 +21,17 @@ const EXAMPLE_PROMPTS = [
 
 export default function KnowledgeChat() {
   const { selectedVessel } = useFleet()
-  const storageKey = storageKeyFor(selectedVessel?.id)
-  // Lazy initializer: hydrate from localStorage on first render so the thread is
-  // there immediately, before any effect runs.
-  const [messages, setMessages] = useState<Message[]>(() => loadHistory(storageKey))
+  // Thread is persisted per vessel so it survives tab/module switches and
+  // reloads (see the hook for the full rationale).
+  const [messages, setMessages] = usePersistentVesselState<Message[]>(
+    'vm_knowledge_chat_',
+    selectedVessel?.id,
+    [],
+  )
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  // When switching vessels we load a new thread; on that same render `messages`
-  // still holds the previous vessel's thread, so we skip persisting once to
-  // avoid writing thread A under vessel B's key.
-  const skipNextSaveRef = useRef(false)
-
-  // Swap to the selected vessel's saved thread whenever the vessel changes.
-  useEffect(() => {
-    skipNextSaveRef.current = true
-    setMessages(loadHistory(storageKey))
-  }, [storageKey])
-
-  // Persist on every change (new message, each streamed token, clear).
-  useEffect(() => {
-    if (skipNextSaveRef.current) {
-      skipNextSaveRef.current = false
-      return
-    }
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(messages))
-    } catch {
-      /* localStorage full/unavailable — non-fatal, chat still works in-session */
-    }
-  }, [messages, storageKey])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
