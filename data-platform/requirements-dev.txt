@@ -1,0 +1,12 @@
+# Test-only dependencies for the data platform.
+#
+# Kept out of requirements.txt (pipeline runtime) and api/requirements.txt
+# (service runtime) so neither production install pulls in a test framework:
+#   pip install -r requirements.txt -r api/requirements.txt -r requirements-dev.txt
+#   pytest api/test_auth.py
+
+pytest==9.1.1
+
+# FastAPI's TestClient is a thin wrapper over httpx; importing it without httpx
+# installed fails at collection time rather than with a useful error.
+httpx==0.28.1
