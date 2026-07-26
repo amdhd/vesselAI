@@ -11,6 +11,11 @@
 # ---- deps ----
 FROM node:20-alpine AS deps
 WORKDIR /app
+# Prisma's schema + query engines are dynamically linked against OpenSSL, which
+# node:20-alpine does not ship. Without it `prisma migrate deploy` dies with
+# "Could not parse schema engine response", so migrations — and therefore the
+# whole prod stack — never come up.
+RUN apk add --no-cache openssl
 COPY package*.json ./
 RUN npm ci
 COPY prisma ./prisma
@@ -32,7 +37,9 @@ WORKDIR /app
 
 # dumb-init gives us a real PID 1 that reaps zombies and forwards SIGTERM,
 # so the orchestrator can shut the app down cleanly.
-RUN apk add --no-cache dumb-init
+# openssl: the Prisma *query* engine needs it at runtime too, not just for
+# migrations. dumb-init gives us a real PID 1 (see below).
+RUN apk add --no-cache dumb-init openssl
 
 COPY --from=prune /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

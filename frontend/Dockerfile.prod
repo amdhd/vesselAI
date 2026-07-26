@@ -13,6 +13,11 @@ COPY . .
 # nginx below can reverse-proxy the API (no CORS, no hardcoded backend host).
 ARG VITE_API_URL=/api
 ENV VITE_API_URL=$VITE_API_URL
+# Same-origin too: nginx routes /api/analytics/ to the analytics service. Must be
+# "/" and not empty — the client falls back to http://localhost:8000 on any falsy
+# value, which would point a deployed browser at the user's own machine.
+ARG VITE_ANALYTICS_API_URL=/
+ENV VITE_ANALYTICS_API_URL=$VITE_ANALYTICS_API_URL
 RUN npm run build
 
 # ---- runtime: non-root nginx (uid 101, listens on 8080) ----
