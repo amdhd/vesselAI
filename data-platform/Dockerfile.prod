@@ -1,0 +1,67 @@
+# syntax=docker/dockerfile:1
+
+# Production image for the VesselMind Analytics API (the gold-layer serving
+# layer). Two stages:
+#   build   — runs the real pipeline (raw CSV -> bronze -> silver -> gold) so the
+#             DuckDB warehouse is baked into the image. The warehouse is
+#             gitignored (regenerated, never committed), so it is rebuilt here
+#             from the tracked data/raw/ais_sample.csv exactly as CI does.
+#   runtime — slim, non-root: only the API deps (no dbt toolchain) plus the
+#             built warehouse file.
+#
+# The warehouse is immutable and read-only at serve time, which is why it is
+# baked in rather than mounted: every replica ships its own copy, so the service
+# scales horizontally with no shared volume and no writer coordination.
+#
+# NOTE ON LAYOUT: api/main.py resolves paths from the repo root (parents[2]), so
+# the image mirrors the repo layout — the project lives at /app/data-platform,
+# never at /app directly.
+
+# ---- build: run the pipeline, produce data/vesselmind.duckdb ----
+FROM python:3.10-slim AS build
+WORKDIR /app/data-platform
+
+# dbt-core ships no wheels for the newest Python; 3.10 matches requirements.txt.
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Only what the pipeline needs, so an API-only edit doesn't bust this cache.
+COPY ingestion ./ingestion
+COPY dbt ./dbt
+COPY data/raw ./data/raw
+
+# raw CSV -> bronze (untouched text), then silver + gold with data tests
+# interleaved (`dbt build` = run + test), so a failing data test fails the image
+# build instead of shipping a bad warehouse.
+RUN python ingestion/load_bronze.py
+RUN cd dbt && dbt build --profiles-dir .
+
+# ---- runtime: slim, non-root ----
+FROM python:3.10-slim AS runtime
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+WORKDIR /app/data-platform
+
+# API deps only — fastapi/uvicorn/duckdb/pyjwt. The dbt toolchain stays in the
+# build stage and never reaches the final image.
+COPY api/requirements.txt ./api/requirements.txt
+RUN pip install --no-cache-dir -r api/requirements.txt
+
+COPY api ./api
+COPY --from=build /app/data-platform/data/vesselmind.duckdb ./data/vesselmind.duckdb
+
+# Run unprivileged. The warehouse is opened read_only, so the app never needs
+# write access to it.
+RUN useradd --create-home --uid 10001 analytics \
+    && chown -R analytics:analytics /app
+USER analytics
+
+EXPOSE 8000
+
+# Liveness probe hits the app's own unauthenticated /health endpoint.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"
+
+# --app-dir keeps the `api.main` module path identical to local dev.
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", \
+     "--app-dir", "/app/data-platform"]

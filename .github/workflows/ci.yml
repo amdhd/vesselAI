@@ -213,5 +213,18 @@ jobs:
           push: false
           # VITE_API_URL is baked into the bundle at build time; the default
           # (/api, same-origin behind the nginx proxy) is what prod deploys use.
+          # VITE_ANALYTICS_API_URL defaults to / for the same reason.
           cache-from: type=gha,scope=frontend-prod
           cache-to: type=gha,mode=max,scope=frontend-prod
+
+      # Also exercises the pipeline: this image's build stage runs
+      # load_bronze + `dbt build` to bake the warehouse in, so a broken
+      # transform or a failing data test fails the image build here.
+      - name: Analytics API (prod)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./data-platform
+          file: ./data-platform/Dockerfile.prod
+          push: false
+          cache-from: type=gha,scope=analytics-prod
+          cache-to: type=gha,mode=max,scope=analytics-prod

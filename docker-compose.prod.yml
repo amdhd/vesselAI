@@ -59,6 +59,20 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # Gold-layer serving API (FastAPI over DuckDB). Independent of Postgres and the
+  # Express backend — it only reads the warehouse baked into its own image.
+  analytics-api:
+    build:
+      context: ./data-platform
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    environment:
+      # Verifies the SAME app-issued JWT the Express backend signs, so the two
+      # must share this secret. In production the API refuses to start on the
+      # dev-only fallback, so this is required rather than defaulted.
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required (min 32 chars)}
+
   frontend:
     build:
       context: ./frontend
@@ -66,11 +80,16 @@ services:
       args:
         # Same-origin: nginx proxies /api to the backend service.
         VITE_API_URL: /api
+        # …and /api/analytics to the analytics service.
+        VITE_ANALYTICS_API_URL: /
     restart: unless-stopped
     ports:
       - '${WEB_PORT:-8080}:8080'
     depends_on:
       - backend
+      # nginx resolves proxy_pass hostnames at startup, so the analytics
+      # container must exist or nginx fails with "host not found in upstream".
+      - analytics-api
 
 volumes:
   postgres_data:
