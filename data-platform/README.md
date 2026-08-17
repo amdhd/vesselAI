@@ -12,7 +12,8 @@ raw-data-to-decision path a data platform is judged on.
 Everything runs **offline on a laptop** (no cloud, no paid services).
 
 > **Status:** All four phases (Bronze → Silver → Gold → Dashboard) complete,
-> runnable, and tested — 25/25 dbt checks passing and a working Streamlit app.
+> runnable, and tested — `dbt build` is green across all 25 nodes (4 models +
+> 21 data tests), with a working Streamlit app on top.
 
 ---
 
@@ -88,7 +89,7 @@ python ingestion/load_bronze.py
 
 # 5) Build & test SILVER + GOLD with dbt (clean, model the star schema, test)
 cd dbt
-../.venv/bin/dbt build --profiles-dir .   # builds silver + gold, runs all 25 data tests
+../.venv/bin/dbt build --profiles-dir .   # builds silver + gold, runs all 21 data tests
 cd ..
 
 # 6) Launch the dashboard (its own venv — see "Dashboard" below for why)
@@ -130,10 +131,10 @@ cd dbt && dbt build --profiles-dir . && cd ..
 ```
 
 Measured on a MacBook Air (16GB): **1.48M rows loaded in ~1.3s, and dedup +
-validation + 8 tests in ~3.4s.** DuckDB is built for this.
+validation + the silver layer's 8 tests in ~3.4s.** DuckDB is built for this.
 
 > **Tip — "why does dbt only show a few rows?"** dbt builds a *table in the
-> warehouse* and prints a status summary (`1 of 9 … PASS=9` = models + tests,
+> warehouse* and prints a status summary (`1 of 25 … PASS=25` = 4 models + 21 tests,
 > not data rows). `dbt show` prints a 5-row *preview*. To see the real row count,
 > query it: `duckdb data/vesselmind.duckdb "select count(*) from silver.silver_ais_positions"`.
 
@@ -243,5 +244,5 @@ data-platform/                   # (subfolder of the vesselAI repo)
 
 - [x] **Phase 1 — Bronze:** raw AIS CSV landed in DuckDB, as-is, plus queries to surface data-quality problems.
 - [x] **Phase 2 — Silver (dbt):** dedupe on `(MMSI, BaseDateTime)`, validate coordinates, cast types, drop rows with no MMSI; 8 dbt tests passing.
-- [x] **Phase 3 — Gold (dbt):** star schema (`dim_vessel`, `fct_vessel_daily`) + `gold_vessel_idling` (idle-episode detection via gaps-and-islands); 21 gold-layer dbt checks passing.
+- [x] **Phase 3 — Gold (dbt):** star schema (`dim_vessel`, `fct_vessel_daily`) + `gold_vessel_idling` (idle-episode detection via gaps-and-islands); 13 gold-layer dbt tests passing.
 - [x] **Phase 4 — Dashboard:** Streamlit app (separate venv) reading only gold tables — KPIs, vessel map, distance chart, idling report.
