@@ -6,13 +6,13 @@ A full-stack, AI-powered SaaS platform for oil & gas vessel fleet operators — 
 
 I built and hardened this solo as a demo-day portfolio piece for Forward Deployed Engineering roles. The parts of the FDE job that matter most — wiring agentic AI into real data, defending trust boundaries, and debugging integrations end-to-end rather than trusting that they work — are exactly what this project is set up to show, not just describe.
 
-**[The two FDE headline features](#the-two-features-that-matter-for-an-fde) · [Demo credentials](#demo-mode) · [What's real vs. mocked](#whats-real-vs-mocked) · [Engineering notes](#engineering-notes) · [How this maps to an FDE role](#how-this-maps-to-an-fde-role)**
+**[The FDE headline features](#the-three-features-that-matter-for-an-fde) · [Data warehouse](#3-an-analytics-warehouse-duckdb--dbt-medallion) · [Demo credentials](#demo-mode) · [What's real vs. mocked](#whats-real-vs-mocked) · [Engineering notes](#engineering-notes) · [How this maps to an FDE role](#how-this-maps-to-an-fde-role)**
 
 ---
 
-## The two features that matter for an FDE
+## The three features that matter for an FDE
 
-Everything else in this repo is context. These two are the point, because they are the parts of an FDE's job — *integrate a customer's data sources* and *configure agentic workflows* — that you can't fake.
+Everything else in this repo is context. These three are the point, because they are the parts of an FDE's job — *integrate a customer's data sources*, *configure agentic workflows*, and *model that data into something a decision can be made from* — that you can't fake.
 
 ### 1. A real data-ingestion pipeline
 
@@ -40,6 +40,29 @@ get_vessel_specs → get_route_info → get_marine_weather (both endpoints) → 
 
 Served at `POST /api/voyage/agent-plan`.
 
+### 3. An analytics warehouse (DuckDB + dbt medallion)
+
+Ingestion gets data in; a warehouse makes it answerable. `data-platform/` is a full **bronze → silver → gold medallion pipeline** over public NOAA AIS vessel-tracking data, built with **DuckDB** (embedded OLAP — the warehouse is a single file) and **dbt Core**, and served into the app's **Fleet Analytics** page by a read-only FastAPI layer.
+
+| Layer | Job | What's in it |
+|---|---|---|
+| **Bronze** (`ingestion/load_bronze.py`) | Land the source losslessly, every column `TEXT` | `bronze.ais_positions_raw` — the mess is kept on purpose, so data-quality problems are countable instead of invisible |
+| **Silver** (dbt) | Make it correct: dedupe on `(MMSI, BaseDateTime)`, validate coordinates, cast types, drop rows with no MMSI | `silver.silver_ais_positions` — one trustworthy row per real ping |
+| **Gold** (dbt) | Make it useful: star schema + business models | `dim_vessel`, `fct_vessel_daily` (pings, speed, haversine distance, first/last position per vessel-day), and `gold_vessel_idling` — idle-episode detection via a *gaps-and-islands* SQL pattern (fuel burn / port congestion) |
+
+- **Tested, not just built:** **21 dbt data tests** across the four models (25 nodes build green) — schema tests plus singular tests asserting the unique grain of the silver ping and the daily fact.
+- **Built for real scale:** the loader streams CSV off disk (never into pandas) and the transforms are plain SQL. Measured on a MacBook Air (16GB): **1.48M rows loaded in ~1.3s; dedupe + validation + tests in ~3.4s.** Real NOAA daily files are 5–12M rows; the committed sample is deliberately tiny so the repo runs instantly offline.
+- **Two consumers, one gold layer:** a standalone **Streamlit** dashboard (KPIs, vessel map, distance chart, idling report) and the app's **Fleet Analytics** page via FastAPI (`data-platform/api/main.py`) — `/api/analytics/{summary,vessel-types,top-vessels,idling}`. Every endpoint is aggregated or top-N, so the React app never touches millions of raw rows.
+- **Same trust boundary as the rest of the app:** the analytics endpoints verify the *same* app-issued JWT via a shared `JWT_SECRET` (HS256), with CORS restricted to an allowlist. A token from `POST /api/auth/login` is accepted unchanged; `/health` stays open.
+
+**Why this exists next to Postgres:** AIS lives in two stores on purpose — a real-time **operational** store (Postgres `AisVesselPosition`, one row per vessel, powers the live map) alongside an **analytical** warehouse (DuckDB, millions of rows → small aggregates, powers Fleet Analytics). That's the standard hot-path/cold-path, OLTP-next-to-OLAP split every real data platform has, not redundancy.
+
+Full detail — quickstart, how to swap in a real NOAA daily file, and the layer-by-layer reasoning — lives in [`data-platform/README.md`](data-platform/README.md).
+
+```bash
+cd data-platform && .venv/bin/uvicorn api.main:app --port 8000
+```
+
 ---
 
 ## Modules
@@ -57,9 +80,10 @@ Served at `POST /api/voyage/agent-plan`.
 
 - **Frontend:** React 18 + TypeScript + Vite + Tailwind CSS + Recharts + Leaflet
 - **Backend:** Node.js + Express + TypeScript + Prisma ORM
-- **Database:** PostgreSQL 16
+- **Database:** PostgreSQL 16 (operational) · DuckDB (analytical warehouse)
+- **Data platform:** Python 3.10 + dbt Core (bronze/silver/gold medallion) + FastAPI serving layer + Streamlit dashboard
 - **AI:** Anthropic Claude API, streamed (SSE) for chat, structured JSON for domain tasks
-- **Testing:** Vitest everywhere — backend unit tests (tenant isolation, JWT auth middleware, ingestion pipelines, voyage agent) plus supertest route-integration tests exercising the real Express app over HTTP; frontend unit + Testing Library component tests
+- **Testing:** Vitest everywhere — backend unit tests (tenant isolation, JWT auth middleware, ingestion pipelines, voyage agent) plus supertest route-integration tests exercising the real Express app over HTTP; frontend unit + Testing Library component tests; dbt data tests and pytest on the data platform
 - **Real-time:** Socket.io · **Auth:** JWT
 
 ## Architecture
@@ -83,6 +107,16 @@ Served at `POST /api/voyage/agent-plan`.
                          │        (tenant-isolated)       ◄─────────┤  JWT + fleet-scoped
                          │   deterministic fallback ──────┘         │  tenant isolation
                          └──────────────────────────────────────────┘
+```
+
+Alongside that operational plane runs the **analytical** one — batch, not real-time, and deliberately separate:
+
+```
+ NOAA AIS daily CSV        DuckDB warehouse (data-platform/)                Client
+ (5–12M rows/day)   ────►  bronze ──► silver ──► gold          ────►  FastAPI (:8000)  ────►  Fleet Analytics page
+                           raw       dbt: dedupe  dim_vessel           /api/analytics/*        (JWT-verified,
+                           as-is     + validate   fct_vessel_daily                              same app token)
+                                                  gold_vessel_idling  ────►  Streamlit dashboard (:8501)
 ```
 
 Every external arrow is a **trust boundary**: input is validated before it's persisted, tool execution is scoped to the caller's fleet, and every AI path has a non-AI fallback so a provider outage degrades the demo instead of breaking it.
@@ -166,6 +200,19 @@ npm install
 npm run dev          # http://localhost:5173
 ```
 
+### 4. Build the analytics warehouse (optional — powers the Fleet Analytics page)
+
+Needs Python 3.10 (dbt doesn't support 3.14 yet). Full detail in [`data-platform/README.md`](data-platform/README.md).
+
+```bash
+cd data-platform
+python3.10 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python notebooks_or_scripts/generate_sample_ais.py   # or drop a NOAA daily CSV in data/raw/
+.venv/bin/python ingestion/load_bronze.py                      # bronze
+cd dbt && ../.venv/bin/dbt build --profiles-dir . && cd ..     # silver + gold + 21 data tests
+.venv/bin/uvicorn api.main:app --port 8000                     # serve gold to the app
+```
+
 ### Run the tests
 
 ```bash
@@ -174,6 +221,10 @@ npm test             # unit tests + supertest route-integration tests, no DB req
 
 cd frontend
 npm test             # Vitest + Testing Library
+
+cd data-platform     # after step 4
+.venv/bin/pytest api/test_auth.py                    # analytics API auth
+cd dbt && ../.venv/bin/dbt build --profiles-dir .    # 21 warehouse data tests
 ```
 
 ---
@@ -222,6 +273,12 @@ GET    /api/ais/positions/near?lat=&lon=
 POST   /api/imports/bunker               # upload ERP-style bunker CSV
 GET    /api/imports/bunker/template
 
+# Fleet Analytics — served by the DuckDB warehouse's FastAPI layer (:8000), same JWT
+GET    /api/analytics/summary
+GET    /api/analytics/vessel-types
+GET    /api/analytics/top-vessels
+GET    /api/analytics/idling
+
 # Maintenance
 GET    /api/maintenance/equipment/:vesselId
 GET    /api/maintenance/sensor-data/:equipmentId
@@ -266,6 +323,8 @@ GET    /api/sire/findings/:vesselId
 | `ANTHROPIC_API_KEY` | Yes | Anthropic Claude API key |
 | `FRONTEND_URL` | Yes | Frontend origin, for CORS |
 | `AISSTREAM_API_KEY` | No | Free key from [aisstream.io](https://aisstream.io) — enables the live AIS stream. Omit and the fleet map falls back to fixture positions |
+| `VITE_ANALYTICS_API_URL` | No | Where the frontend looks for the analytics API (default `http://localhost:8000`) |
+| `ANALYTICS_ALLOWED_ORIGINS` | No | CORS allowlist for the analytics API (comma-separated; defaults to the local Vite dev + preview ports). It reuses the app's `JWT_SECRET` — locally it self-resolves from `backend/.env`; in production set it explicitly on both |
 | — | — | Open-Meteo Marine needs **no key**; the weather pipeline works out of the box |
 
 ---
@@ -287,7 +346,20 @@ GET    /api/sire/findings/:vesselId
 │   │   ├── middleware/     Auth, validation, rate limiting, error handling
 │   │   └── mock/           Fixture data (fleet/vessels are Postgres-backed when seeded; see above)
 │   └── prisma/             schema.prisma + seed.ts
-├── docker-compose.yml
+├── data-platform/          DuckDB + dbt analytics warehouse (see its own README)
+│   ├── ingestion/          load_bronze.py — raw NOAA AIS CSV → DuckDB bronze, untouched
+│   ├── dbt/
+│   │   ├── models/
+│   │   │   ├── bronze/     Source declarations only (raw stays raw)
+│   │   │   ├── silver/     silver_ais_positions.sql — dedupe, validate, type
+│   │   │   └── gold/       dim_vessel, fct_vessel_daily, gold_vessel_idling
+│   │   ├── macros/         Haversine distance, `between` test, schema naming
+│   │   └── tests/          Singular tests: unique grains (silver ping, daily fact)
+│   ├── api/                FastAPI serving layer over gold (JWT-verified) + auth tests
+│   ├── dashboard.py        Streamlit dashboard over the gold tables
+│   └── data/               data/raw/*.csv in, vesselmind.duckdb warehouse out
+├── frontend-angular/       Angular ops dashboard over the same backend API
+├── docker-compose.yml      + docker-compose.prod.yml
 └── .env.example
 ```
 
@@ -318,6 +390,7 @@ The Forward Deployed Engineer JD asks for specific things. Here's where each one
 |---|---|
 | *Integrate customer data sources* | Three real pipelines — Open-Meteo (HTTP), aisstream.io (WebSocket), ERP CSV (upload) — each landing validated data in Postgres (`services/weatherPipeline.ts`, `aisStream.ts`, `bunkerImport.ts`) |
 | *Reliable pipelines for ingestion, transformation, validation* | Zod validation at every boundary, idempotent upserts, per-row / per-point failure isolation, bad-row reporting |
+| *Model data so customers can act on it* | DuckDB + dbt medallion warehouse — bronze/silver/gold, star schema, 21 dbt data tests, served to the app through a JWT-secured FastAPI layer (`data-platform/`) |
 | *Configure agentic workflows; adapt agents* | Multi-step Claude tool-use loop with 4 tools and a deterministic fallback (`services/voyageAgent.ts`) |
 | *Defend trust boundaries* | Fleet-scoped tenant isolation (`lib/tenant.ts`), IDOR fixes, prompt-injection guardrails on every AI surface, per-user AI rate limiting |
 | *Move a POC toward production* | Prisma migrations, Docker Compose, graceful DB/AI fallbacks, `X-AI-Fallback` observability, seeded demo scenarios |
@@ -325,18 +398,16 @@ The Forward Deployed Engineer JD asks for specific things. Here's where each one
 
 ## Roadmap (honest gaps)
 
-These are scoped but not yet built — I'd rather name them than imply they're done:
+Scoped, understood, and not yet built — I'd rather name these than imply they're done:
 
-- ~~**CI/CD**~~ — done: GitHub Actions typechecks and tests both backend and frontend on every PR (`.github/workflows/ci.yml`).
-- ~~**Frontend tests, backend route-integration tests**~~ — done: Vitest + Testing Library on the frontend, supertest route-integration tests on the backend (`backend/src/routes/integration.test.ts`).
-- **Live deployment + Terraform** — a public URL with a minimal Terraform module to provision it.
-- **Onboarding playbook** — a one-pager on how a new customer fleet gets connected, configured, and scoped for success.
+- **Infrastructure as code.** The stack ships today via Docker Compose (`docker-compose.prod.yml`) with Railway + Vercel; provisioning is still click-ops. A minimal Terraform module would make an environment reproducible from an empty account.
+- **Pipeline orchestration.** The medallion build is run on demand (`load_bronze.py` → `dbt build`). Production would want a scheduler (Dagster or Airflow), incremental models instead of full refreshes, and freshness alerting on the gold tables.
+- **Onboarding playbook.** A one-pager on how a new customer fleet gets connected, configured, and scoped for success — the deployment-motion half of the FDE job, not the code half.
+- **Remaining fixtures.** Equipment telemetry, SIRE findings, port congestion, and voyage history are still generated data. Swapping them for a customer's SCADA feed or class-society exports is the same ingestion pattern the three live pipelines already prove.
+
+Already shipped and covered above: CI on every PR (`.github/workflows/ci.yml` — backend, frontend, Angular, data platform, Docker image builds), frontend component tests, backend route-integration tests, and a deployable production image.
 
 ---
-
-## A Note on How This Was Built
-
-I built this with Claude Code as a pair-programming tool — it's honest to say so, and given the target role is literally about deploying agentic AI systems, comfort directing one is more relevant here than it would be elsewhere. Every architectural call, every bug diagnosis, and every fix was verified by me, live, in a browser — not assumed from a diff. I'm glad to walk through the reasoning behind any specific decision in this repo.
 
 ## License
 
