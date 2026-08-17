@@ -37,6 +37,25 @@ services:
       postgres:
         condition: service_healthy
 
+  # One-off: seed the demo fleet, user and vessels, then exit. Every write is an
+  # upsert, so re-running on each deploy is safe.
+  #
+  # Without this a freshly migrated database has NO accounts, and demo login is
+  # disabled in production (jwtConfig.ts) — so the credentials the login page
+  # advertises would be rejected and the deployed app would be unusable. Seeding
+  # means the normal password path works and there is fleet data to show.
+  seed:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+      target: build
+    command: npx ts-node prisma/seed.ts
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-vesselmind}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-vesselmind}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
   backend:
     build:
       context: ./backend
@@ -57,6 +76,8 @@ services:
       postgres:
         condition: service_healthy
       migrate:
+        condition: service_completed_successfully
+      seed:
         condition: service_completed_successfully
 
   # Gold-layer serving API (FastAPI over DuckDB). Independent of Postgres and the

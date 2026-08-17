@@ -47,11 +47,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('vm_token', data.token)
       localStorage.setItem('vm_user', JSON.stringify(data.user))
       return
-    } catch {
-      // API not available or bad credentials — try demo fallback below
+    } catch (err) {
+      // Production has the demo account seeded into the database, so a failure
+      // here is a REAL failure. Faking a session would be worse than useless:
+      // the invented token below is not a signed JWT, so the UI would look
+      // logged in while every subsequent request 401s — including the analytics
+      // calls, which then surface as "Couldn't reach the analytics API".
+      // Surface the error instead and let the user see what actually happened.
+      if (!import.meta.env.DEV) throw err
+      // Dev only: fall through to the offline demo session below, so the UI can
+      // be worked on with no backend running.
     }
 
-    // Demo fallback
+    // Demo fallback (development only — see above)
     if (email === 'demo@petronas.com' && password === 'demo123') {
       const demoToken = 'demo_token_' + Date.now()
       setToken(demoToken)
