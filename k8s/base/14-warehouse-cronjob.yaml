@@ -52,9 +52,16 @@ spec:
       activeDeadlineSeconds: 1800
       template:
         spec:
+          serviceAccountName: batch
+          automountServiceAccountToken: false
           restartPolicy: Never
           securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
             fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - name: build-warehouse
               # The `build` stage of data-platform/Dockerfile.prod: it carries the
@@ -66,6 +73,18 @@ spec:
                 - -c
                 - |
                   set -eu
+                  # WORK FROM /tmp, not from /app.
+                  #
+                  # The pipeline writes the warehouse next to its inputs, and dbt
+                  # writes target/ and logs/ into its project directory. /app is
+                  # root-owned in this image, so under PSS `restricted` — running
+                  # as uid 10001 — none of that is writable. Copying the project
+                  # into /tmp (world-writable, and an emptyDir here rather than
+                  # the container's writable layer) makes the whole pipeline run
+                  # unprivileged with no image change.
+                  cp -r /app/data-platform /tmp/work
+                  cd /tmp/work
+
                   echo "=== bronze: land raw CSV untouched ==="
                   python ingestion/load_bronze.py
 
@@ -82,9 +101,18 @@ spec:
                   cp "$SRC" /warehouse/.vesselmind.duckdb.new
                   mv /warehouse/.vesselmind.duckdb.new /warehouse/vesselmind.duckdb
                   echo "published. running analytics pods keep the old file until restarted."
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ['ALL']
               volumeMounts:
                 - name: warehouse
                   mountPath: /warehouse
+                # Scratch space for the pipeline. emptyDir rather than the
+                # container's writable layer so the size is visible and bounded
+                # by the node's ephemeral storage rather than growing invisibly.
+                - name: scratch
+                  mountPath: /tmp
               resources:
                 requests:
                   memory: 512Mi
@@ -99,3 +127,6 @@ spec:
             - name: warehouse
               persistentVolumeClaim:
                 claimName: warehouse
+            - name: scratch
+              emptyDir:
+                sizeLimit: 2Gi

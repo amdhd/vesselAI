@@ -1,0 +1,136 @@
+# Network policy: default-deny, then explicit allows.
+#
+# HOW NETWORKPOLICY ACTUALLY WORKS, because the mental model trips people:
+#   - Policies are ADDITIVE, never subtractive. There is no "deny" rule. A pod
+#     selected by ANY policy is restricted to the union of what those policies
+#     permit; a pod selected by NO policy is completely unrestricted.
+#   - That is why a default-deny policy is needed at all: it selects every pod
+#     (empty podSelector) and permits nothing, so every subsequent allow is
+#     additive on top of a closed baseline.
+#   - Ingress and egress are independent. This file restricts INGRESS only.
+#     Egress is left open deliberately: the worker calls Open-Meteo, the API
+#     calls the Anthropic API, and locking egress down means enumerating those
+#     plus DNS — worth doing in production, and more failure modes than value on
+#     a laptop. Stated rather than quietly skipped.
+#
+# ENFORCEMENT IS NOT GUARANTEED BY THE API ACCEPTING THIS. NetworkPolicy is
+# enforced by the CNI plugin; plain flannel ignores it entirely and the objects
+# sit there looking authoritative while traffic flows freely. k3s bundles
+# kube-router's policy controller inside the k3s process, so it works here — but
+# it was PROVEN with a probe pod, not assumed. On EKS the default VPC CNI needs
+# network policy explicitly enabled, or Calico installed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: vesselmind
+spec:
+  # Empty selector = every pod in the namespace.
+  podSelector: {}
+  policyTypes: [Ingress]
+  # No ingress rules at all = permit nothing. Everything below adds back.
+---
+# Postgres accepts connections ONLY from the workloads that legitimately need a
+# database: the API, the background worker, and batch jobs (migrations, backups).
+# The web tier and analytics have no business here, and neither does anything
+# that lands in this namespace later.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-from-app
+  namespace: vesselmind
+spec:
+  podSelector:
+    matchLabels:
+      app: vesselmind-postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: vesselmind-api
+        - podSelector:
+            matchLabels:
+              app: vesselmind-worker
+        # Batch pods (db-init Job, backup CronJob) carry this label.
+        - podSelector:
+            matchLabels:
+              tier: batch
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# The API accepts traffic from the Ingress controller and from Prometheus.
+#
+# NOTE the namespaceSelector: Traefik runs in kube-system and Prometheus in
+# monitoring, so a podSelector alone would never match them — podSelector is
+# scoped to THIS namespace unless paired with a namespaceSelector. Getting that
+# wrong produces a policy that silently blocks all external traffic, which is a
+# memorable way to take down an app.
+#
+# `kubernetes.io/metadata.name` is set automatically on every namespace by the
+# API server, so it can be relied on without labelling namespaces by hand.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-ingress
+  namespace: vesselmind
+spec:
+  podSelector:
+    matchLabels:
+      app: vesselmind-api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+        # Same-namespace callers (the worker, batch jobs) reaching the API.
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 3001
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-web-ingress
+  namespace: vesselmind
+spec:
+  podSelector:
+    matchLabels:
+      app: vesselmind-web
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-analytics-ingress
+  namespace: vesselmind
+spec:
+  podSelector:
+    matchLabels:
+      app: vesselmind-analytics
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8000

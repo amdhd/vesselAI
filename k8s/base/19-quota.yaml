@@ -1,0 +1,64 @@
+# ResourceQuota and LimitRange: namespace-level guardrails.
+#
+# THEY DO DIFFERENT JOBS, and the difference is the whole point:
+#   ResourceQuota caps the namespace IN AGGREGATE — the sum of all requests and
+#     limits, plus object counts. It stops one team or one runaway autoscaler
+#     from consuming a shared cluster.
+#   LimitRange applies PER CONTAINER — defaults for anything that omits
+#     resources, and a ceiling on what a single container may ask for.
+#
+# They also interact in a way that surprises people: once a ResourceQuota
+# specifies requests/limits, EVERY container in the namespace must declare them,
+# or pod creation is rejected. A LimitRange with defaults is what stops that from
+# breaking every manifest that did not bother — which is why these two nearly
+# always ship together.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: vesselmind
+  namespace: vesselmind
+spec:
+  hard:
+    # Sized against this cluster: 3 nodes on a Docker VM with ~7.75GiB and 5
+    # CPUs, shared with kube-system, Prometheus and Grafana. Requests are what
+    # the scheduler reserves, so requests.cpu is the number that actually bounds
+    # how much can be placed.
+    requests.cpu: '3'
+    requests.memory: 4Gi
+    limits.cpu: '8'
+    limits.memory: 8Gi
+
+    # Object counts matter as much as compute. A runaway controller creating
+    # pods, or a CronJob whose history is never cleaned, exhausts etcd and the
+    # scheduler long before it exhausts RAM.
+    pods: '30'
+    persistentvolumeclaims: '6'
+    # Deliberately low: an unbounded number of LoadBalancer Services is a way to
+    # spend real money on a cloud provider without noticing.
+    services.loadbalancers: '0'
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: vesselmind
+  namespace: vesselmind
+spec:
+  limits:
+    - type: Container
+      # Applied when a container declares no limits. Without this, one container
+      # with no limit can consume everything the quota allows and starve its
+      # neighbours — and under a ResourceQuota it would simply be rejected.
+      default:
+        cpu: 500m
+        memory: 512Mi
+      # Applied when a container declares no requests. Requests drive scheduling,
+      # so a container without one is placed as if it were free — which is how a
+      # node ends up massively oversubscribed.
+      defaultRequest:
+        cpu: 50m
+        memory: 64Mi
+      # A ceiling on any SINGLE container, so one pod cannot claim the whole
+      # namespace budget and block everything else from scheduling.
+      max:
+        cpu: '2'
+        memory: 2Gi

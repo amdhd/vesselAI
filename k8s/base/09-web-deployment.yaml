@@ -19,6 +19,15 @@ spec:
       labels:
         app: vesselmind-web
     spec:
+      serviceAccountName: web
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          # Restricts which syscalls the container may make, using the container
+          # runtime's default profile. Required by PSS `restricted`, and one of
+          # the cheapest real hardening wins available — it costs nothing and
+          # blocks whole classes of kernel-surface attacks.
+          type: RuntimeDefault
       containers:
         - name: web
           image: k3d-vesselmind-registry:5111/vesselmind/web:0.2.0

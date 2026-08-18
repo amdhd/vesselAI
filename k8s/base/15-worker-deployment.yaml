@@ -44,9 +44,18 @@ spec:
       # Prisma, exits 0), unlike server.ts — so this grace period is actually
       # used rather than decorative.
       terminationGracePeriodSeconds: 30
+      securityContext:
+        seccompProfile:
+          # Restricts which syscalls the container may make, using the container
+          # runtime's default profile. Required by PSS `restricted`, and one of
+          # the cheapest real hardening wins available — it costs nothing and
+          # blocks whole classes of kernel-surface attacks.
+          type: RuntimeDefault
+      serviceAccountName: worker
+      automountServiceAccountToken: false
       containers:
         - name: worker
-          image: k3d-vesselmind-registry:5111/vesselmind/api:0.4.0
+          image: k3d-vesselmind-registry:5111/vesselmind/api:0.5.1
           imagePullPolicy: IfNotPresent
           # Same image as the API, different entrypoint. One image, two
           # workloads: fewer things to build, scan and keep in version step.
