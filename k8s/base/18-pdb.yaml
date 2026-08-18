@@ -1,0 +1,52 @@
+# PodDisruptionBudgets: a floor on availability during VOLUNTARY disruption.
+#
+# WHAT A PDB DOES AND DOES NOT COVER — the distinction that makes it useful:
+#   COVERED (voluntary): `kubectl drain`, cluster autoscaler removing a node,
+#     node pool upgrades. Anything going through the Eviction API asks the PDB
+#     first and is REFUSED if evicting would breach the budget.
+#   NOT COVERED (involuntary): a node losing power, a kernel panic, an OOM kill.
+#     Nothing asks permission for those. A PDB is not a redundancy guarantee; it
+#     is a promise that PLANNED maintenance will not take you down.
+#
+# The failure mode worth knowing: a PDB that can never be satisfied blocks
+# draining forever. minAvailable equal to replicas means no pod can ever be
+# evicted, and a node drain hangs until someone works out why. Budgets should
+# leave slack.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api
+  namespace: vesselmind
+spec:
+  # minAvailable rather than maxUnavailable, deliberately: the API is autoscaled
+  # between 2 and 8, and maxUnavailable is evaluated against the CURRENT replica
+  # count. "25% unavailable" means something different at 2 replicas than at 8.
+  # An absolute floor says what is actually meant — at least one API pod is
+  # always serving.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: vesselmind-api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web
+  namespace: vesselmind
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: vesselmind-web
+---
+# NO PDB FOR POSTGRES, AND THAT IS THE POINT.
+#
+# A single-replica StatefulSet has no availability to protect: minAvailable: 1
+# would simply block every drain of its node forever, since evicting the only
+# pod always breaches the budget. Draining that node therefore requires a
+# deliberate decision (and `--force`), which is correct — there is no safe
+# automatic answer for a lone database.
+#
+# The real fix is not a PDB. It is replication: an operator like CloudNativePG
+# with a replica to fail over to, or RDS Multi-AZ. A PDB on a single-instance
+# database is a comfort blanket that converts an outage into a stuck drain.

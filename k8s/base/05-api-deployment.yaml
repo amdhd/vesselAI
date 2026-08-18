@@ -51,7 +51,7 @@ spec:
           # An explicit version tag, never :latest. :latest makes rollouts
           # non-deterministic (you cannot tell which build is running) and is
           # precisely what Phase 2 break #1 exploits.
-          image: k3d-vesselmind-registry:5111/vesselmind/api:0.3.0
+          image: k3d-vesselmind-registry:5111/vesselmind/api:0.5.1
 
           # PULLED FROM A REGISTRY, not side-loaded. Phase 4 replaced
           # `k3d image import` — which has no equivalent outside a laptop — with
@@ -162,7 +162,7 @@ spec:
           # `kubectl logs` has nothing to show you. Only `describe` explains it.
           #
           # 1000 is the `node` user's real uid in node:20-alpine (verified with
-          # `docker run --rm --entrypoint id vesselmind/api:0.3.0`), not a guess.
+          # `docker run --rm --entrypoint id vesselmind/api:0.5.1`), not a guess.
           #
           # ALTERNATIVE, arguably better: change the Dockerfile to
           # `USER 1000:1000`. An image intended for Kubernetes should declare a

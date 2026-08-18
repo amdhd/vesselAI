@@ -31,6 +31,7 @@ resources:
   - 15-worker-deployment.yaml
   - 16-serviceaccounts.yaml
   - 17-networkpolicies.yaml
+  - 18-pdb.yaml
 
 # Applied to every object, so anything created here is identifiable and
 # deletable as a set. Kustomize also propagates these into selectors where it

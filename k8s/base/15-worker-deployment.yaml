@@ -48,7 +48,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: worker
-          image: k3d-vesselmind-registry:5111/vesselmind/api:0.4.0
+          image: k3d-vesselmind-registry:5111/vesselmind/api:0.5.1
           imagePullPolicy: IfNotPresent
           # Same image as the API, different entrypoint. One image, two
           # workloads: fewer things to build, scan and keep in version step.
