@@ -1,0 +1,104 @@
+# One-shot database initialisation: apply migrations, then seed.
+#
+# WHY A JOB AND NOT AN initContainer ON THE API
+# The naive version puts `prisma migrate deploy` in an initContainer on the API
+# Deployment. At replicas: 3 that means three pods migrate the same database at
+# once. We ran it, and it worked — Prisma takes a Postgres advisory lock, so one
+# pod applied all three migrations and the other two waited, then reported "No
+# pending migrations to apply."
+#
+# It still should not be done that way, and "it worked" is not the defence:
+#   1. It works because of a Prisma implementation detail. The deployment has no
+#      guarantee of its own; swap the migration tool and the safety vanishes.
+#   2. Lock waits time out. Three fast migrations on a laptop is the easy case;
+#      a slow migration and ten replicas is not.
+#   3. EVERY pod runs it, forever. Every restart, every scale-up, every new
+#      replica re-checks migrations against the production database.
+#   4. A failed migration becomes a total outage rather than a failed deploy —
+#      no initContainer succeeds, so no pod ever becomes Ready, so nothing
+#      serves. As a separate Job, a failure leaves the running app untouched.
+#   5. You cannot run migrations once and inspect the result before rolling the
+#      app, which is what you actually want when the migration is risky.
+#
+# THE ORDERING GUARANTEE — two different kinds, do not confuse them.
+#   INSIDE this pod: initContainers are a real Kubernetes guarantee. They run to
+#   completion, in declared order, before any main container starts. So `migrate`
+#   provably finishes before `seed` begins.
+#   BETWEEN this Job and the API Deployment: Kubernetes guarantees NOTHING.
+#   `kubectl apply -f k8s/base/` submits every object at once and the scheduler
+#   does as it pleases. The ordering is enforced OUTSIDE the cluster, by the
+#   deploy sequence:
+#       kubectl apply -f k8s/base/07-db-init-job.yaml
+#       kubectl wait --for=condition=complete job/db-init -n vesselmind
+#       kubectl apply -f k8s/base/
+#   A real setup encodes that dependency declaratively instead — Argo CD
+#   sync-waves or Helm hooks. That is Phase 8's job. Until then the ordering
+#   lives in a runbook, and pretending otherwise would be dishonest.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-init
+  namespace: vesselmind
+spec:
+  # How many times the whole Job may fail before Kubernetes gives up. Low on
+  # purpose: a failing migration is a bug to read, not something to retry into
+  # submission. Note this counts POD failures, not container restarts.
+  backoffLimit: 2
+
+  # Delete the Job (and its pods) 10 minutes after it finishes. Without this,
+  # completed Jobs accumulate in the namespace forever — tidy, and it matters
+  # much more for the CronJob in Phase 6 that runs on a schedule.
+  ttlSecondsAfterFinished: 600
+
+  template:
+    spec:
+      # Never vs OnFailure: "Never" creates a FRESH pod for each attempt, so a
+      # failed attempt's pod sticks around and its logs are still readable.
+      # "OnFailure" restarts the container in place and the previous output is
+      # harder to recover. For a migration you want the forensics.
+      restartPolicy: Never
+
+      # Runs as root, and that is a deliberate shortcut worth naming. This image
+      # is the `build` stage of backend/Dockerfile.prod — it carries the Prisma
+      # CLI and ts-node, which the runtime stage prunes away, but it declares no
+      # non-root user and /app is root-owned. The API Deployment next door
+      # correctly runs as uid 1000, so this is inconsistent.
+      # Phase 7 enforces Pod Security Standards at `restricted`, which will
+      # reject this pod and force a dedicated migration image with a numeric
+      # non-root user. Left as-is now so the inconsistency is visible rather
+      # than quietly patched over.
+      initContainers:
+        - name: migrate
+          image: vesselmind/migrate:0.1.0
+          imagePullPolicy: IfNotPresent
+          # node_modules/.bin directly, not `npx`. npx wants a writable npm
+          # cache under $HOME and will reach for the network if it decides the
+          # package is missing — neither is welcome in a migration step.
+          command: ['node_modules/.bin/prisma', 'migrate', 'deploy']
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: vesselmind-secrets
+                  key: DATABASE_URL
+
+      containers:
+        - name: seed
+          image: vesselmind/migrate:0.1.0
+          imagePullPolicy: IfNotPresent
+          # Every write in prisma/seed.ts is an upsert, so re-running is safe and
+          # this Job is idempotent. That matters: a Job that cannot be re-run is
+          # a Job you are afraid of.
+          command: ['node_modules/.bin/ts-node', 'prisma/seed.ts']
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: vesselmind-secrets
+                  key: DATABASE_URL
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi

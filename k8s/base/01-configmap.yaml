@@ -8,32 +8,31 @@ metadata:
   name: vesselmind-config
   namespace: vesselmind
 data:
-  # NODE_ENV is load-bearing, not cosmetic. Set to "development" DELIBERATELY,
-  # and it is a temporary choice — flip it back in Phase 3.
+  # NODE_ENV is load-bearing, not cosmetic. Back to "production" in Phase 3,
+  # now that the db-init Job has migrated and seeded the database.
   #
-  # WHY: lib/jwtConfig.ts sets DEMO_LOGIN_ENABLED = NODE_ENV !== 'production'.
-  # Under "production", demo@petronas.com / demo123 is rejected, and since no
-  # migrations or seed have run yet there is no real account to log in with
-  # either — the cluster would have no usable login at all.
+  # WHAT THIS TURNS BACK ON:
+  #   - DATABASE_URL is mandatory again (config/env.ts superRefine), so a bad or
+  #     missing DB secret fails fast at boot instead of degrading silently.
+  #   - JWT_SECRET under 32 chars is fatal again (lib/jwtConfig.ts).
+  #   - Stack traces stop appearing in API responses (middleware/errorHandler.ts).
   #
-  # WHAT THIS COSTS, so it is on the record rather than discovered later:
-  #   - DATABASE_URL stops being mandatory (config/env.ts only requires it under
-  #     production), so a bad DB secret no longer fails fast at boot. The app
-  #     boots and degrades quietly instead.
-  #   - A JWT_SECRET under 32 chars stops being fatal. Ours is 47, so no change
-  #     in practice, but the guardrail is off.
-  #   - middleware/errorHandler.ts includes err.stack in API RESPONSES under
-  #     development. Acceptable on a laptop, a real information leak anywhere else.
-  #   - Logged-in vessel data comes from the in-memory fixtures in
-  #     src/mock/vessels.ts, NOT from Postgres, because routes/fleet.ts falls
-  #     back to mocks when fleet-001 is absent from the DB. Reads look right;
-  #     writes do not persist. That is a fixture, not a database.
+  # WHAT IT TURNS OFF:
+  #   - Demo login. DEMO_LOGIN_ENABLED is NODE_ENV !== 'production', so the
+  #     hardcoded demo@petronas.com bypass is gone.
   #
-  # THE REAL FIX, in Phase 3: run `prisma migrate deploy` then `prisma/seed.ts`,
-  # which creates fleet-001, a genuine demo@petronas.com user (bcrypt'd
-  # demo123) and 3 vessels IN POSTGRES. Then normal password login works, data
-  # persists, and this goes back to "production".
-  NODE_ENV: 'development'
+  # That is now safe, and the reason is the whole point of this phase: the seed
+  # created a REAL demo@petronas.com user in Postgres with a bcrypt-hashed
+  # password. The same credentials still work — they just go through the normal
+  # password path against a real row instead of a hardcoded bypass. Fleet data
+  # comes from Postgres rather than the in-memory fixtures in src/mock/vessels.ts,
+  # so edits persist.
+  #
+  # Consequence worth knowing: this ConfigMap now DEPENDS on the db-init Job
+  # having run. On a fresh cluster, applying these manifests without running the
+  # Job first leaves an API in production mode against an empty database, and
+  # every login fails. The ordering is documented in docs/MIGRATIONS.md.
+  NODE_ENV: 'production'
 
   # The port the app binds. Must match containerPort in the Deployment and
   # targetPort in the Service. Three places, one number — a mismatch shows up as
