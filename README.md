@@ -86,6 +86,8 @@ cd data-platform && .venv/bin/uvicorn api.main:app --port 8000
 - **Testing:** Vitest everywhere — backend unit tests (tenant isolation, JWT auth middleware, ingestion pipelines, voyage agent) plus supertest route-integration tests exercising the real Express app over HTTP; frontend unit + Testing Library component tests; dbt data tests and pytest on the data platform
 - **Real-time:** Socket.io · **Auth:** JWT
 
+**Platform:** Kubernetes (k3d/k3s), Kustomize, Argo CD, Traefik Ingress, Sealed Secrets, Prometheus + Grafana, Trivy, k6.
+
 ## Architecture
 
 ```
@@ -367,6 +369,14 @@ GET    /api/sire/findings/:vesselId
 
 ## Deployment
 
+Three options, in increasing order of realism:
+
+| | What it is |
+|---|---|
+| Docker Compose | `docker-compose.prod.yml` — multi-stage non-root images, migrations as a one-off, secrets from the environment |
+| Railway + Vercel | Managed hosting, described below |
+| **Kubernetes** | The full stack on k3d, deployed by Argo CD — see [Running on Kubernetes](#running-on-kubernetes) |
+
 Backend + Postgres deploy to [Railway](https://railway.app); frontend deploys to [Vercel](https://vercel.com).
 
 ```bash
@@ -384,21 +394,44 @@ cd frontend && npx vercel deploy
 
 ## Running on Kubernetes
 
-The app runs on a local k3d cluster (k3s v1.35.5, one server + two agents).
-Manifests are in `k8s/base/`; the design decisions are commented in the files
-themselves.
+The whole stack runs on a local k3d cluster (k3s v1.35.5, one server + two
+agents), deployed by Argo CD from this repository. Manifests live in `k8s/`;
+every non-obvious decision is commented in the file it applies to.
 
-| Workload | Object | Why that object |
+```bash
+k3d cluster create vesselmind --agents 2 \
+  --registry-use k3d-vesselmind-registry:5111 \
+  -p "8080:80@loadbalancer"
+
+kubectl apply -k k8s/overlays/dev
+```
+
+Both `--registry-use` and the port mapping can only be set **at cluster
+creation** — worth deciding up front rather than discovering one rebuild at a
+time.
+
+| Surface | URL |
+|---|---|
+| App | `http://localhost:8080` |
+| Grafana | `http://localhost:8080/grafana` |
+| Argo CD | `http://localhost:8080/argocd` |
+
+### Workloads, and why each got its object type
+
+| Workload | Object | Why |
 |---|---|---|
-| Postgres | StatefulSet + headless Service + volumeClaimTemplate | Stable identity and stable storage. Note this gives neither replication nor HA — that needs an operator or RDS |
+| Postgres | StatefulSet + headless Service + volumeClaimTemplate | Stable identity and stable storage. Gives neither replication nor HA — that needs an operator or RDS |
 | Express API | Deployment + ClusterIP Service + HPA | Stateless and interchangeable, so rolling replacement is correct |
-| React SPA | Deployment + ClusterIP Service | Static files from nginx; the Ingress does the routing, not nginx |
-| Migrations + seed | Job (initContainers, then a main container) | Runs once and stops. An initContainer on the API would re-run on every pod start forever |
+| React SPA | Deployment + ClusterIP Service | Static files from nginx; the **Ingress** does the routing, not nginx |
+| Analytics (FastAPI + DuckDB) | Deployment + PVC | Reads a warehouse a CronJob rebuilds |
+| Background worker | Deployment, 1 replica, `Recreate` | Weather ingestion and the AIS consumer. One replica by construction — see below |
+| Migrations + seed | Job (initContainers, then a main container) | Runs once and stops. An initContainer on the API would re-run on every pod start, forever |
+| Backups, warehouse refresh | CronJobs | Scheduled batch, with `concurrencyPolicy: Forbid` and bounded history |
 | Credentials | SealedSecret | Encrypted in git; only the in-cluster controller can decrypt |
 
-Entry point is a single Traefik Ingress with path fan-out: `/api` and
-`/socket.io` to the API, everything else to the SPA. Same-origin, so there is no
-CORS to configure.
+Entry point is a single Traefik Ingress with path fan-out — `/api/analytics` to
+the analytics service, `/api` and `/socket.io` to the API, everything else to the
+SPA. Longest-prefix wins, and same-origin means no CORS to configure.
 
 ### Measured autoscaling and load test
 
@@ -416,101 +449,155 @@ Profile: 60 virtual users, 30s ramp / 120s hold / 30s ramp-down.
 | Throughput | **473.6 req/s** |
 | Latency p95 | **11.04 ms** |
 | Latency median | 3.87 ms |
-| Latency max | 545 ms |
-| Failed requests | **0** (0.00%) |
+| Failed requests | **0** |
 | Rate-limited (429) | **0** |
 | Replicas | **3 → 8** |
 | HPA decision → new pods Ready | **12 s** |
 
-Scaling behaviour, from the HPA's own events:
+From the HPA's own events:
 
 ```
 10:56:32Z  SuccessfulRescale  New size: 7   (cpu above target)
 10:56:47Z  SuccessfulRescale  New size: 8   (cpu above target)
 ```
 
-Two steps 15 seconds apart, matching the configured 15s policy period. Each new
-pod was Ready 12 seconds after creation, consistently across all eight.
-
-`scaleUp` and `scaleDown` are deliberately asymmetric: scale-up has a zero
-stabilisation window, scale-down waits 300s. The asymmetry encodes the cost
-difference — scaling up early wastes a little CPU, scaling down early drops
+Two steps 15 seconds apart, matching the configured policy period. `scaleUp` and
+`scaleDown` are deliberately asymmetric — zero stabilisation up, 300s down —
+because scaling up early wastes a little CPU while scaling down early drops
 requests. Visible in the result: after load stopped, CPU fell to 14% and the
-deployment stayed at 8 replicas rather than flapping.
+deployment held at 8 replicas rather than flapping.
 
-**Caveats, because the numbers are only worth what they disclose:**
+**Caveats, because numbers are only worth what they disclose:**
 
 - The HPA **hit its `maxReplicas` ceiling of 8**, so this measures the ceiling,
-  not where it would have settled. 8 is bounded by a 5-core laptop, not by the app.
-- `/api/fleet` returns 3 seeded vessels from a tiny database. These latencies say
-  little about behaviour at realistic data volumes.
-- Load originates from one machine on the same host as the cluster, so there is
-  no real network between client and server.
-- The API rate limit was raised for the test (`API_RATE_LIMIT_MAX`), which is
-  stated in the ConfigMap as a load-testing setting rather than passed off as a
-  production default.
+  not where it would have settled. 8 is bounded by a 5-core laptop, not the app.
+- `/api/fleet` returns 3 seeded vessels from a tiny database.
+- Load originates on the same machine as the cluster — no real network.
+- The rate limit was raised for the test, in the dev overlay, and labelled as a
+  load-testing setting rather than passed off as a production default.
 
 ### Observability
 
-Prometheus and Grafana run in a `monitoring` namespace, deployed from
-hand-written manifests in `k8s/monitoring/` — no operator and no Helm chart.
+Prometheus and Grafana run in a `monitoring` namespace from hand-written
+manifests — no operator, no Helm chart. The app already exposed
+`http_request_duration_seconds` via `prom-client`; nothing consumed it until now.
 
-The app already exposed `http_request_duration_seconds` (a histogram labelled by
-method, route and status) via `prom-client`; nothing was consuming it until now.
-
-Grafana is at **http://localhost:8080/grafana**, dashboard *VesselMind API*, with
-four panels on one time axis:
-
-| Panel | Query |
-|---|---|
-| Request rate | `sum(rate(http_request_duration_seconds_count[1m]))` |
-| Latency p95 / p50 | `histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))` |
-| Ready replicas | `count(up{job="vesselmind-api"} == 1)` |
-| Rate by status code | `sum by (status) (rate(http_request_duration_seconds_count[1m]))` |
-
-Two decisions worth explaining:
+Dashboard *VesselMind API*, four panels on one time axis: request rate, p95/p50
+latency, ready replicas, and rate split by status code. Verified live under load:
+361 req/s, p95 10 ms, 8 ready replicas, zero 429s.
 
 **Prometheus discovers pods, not the Service.** Scraping a Service load-balances
-across replicas, so each scrape hits a random pod and no pod's counters are ever
-complete. Scraping every pod directly is also what makes `count(up)` usable as a
+across replicas, so each scrape lands on a random pod and no pod's counters are
+ever complete. Per-pod discovery is also what makes `count(up)` usable as a
 replica gauge — which is why there is no `kube-state-metrics` here.
 
-**Everything is provisioned from ConfigMaps.** A dashboard built by clicking in
-the UI lives in Grafana's database and dies with the pod. Provisioned from files,
-the datasource and dashboard are declarative, reviewable, and identical on any
-cluster.
+Limits, deliberately: no operator so no `ServiceMonitor` CRDs and no bundled
+alert rules; **no alerting at all**, which is the biggest gap; Prometheus storage
+is an `emptyDir`; `/metrics` is unauthenticated; Grafana allows anonymous viewing.
 
-Verified live: 361 req/s, p95 10 ms, 8 ready replicas, zero 429s.
+### Backups, and a restore that was actually performed
 
-**Limitations, deliberately:**
+A CronJob writes gzipped `pg_dump` output to a PVC daily. The restore was carried
+out against this cluster, not written from memory:
 
-- No operator, so no `ServiceMonitor` CRDs, no bundled alert rules, no
-  `node-exporter` or `kube-state-metrics`. `kube-prometheus-stack` is what a real
-  team installs; this is ~300 MB instead of ~1.5 GB and every line is explainable.
-- **No alerting.** Dashboards show you a problem only while someone is looking.
-- Prometheus storage is an `emptyDir` — history dies with the pod. Production
-  wants a PVC, and long-term retention wants `remote_write`.
-- `/metrics` is unauthenticated. `app.ts` supports `METRICS_TOKEN`; a real
-  deployment should set it, since the series disclose route names, traffic shape
-  and error rates.
-- Grafana allows anonymous viewing so the dashboard opens without a login. Fine
-  on a laptop, unacceptable anywhere else.
+```
+1. Backup taken           -> 6,637 bytes, verified with gzip -t
+2. DROP SCHEMA CASCADE    -> 0 tables
+3. App response           -> {"error":"Database unavailable"}
+4. Restore from archive   -> 3 vessels, 24 tables, 3 migrations
+5. App                    -> working again
+```
 
-### A production bug this surfaced
+Recovery needed **no pod restart and no re-seed** — Prisma reconnects lazily, so
+the pods never noticed. `_prisma_migrations` came back with the dump, so the
+schema is correctly versioned rather than merely present.
 
-The API sits behind Traefik, and `TRUST_PROXY` was unset — so `req.ip` was
-Traefik's pod IP for every request, and the per-IP rate limiter counted the
-entire internet into **one bucket of 200 requests per 15 minutes**. The first 200
-requests from anyone would have locked out everybody.
+Two steps that are easy to omit: the dump is verified with `gzip -t` before being
+declared successful, because a truncated write produces a plausible-looking file
+that fails only on restore day; and retention is enforced, because unbounded
+backups fill the volume and then every *future* backup fails.
 
-Fixed by setting `TRUST_PROXY=1` (trust exactly one hop, and take the client IP
-from `X-Forwarded-For`). The hop count matters: trusting more hops than exist
-lets a client forge its own IP and defeat the limiter from the other direction.
+Full procedure and its limits — logical not physical backups, so no point-in-time
+recovery — in [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md).
 
-Still outstanding, and honest about it: `express-rate-limit` uses an in-process
-store, so each replica counts independently and the effective ceiling is
-`replicas × max`. At 8 replicas that is 8× the intended limit. A shared Redis
-store is the fix.
+### Security and policy
+
+- **Pod Security Standards at `restricted`, enforced.** Admission control rejects
+  non-compliant pods outright. Getting there meant Postgres running as uid 70
+  rather than root, the migration Job dropping root, the warehouse CronJob
+  working from `/tmp`, and `seccompProfile: RuntimeDefault` everywhere.
+- **NetworkPolicy, proven rather than assumed.** Enforcement is the CNI's job,
+  not the API server's — plain flannel ignores these objects while they sit there
+  looking authoritative. Measured with a probe pod, same command before and
+  after: `REACHABLE` → `BLOCKED`, while every legitimate path kept working.
+- **Per-workload ServiceAccounts with `automountServiceAccountToken: false`.**
+  Every pod previously ran as `default` with a live Kubernetes API credential
+  mounted that none of them used.
+- **PodDisruptionBudgets**, demonstrated both ways: a normal drain rescheduled
+  pods with the app answering 200 throughout, and an unsatisfiable budget made
+  the same drain refuse with *"Cannot evict pod as it would violate the pod's
+  disruption budget"*.
+- **ResourceQuota + LimitRange**, tested by breaching them on purpose.
+
+### GitOps
+
+Argo CD reconciles the cluster against `main` continuously, with `selfHeal` on:
+
+```
+$ kubectl scale deployment/web --replicas=5
+  immediately after manual change: 5 replicas
+  REVERTED to 2 replicas after ~5s
+```
+
+That property — not easier deploys — is the argument for pull-based delivery:
+cluster state becomes knowable. Push vs pull, the adoption gotcha (the first sync
+is not a no-op), and what is still missing are in
+[docs/GITOPS.md](docs/GITOPS.md).
+
+### Supply chain
+
+CI builds every runtime image, scans it with Trivy (failing on fixable
+HIGH/CRITICAL), and publishes to GHCR tagged with the **commit SHA, never
+`:latest`** — so a running pod's image names the exact commit that built it and
+rollback means deploying the previous SHA. Pull requests build and scan but never
+push.
+
+The scanner earned its place on first run: 12 vulnerable packages in the API
+image, 33 in the web image including CRITICAL OpenSSL. Where a fix existed it was
+applied; where none did — `sqlparse`, pinned below the patched release by
+`dbt-core` — it is suppressed in a `.trivyignore` with a justification and a
+re-check date. Details in [docs/IMAGES.md](docs/IMAGES.md).
+
+### Bugs this migration found in the application
+
+Running under Kubernetes surfaced real defects that Docker Compose never would:
+
+- **Rate limiting was globally broken behind a proxy.** `TRUST_PROXY` was unset,
+  so `req.ip` was Traefik's pod IP for every request and the per-IP limiter
+  counted the entire internet into one bucket of 200 per 15 minutes.
+- **Background work ran in every API replica.** Weather sync and the AIS consumer
+  lived in `server.ts`, so at 8 replicas that was 8 concurrent syncs against the
+  same external API writing the same rows. Now a single-replica worker.
+- **No graceful shutdown.** `server.ts` had no `SIGTERM` handler, so Node exited
+  immediately and every rollout severed in-flight requests.
+- **Dev dependencies and unused tooling in runtime images** — npm in the API
+  image, pip in the analytics image, both carrying their own vendored CVEs. An
+  unused tool is better removed than patched.
+
+### What is still missing
+
+- **No cloud deployment yet.** This is a local cluster; EKS with IRSA and
+  Terraform is the next phase, and NetworkPolicy will need re-proving there since
+  the default VPC CNI does not enforce it.
+- **No alerting**, only dashboards.
+- **Image tags are pinned by hand**, so a deploy still means editing a manifest.
+  Closing that loop needs Argo CD Image Updater or a CI step that commits the tag.
+- **Postgres is in-cluster and single-replica.** A StatefulSet gives stable
+  identity and storage, not replication. Production answer is RDS.
+- `express-rate-limit` uses an in-process store, so the effective ceiling is
+  `replicas x max` until a shared Redis store exists.
+
+---
 
 ## How this maps to an FDE role
 
@@ -530,12 +617,12 @@ The Forward Deployed Engineer JD asks for specific things. Here's where each one
 
 Scoped, understood, and not yet built — I'd rather name these than imply they're done:
 
-- **Infrastructure as code.** The stack ships today via Docker Compose (`docker-compose.prod.yml`) with Railway + Vercel; provisioning is still click-ops. A minimal Terraform module would make an environment reproducible from an empty account.
+- **Cloud infrastructure as code.** The *workloads* are now fully declarative — Kubernetes manifests with Kustomize overlays, reconciled by Argo CD ([Running on Kubernetes](#running-on-kubernetes)). What is still missing is the layer underneath: the cluster itself is created by a `k3d` command on a laptop. Terraform for EKS, with IRSA for pod-level IAM, is the next piece — and the one that makes this reproducible from an empty AWS account.
 - **Pipeline orchestration.** The medallion build is run on demand (`load_bronze.py` → `dbt build`). Production would want a scheduler (Dagster or Airflow), incremental models instead of full refreshes, and freshness alerting on the gold tables.
 - **Onboarding playbook.** A one-pager on how a new customer fleet gets connected, configured, and scoped for success — the deployment-motion half of the FDE job, not the code half.
 - **Remaining fixtures.** Equipment telemetry, SIRE findings, port congestion, and voyage history are still generated data. Swapping them for a customer's SCADA feed or class-society exports is the same ingestion pattern the three live pipelines already prove.
 
-Already shipped and covered above: CI on every PR (`.github/workflows/ci.yml` — backend, frontend, Angular, data platform, Docker image builds), frontend component tests, backend route-integration tests, and a deployable production image.
+Already shipped and covered above: CI on every PR (`.github/workflows/ci.yml` — backend, frontend, Angular, data platform, and build/scan/publish for all three runtime images), Trivy scanning that gates on fixable HIGH/CRITICAL, frontend component tests, backend route-integration tests, deployable production images, and the full Kubernetes deployment with autoscaling, observability, tested backups, enforced Pod Security Standards and GitOps reconciliation.
 
 ---
 
