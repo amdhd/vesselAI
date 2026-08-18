@@ -244,43 +244,74 @@ jobs:
   # not be able to publish an artifact, and its diff has not been reviewed yet.
   # Pushing happens only on merge to main.
   # ---------------------------------------------------------------------------
-  publish-api-image:
-    name: API image — build, scan, publish
+  # ---------------------------------------------------------------------------
+  # Build, scan and publish the runtime images.
+  #
+  # WHY THIS EXISTS: before this job, images reached the cluster via
+  # `k3d image import` — copying a tarball in by hand, which has no equivalent
+  # outside a laptop. Real clusters pull from a registry, so CI has to produce
+  # one.
+  #
+  # A MATRIX, so every shipped image passes the same gate. The frontend was
+  # originally scanned only on a laptop, which meant a base image could rot
+  # between manual checks and nothing would catch it. A gate that covers one of
+  # two images is not a gate.
+  #
+  # ON PULL REQUESTS images are built and scanned but NOT pushed: a PR must not
+  # be able to publish an artifact, and its diff has not been reviewed yet.
+  # Pushing happens only on merge to main.
+  #
+  # fail-fast: false so one image's vulnerabilities do not hide the other's.
+  # ---------------------------------------------------------------------------
+  publish-images:
+    name: ${{ matrix.name }} image — build, scan, publish
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: API
+            context: ./backend
+            dockerfile: ./backend/Dockerfile.prod
+            image: vesselai-api
+          - name: Web
+            context: ./frontend
+            dockerfile: ./frontend/Dockerfile.prod
+            image: vesselai-web
     steps:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
 
       # Build once, load into the local daemon so the scanner can read it. The
-      # push (if any) reuses this same build via the layer cache, so the image
-      # that gets scanned is byte-for-byte the image that gets published — not a
-      # rebuild that might differ.
+      # push reuses this build via the layer cache, so the image that is scanned
+      # is the image that is published — not a rebuild that might differ.
       - name: Build image
         uses: docker/build-push-action@v6
         with:
-          context: ./backend
-          file: ./backend/Dockerfile.prod
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           load: true
-          tags: vesselmind-api:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ matrix.image }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
 
-      # Fail the build on serious, fixable vulnerabilities. `ignore-unfixed` is
-      # deliberate: a CRITICAL with no available patch is not something this
-      # pipeline can act on, and failing on it would train everyone to ignore
-      # the scanner. Findings without fixes still show in the job log.
       # Pinned to a commit SHA, not a tag. A third-party action runs arbitrary
       # code with access to this job's token; a mutable tag can be repointed at
       # new code after review. The SHA cannot. (v0.36.0 at time of pinning.)
+      #
+      # ignore-unfixed is deliberate: a CRITICAL with no available patch is not
+      # something this pipeline can act on, and failing on it trains everyone to
+      # ignore the scanner — the worst outcome for a security gate. Unfixable
+      # findings still appear in the job log.
       - name: Scan image (Trivy)
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
         with:
-          image-ref: vesselmind-api:${{ github.sha }}
+          image-ref: ${{ matrix.image }}:${{ github.sha }}
           format: table
           exit-code: '1'
           severity: HIGH,CRITICAL
@@ -296,11 +327,11 @@ jobs:
 
       # Tagged with the commit SHA, never :latest.
       #
-      # An immutable tag means a running pod's image tells you exactly which
-      # commit produced it, and a rollback is "deploy the previous SHA" rather
-      # than "hope the registry still has what :latest used to point at".
-      # :latest is a moving target: two pods on the same tag can run different
-      # code, and there is no way to tell from the manifest which is which.
+      # An immutable tag means a running pod's image names the exact commit that
+      # built it, and a rollback is "deploy the previous SHA" rather than "hope
+      # the registry still has what :latest used to point at". :latest is a
+      # moving target: two pods on the same tag can run different code with no
+      # way to tell which from the manifest.
       #
       # The `main` tag is published alongside purely as a human convenience for
       # "what is current" — nothing should ever deploy from it.
@@ -308,10 +339,10 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v6
         with:
-          context: ./backend
-          file: ./backend/Dockerfile.prod
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/vesselai-api:${{ github.sha }}
-            ghcr.io/${{ github.repository_owner }}/vesselai-api:main
-          cache-from: type=gha
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:main
+          cache-from: type=gha,scope=${{ matrix.image }}
