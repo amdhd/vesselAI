@@ -1,0 +1,67 @@
+# The cluster's single front door.
+#
+# THE CHAIN, explicitly, because this is the part people wave at:
+#
+#   browser
+#     -> Ingress CONTROLLER (Traefik, running in kube-system as a real pod —
+#        k3s ships it by default). The controller is the thing that actually
+#        listens on a port and proxies traffic.
+#     -> this Ingress OBJECT, which is only a rule. It has no process behind it.
+#        Traefik watches the API for Ingress objects and reconfigures itself.
+#        With no controller installed, this object would exist and do nothing —
+#        a common and very confusing failure.
+#     -> Service (a stable virtual IP + DNS name)
+#     -> EndpointSlice (the list of pod IPs currently passing readiness — this
+#        is what actually makes readiness probes matter for routing)
+#     -> Pod
+#
+# Check the middle of that chain when traffic does not arrive:
+#   kubectl get ingress -n vesselmind
+#   kubectl get endpointslice -n vesselmind
+#
+# PATH-BASED FAN-OUT, not host-based. Hosts would be more production-like
+# (app.example.com / api.example.com) but need DNS or /etc/hosts entries to test
+# locally. Paths need neither, and same-origin means no CORS to configure —
+# which is also why the frontend's baked-in VITE_API_URL of "/api" just works.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vesselmind
+  namespace: vesselmind
+spec:
+  # Which controller should pick this up. k3s registers Traefik as the default
+  # IngressClass, so this could be omitted — stated explicitly because an
+  # unclaimed Ingress silently does nothing, and "silently does nothing" is the
+  # worst failure mode to debug.
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          # ORDER DOES NOT DECIDE THIS. Unlike nginx.conf, Ingress matching is
+          # longest-prefix-wins regardless of the order rules appear, so /api
+          # beats / for /api/* no matter how they are listed here.
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 3001
+          # Socket.io needs its own rule: it lives at /socket.io, not under
+          # /api, so without this it would fall through to the frontend and the
+          # websocket handshake would 404 against a static file server.
+          - path: /socket.io
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 3001
+          # Everything else is the SPA.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 8080
