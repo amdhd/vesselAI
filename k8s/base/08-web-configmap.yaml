@@ -1,0 +1,60 @@
+# nginx config for the web pod, supplied as a ConfigMap rather than baked into
+# the image.
+#
+# WHY OVERRIDE IT AT ALL: the config inside the image (frontend/nginx.conf) is
+# written for docker-compose. It proxies /api to a host called `backend` and
+# /api/analytics to `analytics-api`. Neither name exists in this cluster — the
+# API Service is called `api`, and no analytics service is deployed. nginx
+# resolves upstream hostnames AT STARTUP and refuses to start when they do not
+# resolve ("host not found in upstream"), so the pod would CrashLoopBackOff
+# immediately.
+#
+# WHY NOT JUST FIX THE HOSTNAMES: because in Kubernetes the frontend should not
+# be proxying to the API at all. The Ingress does that routing. Chaining
+# Ingress -> nginx -> API adds a hop that has to be configured, monitored and
+# debugged, for no benefit. Here nginx serves static files and nothing else.
+#
+# CONFIGMAP AS A VOLUME, not env vars — and the difference matters. A ConfigMap
+# mounted as a volume DOES update in place after a short sync delay, unlike env
+# vars which are injected once at container start and need a pod restart. nginx
+# still will not notice a changed file without a reload, so this is not live
+# reconfiguration — but the file itself does change underneath it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-nginx-config
+  namespace: vesselmind
+data:
+  default.conf: |
+    server {
+      # 8080, not 80: the nginx-unprivileged image runs as uid 101 and cannot
+      # bind ports below 1024 without CAP_NET_BIND_SERVICE.
+      listen 8080;
+      server_name _;
+      root /usr/share/nginx/html;
+      index index.html;
+
+      gzip on;
+      gzip_comp_level 6;
+      gzip_types text/plain text/css application/json application/javascript application/xml image/svg+xml;
+
+      # Vite writes content-hashed filenames into /assets, so the bytes at a
+      # given URL can never change. Cache them hard.
+      location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+      }
+
+      # index.html must NOT be cached: it is the file that names which hashed
+      # bundles to load, so a stale copy pins the browser to a deleted build.
+      location = /index.html {
+        add_header Cache-Control "no-cache";
+      }
+
+      # SPA fallback: React Router owns the paths, so any unmatched URL returns
+      # index.html rather than a 404 and the client router takes over.
+      location / {
+        try_files $uri $uri/ /index.html;
+      }
+    }

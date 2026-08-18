@@ -70,11 +70,21 @@ current". **Nothing should ever deploy from it.**
 
 ## CI: build, scan, publish
 
-`.github/workflows/ci.yml`, job `publish-api-image`:
+`.github/workflows/ci.yml`, job `publish-images` — a **matrix over every runtime
+image**, so each one passes the same gate:
 
-1. **Build** `backend/Dockerfile.prod`, loaded into the runner's local daemon.
+| Image | Built from |
+|---|---|
+| `vesselai-api` | `backend/Dockerfile.prod` |
+| `vesselai-web` | `frontend/Dockerfile.prod` |
+
+1. **Build**, loaded into the runner's local daemon.
 2. **Scan** with Trivy, failing on `HIGH,CRITICAL`.
-3. **Publish** to `ghcr.io/amdhd/vesselai-api:<sha>` — *only* on merge to main.
+3. **Publish** to `ghcr.io/amdhd/<image>:<sha>` — *only* on merge to main.
+
+The frontend was originally scanned only on a laptop. That is not a gate: a base
+image can rot between manual checks and nothing catches it. `fail-fast: false`
+so one image's findings never hide the other's.
 
 **Pull requests build and scan but never push.** An unreviewed branch must not be
 able to publish an artifact. This also means the publish step is only exercised
@@ -220,3 +230,56 @@ script needs it — so the conclusion held while the reasoning did not. Both
 `MIGRATIONS.md` and the Dockerfile comment have been corrected. Assertions about
 an image are cheap to verify and easy to get wrong from reading the Dockerfile
 alone.
+
+## Reaching the Ingress without port-forward
+
+The cluster is created with a host port mapping so the Ingress is reachable
+directly:
+
+```bash
+k3d cluster create vesselmind --agents 2 \
+  --registry-use k3d-vesselmind-registry:5111 \
+  -p "8080:80@loadbalancer"
+```
+
+`8080:80@loadbalancer` publishes host port 8080 to port 80 on the k3d
+serverlb container, which forwards to Traefik. The app is then at
+http://localhost:8080 with no `kubectl port-forward` running.
+
+Like `--registry-use`, this can only be set **at cluster creation** — which is
+why adding it meant a rebuild. Worth deciding both up front on a fresh cluster
+rather than discovering them one rebuild at a time.
+
+### What survives a rebuild, and what does not
+
+| | Survives | Why |
+|---|---|---|
+| Registry contents | Yes | The registry is a separate container, independent of the cluster |
+| Postgres data | **No** | `local-path` volumes live on the node containers |
+| Sealed-secrets key | Only if backed up | Regenerated on a fresh install; the backup is the whole recovery path |
+
+Postgres data being disposable is fine here only because `db-init` rebuilds it
+from migrations and seed in seconds. That is a property of a demo, not of a
+real system.
+
+### A backup that silently produced nothing
+
+During a Docker Desktop restart, this ran while the cluster was down:
+
+```bash
+kubectl get secret -n kube-system -l sealedsecrets... -o yaml > sealed-key.backup.yaml
+```
+
+`kubectl` could not reach the API server, so it wrote `items: []` — a valid YAML
+file containing nothing — **over the previous good backup**, and exited 0. The
+key survived only because the containers were merely stopped rather than deleted.
+
+The fix is to verify the backup rather than trust the exit code:
+
+```bash
+kubectl get secret ... -o yaml > key.backup.yaml
+grep -c 'tls.key' key.backup.yaml   # must be >= 1 before deleting anything
+```
+
+A backup step that can succeed while producing nothing is worse than one that
+fails loudly, because it destroys the previous good copy on its way past.

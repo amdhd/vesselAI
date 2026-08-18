@@ -1,0 +1,236 @@
+# Grafana, fully provisioned from ConfigMaps.
+#
+# WHY PROVISIONING RATHER THAN CLICKING: a dashboard built in the UI lives in
+# Grafana's own database and dies with the pod (emptyDir here). Provisioned from
+# files, the datasource and dashboard are declarative, reviewable in git, and
+# recreated identically on any cluster. Same argument as the rest of this repo.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        # In-cluster DNS: <service>.<namespace>.svc. Grafana queries Prometheus
+        # server-side, so the browser never talks to Prometheus directly and it
+        # needs no Ingress of its own.
+        url: http://prometheus.monitoring.svc:9090
+        isDefault: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: monitoring
+data:
+  provider.yaml: |
+    apiVersion: 1
+    providers:
+      - name: vesselmind
+        orgId: 1
+        folder: VesselMind
+        type: file
+        disableDeletion: false
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-api
+  namespace: monitoring
+data:
+  api.json: |
+    {
+      "uid": "vesselmind-api",
+      "title": "VesselMind API",
+      "tags": ["vesselmind"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "10s",
+      "time": { "from": "now-30m", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Request rate (req/s)",
+          "description": "Derived from the histogram's _count series. rate() over 1m, summed across all replicas.",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+          "targets": [
+            {
+              "expr": "sum(rate(http_request_duration_seconds_count[1m]))",
+              "legendFormat": "total",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Latency p95 / p50 (seconds)",
+          "description": "histogram_quantile over the _bucket series. Accuracy is bounded by the app's bucket boundaries — with a highest finite bucket of 10s, anything slower is indistinguishable.",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 0 } }, "overrides": [] },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))",
+              "legendFormat": "p95",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))",
+              "legendFormat": "p50",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "API replicas (from scrape targets)",
+          "description": "count(up) over the pod-discovery job. No kube-state-metrics needed: Prometheus scrapes every pod individually, so counting healthy targets IS the ready replica count. Put on the same time axis as load so scaling is visible as a response to traffic.",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "fieldConfig": { "defaults": { "unit": "short", "min": 0, "custom": { "fillOpacity": 20, "lineInterpolation": "stepAfter" } }, "overrides": [] },
+          "targets": [
+            {
+              "expr": "count(up{job=\"vesselmind-api\"} == 1)",
+              "legendFormat": "ready replicas",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Request rate by status code",
+          "description": "Splits the same histogram by status label. A rising 429 series would show the rate limiter biting; 5xx would show the app failing.",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+          "targets": [
+            {
+              "expr": "sum by (status) (rate(http_request_duration_seconds_count[1m]))",
+              "legendFormat": "{{status}}",
+              "refId": "A"
+            }
+          ]
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 472      # the grafana image's own uid
+        fsGroup: 472
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.4.0
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            # Served under /grafana by the Ingress, so Grafana must know its own
+            # public URL — otherwise its redirects and asset links point at /
+            # and the UI half-loads with broken CSS.
+            - name: GF_SERVER_ROOT_URL
+              value: http://localhost:8080/grafana
+            - name: GF_SERVER_SERVE_FROM_SUB_PATH
+              value: 'true'
+            # LOCAL-ONLY: anonymous read access so the dashboard opens without a
+            # login. Convenient on a laptop, unacceptable anywhere else — metrics
+            # disclose route names, traffic shape and error rates. Production
+            # puts SSO in front of this.
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: 'true'
+            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+              value: Viewer
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: 'false'
+            - name: GF_ANALYTICS_REPORTING_ENABLED
+              value: 'false'
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+          readinessProbe:
+            httpGet:
+              path: /robots.txt
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 12
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 50m
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
+        - name: dashboards
+          configMap:
+            name: grafana-dashboard-api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  selector:
+    app: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+# A SEPARATE Ingress, in the monitoring namespace.
+#
+# Ingress is namespaced and can only route to Services in ITS OWN namespace, so
+# the vesselmind Ingress cannot reach Grafana. Two Ingress objects, one Traefik
+# controller, one host — Traefik merges the rules by path.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /grafana
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000

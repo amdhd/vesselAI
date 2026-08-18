@@ -1,0 +1,97 @@
+# The React SPA, served by nginx.
+#
+# WHY A DEPLOYMENT: this is the purest stateless workload in the project — a
+# process serving files that were baked into the image at build time. No disk,
+# no identity, no coordination between replicas. Two replicas so a node drain or
+# a rollout never drops the frontend entirely.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: vesselmind
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: vesselmind-web
+  template:
+    metadata:
+      labels:
+        app: vesselmind-web
+    spec:
+      containers:
+        - name: web
+          image: k3d-vesselmind-registry:5111/vesselmind/web:0.2.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+
+          volumeMounts:
+            # Mounting a ConfigMap at a DIRECTORY replaces that directory's
+            # entire contents. Safe here because the image ships exactly one
+            # file in conf.d (default.conf) and we are replacing it. Mounting
+            # over a directory with other files you needed is a classic way to
+            # break an image in a way that looks nothing like the cause.
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d
+
+      # The API's URL is baked into the JS bundle at BUILD time (Vite inlines
+      # VITE_API_URL), defaulting to the relative path "/api". That is why this
+      # works without any runtime config: the browser requests /api on whatever
+      # origin served the page, and the Ingress routes it to the API Service.
+      # Consequence worth knowing: changing the API URL means REBUILDING the
+      # image, not editing a ConfigMap. Runtime config for a browser app means
+      # serving a config.json or templating index.html at startup.
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            failureThreshold: 5
+
+          # nginx serving static files from page cache is cheap. These are
+          # deliberately small so Phase 5's autoscaling has room on a laptop.
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 25m
+            limits:
+              memory: 128Mi
+              cpu: 200m
+
+          # The image already runs as uid 101 (nginx-unprivileged). Stated
+          # numerically for the same reason as the API: runAsNonRoot needs a
+          # number to verify, and a username leaves the kubelet unable to check.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ['ALL']
+
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: web-nginx-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: vesselmind
+spec:
+  type: ClusterIP
+  selector:
+    app: vesselmind-web
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

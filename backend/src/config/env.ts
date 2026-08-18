@@ -35,6 +35,15 @@ const schema = z
     // If set, GET /metrics requires `Authorization: Bearer <token>`.
     METRICS_TOKEN: z.string().optional(),
 
+    // Broad per-IP API rate limit. Configurable because it is an OPERATIONAL
+    // knob, not a security boundary: a load test needs it raised, and a
+    // deployment behind a shared corporate NAT may need it raised too. The
+    // auth and AI limiters are deliberately NOT configurable — those are
+    // brute-force and cost controls, and a config value that can weaken them
+    // is a config value someone will eventually weaken.
+    API_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(200),
+    API_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
+
     ENABLE_WEATHER_SYNC: boolish,
     WEATHER_SYNC_INTERVAL_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
 
