@@ -12,7 +12,15 @@ metadata:
   name: api
   namespace: vesselmind
 spec:
-  replicas: 1
+  # Three replicas from Phase 3 onward. Two app-level caveats that are fine here
+  # and would not be in production, both flagged rather than fixed:
+  #   - express-rate-limit counts requests in per-pod memory, so the effective
+  #     rate limit is now three times what the config says. A shared store
+  #     (Redis) is the real fix.
+  #   - Socket.io keeps connection state in-process. Without sticky sessions or
+  #     a Redis adapter, a client whose requests land on different pods gets a
+  #     broken handshake. Nothing depends on websockets yet, so it is latent.
+  replicas: 3
 
   selector:
     matchLabels:
