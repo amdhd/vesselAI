@@ -21,6 +21,16 @@
 FROM python:3.10-slim AS build
 WORKDIR /app/data-platform
 
+# Patch OS packages here too. This stage is not just a build artifact — the
+# warehouse-refresh CronJob runs FROM it, so it ships to the cluster and has to
+# clear the same scan gate as everything else. pip cannot be removed here the
+# way it is from the runtime stage, because this stage installs packages; it is
+# upgraded instead.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir --upgrade pip setuptools wheel
+
 # dbt-core ships no wheels for the newest Python; 3.10 matches requirements.txt.
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
@@ -42,6 +52,23 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app/data-platform
 
+# Patch OS packages. A Trivy scan of this image found one util-linux CVE
+# surfacing across nine Debian packages (bsdutils, libblkid1, libmount1,
+# libuuid1, login, mount, ...). None are ours and none are controlled by
+# requirements.txt — the only levers are the base image tag and this upgrade.
+#
+# Also upgrade pip's own bundled tooling: setuptools and wheel ship inside the
+# image and carry their own advisories, even though nothing at runtime imports
+# them.
+#
+# Tradeoff, stated: apt-get upgrade makes the build non-reproducible — the same
+# Dockerfile produces different bytes tomorrow. Correct for an image rebuilt and
+# rescanned on every CI run; wrong for a pinned, archived artifact.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir --upgrade pip setuptools wheel
+
 # API deps only — fastapi/uvicorn/duckdb/pyjwt. The dbt toolchain stays in the
 # build stage and never reaches the final image.
 COPY api/requirements.txt ./api/requirements.txt
@@ -49,6 +76,14 @@ RUN pip install --no-cache-dir -r api/requirements.txt
 
 COPY api ./api
 COPY --from=build /app/data-platform/data/vesselmind.duckdb ./data/vesselmind.duckdb
+
+# Remove pip once dependencies are installed. uvicorn does not need it, and pip
+# VENDORS its own dependency tree (msgpack, setuptools and friends) which Trivy
+# reports as findings even though nothing at runtime can import them. Same
+# reasoning as deleting npm from the API image: an unused tool is better removed
+# than patched — the advisories leave with it, and a compromised container loses
+# a convenient way to install more code.
+RUN pip uninstall -y pip setuptools wheel 2>/dev/null || true
 
 # Run unprivileged. The warehouse is opened read_only, so the app never needs
 # write access to it.

@@ -1,0 +1,127 @@
+# Scheduled logical backups of Postgres, plus the volume they land on.
+#
+# A backup nobody has restored is not a backup — it is an untested script with
+# optimistic naming. The restore procedure in docs/BACKUP_RESTORE.md was actually
+# performed against this cluster, not written from memory.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backups
+  namespace: vesselmind
+spec:
+  accessModes: ['ReadWriteOnce']
+  resources:
+    requests:
+      storage: 1Gi
+---
+# CronJob: a controller that creates a Job on a schedule. Three objects deep —
+# CronJob creates Job creates Pod — which is why debugging one means looking at
+# all three:
+#   kubectl get cronjob,job,pod -n vesselmind
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: vesselmind
+spec:
+  # 02:00 daily, in the KUBELET'S timezone (UTC on these nodes) unless spec.timeZone
+  # is set. Assuming local time is a classic way to schedule a heavy job into peak
+  # traffic. A real deployment should set timeZone explicitly.
+  schedule: '0 2 * * *'
+
+  # Forbid: if the previous backup is still running when the next is due, SKIP the
+  # new one rather than running both. The alternatives are worse here —
+  # "Allow" (the default) would let two pg_dumps compete for the same database
+  # and the same volume, and "Replace" would kill a backup that is midway through
+  # writing, leaving a truncated dump that looks like a real file.
+  concurrencyPolicy: Forbid
+
+  # If the controller was down (node restart, cluster stopped) and a scheduled
+  # run was missed, only start it if less than 5 minutes late. Without this, a
+  # cluster that was off overnight starts a backup at a random morning moment.
+  # Beyond the deadline the run is simply skipped and recorded as missed.
+  startingDeadlineSeconds: 300
+
+  # HISTORY CLEANUP. Each run leaves a completed Job and its Pod behind. Without
+  # limits they accumulate forever — hundreds of objects in etcd within a year.
+  # Keeping some failures is the point: a failed backup you cannot read the logs
+  # of tells you nothing.
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+
+  jobTemplate:
+    spec:
+      # Two attempts, then stop and stay visibly failed. A backup that silently
+      # retries forever looks healthy right up until you need the file.
+      backoffLimit: 2
+      # Fresh pod per attempt, so a failed attempt's logs survive.
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: pg-dump
+              # Same image and therefore the same major version as the server.
+              # pg_dump refuses to dump from a server NEWER than itself, so a
+              # mismatched client is a backup that stops working the day the
+              # database is upgraded.
+              image: postgres:16-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+                  STAMP=$(date +%Y%m%dT%H%M%SZ)
+                  OUT="/backups/vesselmind-${STAMP}.sql.gz"
+
+                  # --clean --if-exists makes the dump self-contained: it drops
+                  # existing objects before recreating them, so a restore does
+                  # not require a manually emptied database first.
+                  pg_dump --clean --if-exists --no-owner --no-privileges \
+                    -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" \
+                    | gzip -9 > "$OUT"
+
+                  # Verify the dump is readable BEFORE declaring success. gzip -t
+                  # catches a truncated write, which is exactly what a disk-full
+                  # backup produces — and a truncated file is the failure mode
+                  # that looks fine until restore day.
+                  gzip -t "$OUT"
+                  echo "backup ok: $OUT ($(wc -c < "$OUT") bytes)"
+
+                  # Retention: keep 7 days. Unbounded backups fill the volume and
+                  # then every FUTURE backup fails, which is a slow-motion outage.
+                  find /backups -name 'vesselmind-*.sql.gz' -mtime +7 -delete
+                  echo "retained: $(ls -1 /backups/vesselmind-*.sql.gz | wc -l) file(s)"
+              env:
+                - name: PGHOST
+                  value: postgres-0.postgres.vesselmind.svc.cluster.local
+                - name: PGUSER
+                  valueFrom:
+                    configMapKeyRef:
+                      name: vesselmind-config
+                      key: POSTGRES_USER
+                - name: PGDATABASE
+                  valueFrom:
+                    configMapKeyRef:
+                      name: vesselmind-config
+                      key: POSTGRES_DB
+                # pg_dump reads PGPASSWORD from the environment, avoiding a
+                # password on the command line where it would be visible in
+                # `ps` output to anything sharing the pid namespace.
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: vesselmind-secrets
+                      key: POSTGRES_PASSWORD
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+              resources:
+                requests:
+                  memory: 64Mi
+                  cpu: 50m
+                limits:
+                  memory: 256Mi
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: postgres-backups

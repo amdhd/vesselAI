@@ -1,0 +1,50 @@
+# One-off restore from the newest backup in the postgres-backups PVC.
+#
+# NOT in k8s/base/ on purpose: `kubectl apply -f k8s/base/` must never restore a
+# database as a side effect of a routine deploy. This is a break-glass object,
+# applied deliberately.
+#
+# backoffLimit: 0 — a failed restore must not retry automatically. Re-running a
+# partial restore over a partially restored database makes diagnosis harder, and
+# the operator needs to look before trying again.
+#
+# Procedure and caveats: docs/BACKUP_RESTORE.md
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-restore
+  namespace: vesselmind
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: restore
+          image: postgres:16-alpine
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -euo pipefail
+              LATEST=$(ls -1t /backups/vesselmind-*.sql.gz | head -1)
+              echo "restoring from: $LATEST"
+              gzip -t "$LATEST"
+              gunzip -c "$LATEST" | psql -v ON_ERROR_STOP=1 -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" >/dev/null
+              echo "restore completed"
+          env:
+            - name: PGHOST
+              value: postgres-0.postgres.vesselmind.svc.cluster.local
+            - name: PGUSER
+              valueFrom: { configMapKeyRef: { name: vesselmind-config, key: POSTGRES_USER } }
+            - name: PGDATABASE
+              valueFrom: { configMapKeyRef: { name: vesselmind-config, key: POSTGRES_DB } }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: vesselmind-secrets, key: POSTGRES_PASSWORD } }
+          volumeMounts:
+            - name: backups
+              mountPath: /backups
+      volumes:
+        - name: backups
+          persistentVolumeClaim:
+            claimName: postgres-backups

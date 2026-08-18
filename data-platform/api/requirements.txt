@@ -2,7 +2,11 @@
 # Reads the gold tables from the DuckDB warehouse and serves them as JSON.
 # Install into the pipeline venv (already has duckdb) or its own venv:
 #   pip install -r api/requirements.txt
-fastapi==0.115.6
+fastapi==0.141.1
 uvicorn==0.34.0
 duckdb==1.5.4
-pyjwt==2.10.1
+PyJWT==2.13.0
+# Pinned explicitly: fastapi allows starlette>=0.46.0 with no upper bound, and
+# the 0.4x line carries advisories fixed only in 1.x. Pinning forces the patched
+# major rather than whatever the resolver happens to pick.
+starlette==1.3.1
