@@ -68,8 +68,52 @@ spec:
       # non-root user. Left as-is now so the inconsistency is visible rather
       # than quietly patched over.
       initContainers:
+        # WAIT FOR POSTGRES BEFORE MIGRATING. Added after watching this Job fail
+        # twice on a fresh cluster with "P1001: Can't reach database server".
+        #
+        # Cause: `kubectl apply -f k8s/base/` submits every object at once, so
+        # this Job started while Postgres was still booting. It eventually
+        # succeeded only because backoffLimit happened to allow exactly enough
+        # retries — which is luck, not design. A slower database start and the
+        # Job fails permanently, leaving an unmigrated schema.
+        #
+        # Retrying until it works is not a fix; waiting for the dependency is.
+        # initContainers run in declared order, so this blocks `migrate` from
+        # starting until the database actually accepts TCP connections.
+        #
+        # This is a TCP check, not a readiness check: it proves the port is open,
+        # not that Postgres finished recovery and will answer queries. Good
+        # enough here because `migrate` retries on its own once connected, and
+        # honest about what it does not prove.
+        - name: wait-for-db
+          image: k3d-vesselmind-registry:5111/vesselmind/migrate:0.1.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - node
+            - -e
+            - |
+              const {hostname, port} = new URL(process.env.DATABASE_URL);
+              const net = require('net');
+              let tries = 0;
+              (function attempt() {
+                const s = net.connect({host: hostname, port: port || 5432}, () => {
+                  console.log('database reachable after ' + tries + ' attempts');
+                  s.end(); process.exit(0);
+                });
+                s.on('error', () => {
+                  s.destroy();
+                  if (++tries > 60) { console.error('gave up after 60 attempts'); process.exit(1); }
+                  setTimeout(attempt, 2000);
+                });
+              })();
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: vesselmind-secrets
+                  key: DATABASE_URL
         - name: migrate
-          image: vesselmind/migrate:0.1.0
+          image: k3d-vesselmind-registry:5111/vesselmind/migrate:0.1.0
           imagePullPolicy: IfNotPresent
           # node_modules/.bin directly, not `npx`. npx wants a writable npm
           # cache under $HOME and will reach for the network if it decides the
@@ -84,7 +128,7 @@ spec:
 
       containers:
         - name: seed
-          image: vesselmind/migrate:0.1.0
+          image: k3d-vesselmind-registry:5111/vesselmind/migrate:0.1.0
           imagePullPolicy: IfNotPresent
           # Every write in prisma/seed.ts is an upsert, so re-running is safe and
           # this Job is idempotent. That matters: a Job that cannot be re-run is
