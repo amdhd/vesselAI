@@ -1,0 +1,65 @@
+# Prod overlay.
+#
+# NOT DEPLOYED ANYWHERE YET — it exists so the difference between environments is
+# explicit and reviewable rather than living in someone's head, and so Phase 9's
+# EKS cluster has a target. Stated plainly rather than implying a production
+# deployment exists.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: vesselmind
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: ConfigMap
+      name: vesselmind-config
+    patch: |-
+      - op: replace
+        path: /data/LOG_LEVEL
+        value: info
+      # The real limit. 200 per 15 minutes per IP, which only counts correctly
+      # because TRUST_PROXY is set — otherwise every user shares one bucket.
+      # Still per-pod: express-rate-limit uses an in-process store, so the
+      # effective ceiling is replicas x max until a shared Redis store exists.
+      - op: replace
+        path: /data/API_RATE_LIMIT_MAX
+        value: '200'
+      - op: replace
+        path: /data/API_RATE_LIMIT_WINDOW_MS
+        value: '900000'
+
+  - target:
+      kind: Deployment
+      name: api
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 256Mi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: 250m
+
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: api
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 3
+      - op: replace
+        path: /spec/maxReplicas
+        value: 20
+
+  # Two web replicas is a laptop compromise; a real deployment spreads further.
+  - target:
+      kind: Deployment
+      name: web
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 4

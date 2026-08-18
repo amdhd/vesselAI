@@ -1,0 +1,138 @@
+# Background worker: scheduled weather ingestion and (when a key is supplied) the
+# AIS stream consumer. No HTTP server.
+#
+# WHY IT IS A DEPLOYMENT AND NOT A CRONJOB: the AIS consumer holds a long-lived
+# websocket and must reconnect with backoff — it is a continuously-running
+# process, not a scheduled one. The weather sync could be a CronJob on its own,
+# but splitting one worker into two workloads to satisfy a taxonomy is not worth
+# the extra object.
+#
+# WHY replicas: 1, AND WHY THAT IS NOT NEGOTIABLE HERE:
+# This work used to run inside server.ts — that is, inside EVERY API replica. At
+# 3 replicas (8 under the HPA) that meant 3-8 concurrent weather syncs writing
+# the same rows and 3-8 websocket connections to the same feed. The upserts made
+# it survivable rather than correct: duplicated work, duplicated external API
+# quota, and write amplification scaling with a replica count chosen for HTTP
+# traffic.
+#
+# A single replica is the correct answer AND a single point of failure. Making it
+# HA needs leader election (a Lease object, one active worker, the rest hot
+# standby) — real, and out of scope here. What this buys instead is that
+# duplication is now impossible by construction rather than by hoping nobody
+# scales it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: vesselmind
+spec:
+  replicas: 1
+  # Recreate, not RollingUpdate. A rolling update would briefly run TWO workers —
+  # exactly the duplication this Deployment exists to prevent. Recreate accepts a
+  # gap in coverage instead, which for background work is the cheaper failure.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: vesselmind-worker
+  template:
+    metadata:
+      labels:
+        app: vesselmind-worker
+    spec:
+      # worker.ts installs a real SIGTERM handler (clears timers, disconnects
+      # Prisma, exits 0), unlike server.ts — so this grace period is actually
+      # used rather than decorative.
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: worker
+          image: k3d-vesselmind-registry:5111/vesselmind/api:0.4.0
+          imagePullPolicy: IfNotPresent
+          # Same image as the API, different entrypoint. One image, two
+          # workloads: fewer things to build, scan and keep in version step.
+          command: ['dumb-init', 'node', 'dist/worker.js']
+
+          envFrom:
+            - configMapRef:
+                name: vesselmind-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: vesselmind-secrets
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: vesselmind-secrets
+                  key: JWT_SECRET
+            # Enabled HERE and nowhere else. The API's ConfigMap deliberately
+            # omits these flags, so API pods never start background work.
+            - name: ENABLE_WEATHER_SYNC
+              value: 'true'
+            - name: WEATHER_SYNC_INTERVAL_MS
+              value: '300000'   # 5 min, shorter than the 15 min default so the
+                                # effect is observable during a demo
+            # AIS streaming needs a key from aisstream.io. Left off: worker.ts
+            # exits non-zero if this is enabled without a key, rather than
+            # idling silently — a worker that was told to stream and quietly
+            # does not is indistinguishable from one that is working.
+            - name: ENABLE_AIS_STREAM
+              value: 'false'
+
+          # EXEC PROBE, because there is no HTTP endpoint to hit. httpGet needs a
+          # listening socket; this process has none and adding one purely to be
+          # probeable means writing and maintaining a server for the probe's
+          # benefit.
+          #
+          # The worker touches a heartbeat file every 15s. The probe fails if it
+          # is older than 90s — six missed beats, so a single slow tick or a GC
+          # pause never restarts a healthy process.
+          #
+          # WHAT A BAD EXEC PROBE COSTS: exec probes fork a process inside the
+          # container on every period. Something heavy (a shell pipeline, a psql
+          # connection) run every 5s is real, permanent CPU and memory overhead
+          # attributed to your pod, and under load the probe itself can time out
+          # and kill a container that was merely busy. This one is a single stat
+          # syscall on a 30s period.
+          #
+          # WHAT IT PROVES, honestly: the event loop is turning and timers fire.
+          # That catches a wedged process, which is what liveness is for. It does
+          # NOT prove the AIS websocket is connected or that syncs are
+          # succeeding. Checking those would risk restarting a healthy process
+          # during a transient upstream outage — throwing away the reconnect
+          # backoff and turning a blip into a restart loop. Those failures belong
+          # in logs and metrics, not in a liveness probe.
+          livenessProbe:
+            exec:
+              command:
+                - node
+                - -e
+                - |
+                  const fs = require('fs');
+                  const p = process.env.WORKER_HEARTBEAT_PATH || '/tmp/worker-heartbeat';
+                  const age = Date.now() - fs.statSync(p).mtimeMs;
+                  if (age > 90000) { console.error('heartbeat stale: ' + age + 'ms'); process.exit(1); }
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # NO READINESS PROBE, deliberately. Readiness controls Service
+          # endpoints, and nothing routes traffic here — there is no Service.
+          # Adding one would be a field that reads as diligence and does nothing.
+
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 50m
+            limits:
+              memory: 384Mi
+
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ['ALL']

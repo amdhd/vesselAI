@@ -59,13 +59,19 @@ data:
   # its own IP, which defeats the limiter in the opposite direction.
   TRUST_PROXY: '1'
 
-  # Raised from the 200/15min default so a load test measures the APPLICATION
-  # rather than the rate limiter. This is a load-testing configuration and is
-  # stated as such rather than passed off as a sensible production default —
-  # a real deployment would keep something close to the default, with a shared
-  # Redis store so the ceiling does not silently multiply by the replica count.
-  API_RATE_LIMIT_MAX: '2000000'
-  API_RATE_LIMIT_WINDOW_MS: '60000'
+  # The SAFE default lives in the base. The dev overlay raises it so k6 measures
+  # the application rather than the rate limiter; the prod overlay restates this
+  # value explicitly so the intended production setting is visible in the file
+  # someone reviews rather than inherited silently.
+  #
+  # A base carrying one environment's compromise is not a base — it is that
+  # environment with extra steps, and the compromise ships wherever nobody
+  # remembered to override it.
+  #
+  # Note this is still per-pod: express-rate-limit uses an in-process store, so
+  # the effective ceiling is replicas x max until a shared Redis store exists.
+  API_RATE_LIMIT_MAX: '200'
+  API_RATE_LIMIT_WINDOW_MS: '900000'
 
   # Consumed by the Postgres container, not the API. Kept here (rather than in
   # the Secret) because a username and a database name are not secrets — only
