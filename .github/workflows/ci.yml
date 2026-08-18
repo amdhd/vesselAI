@@ -282,6 +282,11 @@ jobs:
             context: ./frontend
             dockerfile: ./frontend/Dockerfile.prod
             image: vesselai-web
+          - name: Analytics
+            context: ./data-platform
+            dockerfile: ./data-platform/Dockerfile.prod
+            image: vesselai-analytics
+            trivyignore: ./data-platform/.trivyignore
     steps:
       - uses: actions/checkout@v4
 
@@ -316,6 +321,10 @@ jobs:
           exit-code: '1'
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          # Per-image suppression file, where one exists. Each entry in it carries
+          # a justification and a re-check date — a .trivyignore without those is
+          # indistinguishable from switching the scanner off.
+          trivyignores: ${{ matrix.trivyignore || '' }}
 
       - name: Log in to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

@@ -1,0 +1,101 @@
+# Scheduled rebuild of the DuckDB warehouse: raw NOAA AIS CSV -> bronze -> silver
+# -> gold, the same pipeline the image build runs.
+#
+# WHY IT DOES NOT BUILD IN PLACE — the important design point here.
+#
+# DuckDB allows ONE writer or MANY readers, not both. The analytics API opens a
+# read_only connection per request, so a job writing directly to the live file
+# would fight those readers for the lock and fail intermittently under traffic —
+# the worst kind of failure, since it passes every time you test it by hand.
+#
+# So the pipeline builds into the CONTAINER'S OWN filesystem, untouched by any
+# reader, and only the finished file is moved into the shared volume. `mv` within
+# one filesystem is an atomic rename: readers holding the old file keep serving
+# from it (same inode, no torn reads), and the next connection opens the new one.
+#
+# Consequence, stated: running pods keep serving the OLD warehouse until they are
+# restarted. Refreshed data is visible after a rollout, not immediately. Making it
+# immediate means either restarting the Deployment from this job — which needs
+# RBAC to patch Deployments, deliberately not granted — or moving the warehouse to
+# object storage and having replicas poll it.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: warehouse-refresh
+  namespace: vesselmind
+spec:
+  # 03:00 daily — after the 02:00 backup, so a heavy read does not compete with
+  # pg_dump. Both are in the kubelet's timezone (UTC).
+  schedule: '0 3 * * *'
+
+  # Forbid: the pipeline is not safe to run twice concurrently — two runs would
+  # produce two temp warehouses and race to rename over the same target. On a
+  # real NOAA daily file (5-12 million rows) a run can outlast its own schedule,
+  # which is exactly when this matters.
+  concurrencyPolicy: Forbid
+
+  # A missed run is not urgent — the previous warehouse is still perfectly valid,
+  # just a day stale. Skip rather than fire at an arbitrary hour after downtime.
+  startingDeadlineSeconds: 600
+
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+
+  jobTemplate:
+    spec:
+      # One retry. A failed pipeline is usually bad input data, and retrying bad
+      # input just produces the same failure more slowly.
+      backoffLimit: 1
+      # Time-box it. Without this a hung dbt run holds the Forbid lock forever and
+      # silently prevents every future refresh — a failure that looks like nothing
+      # happening at all.
+      activeDeadlineSeconds: 1800
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            fsGroup: 10001
+          containers:
+            - name: build-warehouse
+              # The `build` stage of data-platform/Dockerfile.prod: it carries the
+              # dbt toolchain, which the runtime image deliberately does not.
+              image: k3d-vesselmind-registry:5111/vesselmind/warehouse-builder:0.3.0
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  echo "=== bronze: land raw CSV untouched ==="
+                  python ingestion/load_bronze.py
+
+                  echo "=== silver + gold, with data tests interleaved ==="
+                  # `dbt build` = run + test. A failing DATA test fails the job,
+                  # so a bad warehouse is never published — the same guarantee the
+                  # image build relies on.
+                  cd dbt && dbt build --profiles-dir . && cd ..
+
+                  SRC=data/vesselmind.duckdb
+                  echo "=== publishing $(wc -c < "$SRC") bytes to the shared volume ==="
+                  # Copy into the target filesystem first, then rename. Renaming
+                  # ACROSS filesystems is not atomic; within one it is.
+                  cp "$SRC" /warehouse/.vesselmind.duckdb.new
+                  mv /warehouse/.vesselmind.duckdb.new /warehouse/vesselmind.duckdb
+                  echo "published. running analytics pods keep the old file until restarted."
+              volumeMounts:
+                - name: warehouse
+                  mountPath: /warehouse
+              resources:
+                requests:
+                  memory: 512Mi
+                  cpu: 200m
+                # dbt and DuckDB are memory-hungry on real files. Too low here is
+                # an OOMKill partway through a build, which leaves the TEMP file
+                # behind and the live warehouse untouched — the failure mode this
+                # design was chosen for.
+                limits:
+                  memory: 1536Mi
+          volumes:
+            - name: warehouse
+              persistentVolumeClaim:
+                claimName: warehouse

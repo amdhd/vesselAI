@@ -40,6 +40,17 @@ spec:
           # ORDER DOES NOT DECIDE THIS. Unlike nginx.conf, Ingress matching is
           # longest-prefix-wins regardless of the order rules appear, so /api
           # beats / for /api/* no matter how they are listed here.
+          # LONGEST PREFIX WINS, so this must come before nothing in particular
+          # — order in the list is irrelevant. /api/analytics is longer than
+          # /api, so these requests reach the analytics service and never touch
+          # the Express API, which has no such routes and would 404 them.
+          - path: /api/analytics
+            pathType: Prefix
+            backend:
+              service:
+                name: analytics
+                port:
+                  number: 8000
           - path: /api
             pathType: Prefix
             backend:

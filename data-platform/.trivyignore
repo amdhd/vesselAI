@@ -1,0 +1,40 @@
+# Documented, scoped suppressions for the data-platform images.
+#
+# Every entry needs a reason and a re-check date. A .trivyignore without those is
+# indistinguishable from turning the scanner off, and the whole value of a gate is
+# that suppressing something is a deliberate, reviewable act.
+#
+# Nothing here is a runtime dependency of the application. Both live inside pip's
+# OWN vendored tree (site-packages/pip/_vendor/...), which nothing in this project
+# imports. The runtime image deletes pip entirely and is clean without these
+# entries; the build stage cannot, because installing packages is its job.
+#
+# Re-check: 2026-11-18, or whenever the base image moves to a newer pip.
+
+# msgpack — vendored by pip for its HTTP cache. Out-of-bounds read when
+# unpacking untrusted data. This project never unpacks msgpack; only pip does,
+# against its own cache, at build time.
+GHSA-6v7p-g79w-8964
+
+# setuptools — pip vendors an old copy alongside the current 84.0.0 that pip
+# itself installed. Path traversal during package installation, which requires
+# installing a malicious package. No untrusted packages are installed at build
+# time; requirements are pinned.
+CVE-2025-47273
+
+# sqlparse — three HIGH advisories, all fixed in 0.6.0, which cannot be installed:
+#
+#   dbt-core 1.12.0 depends on sqlparse<0.6.0 and >=0.5.5
+#
+# Verified by attempting it: pinning sqlparse>=0.6.0 fails the image build with
+# ResolutionImpossible. The upgrade is therefore blocked upstream, not skipped.
+#
+# Exposure: sqlparse is used by dbt to parse THIS REPOSITORY'S OWN model SQL at
+# build time. It never parses user input and never runs at serving time — the
+# runtime image contains neither dbt nor sqlparse. The advisories concern parsing
+# hostile SQL, which is not a path that exists here.
+#
+# Re-check: 2026-11-18, or when dbt-core relaxes its sqlparse pin.
+CVE-2026-54284
+CVE-2026-59893
+CVE-2026-71491
