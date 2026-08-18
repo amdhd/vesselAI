@@ -274,8 +274,11 @@ jobs:
       # deliberate: a CRITICAL with no available patch is not something this
       # pipeline can act on, and failing on it would train everyone to ignore
       # the scanner. Findings without fixes still show in the job log.
+      # Pinned to a commit SHA, not a tag. A third-party action runs arbitrary
+      # code with access to this job's token; a mutable tag can be repointed at
+      # new code after review. The SHA cannot. (v0.36.0 at time of pinning.)
       - name: Scan image (Trivy)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
         with:
           image-ref: vesselmind-api:${{ github.sha }}
           format: table
