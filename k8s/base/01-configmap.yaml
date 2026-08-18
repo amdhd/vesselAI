@@ -45,6 +45,28 @@ data:
 
   LOG_LEVEL: 'info'
 
+  # TRUST_PROXY — a real bug fix, not a tuning knob.
+  #
+  # The API sits behind Traefik. Without this, app.ts sets `trust proxy` to
+  # false, so req.ip is the SOCKET address — Traefik's pod IP (observed:
+  # 10.42.3.3) — for every single request. The per-IP rate limiter therefore
+  # counts the whole internet into ONE bucket of 200 per 15 minutes. The first
+  # 200 requests from anyone lock out everybody.
+  #
+  # "1" means trust exactly one proxy hop and take the client IP from the last
+  # entry in X-Forwarded-For, which Traefik sets. The count matters: trusting
+  # more hops than actually exist lets a client spoof X-Forwarded-For and forge
+  # its own IP, which defeats the limiter in the opposite direction.
+  TRUST_PROXY: '1'
+
+  # Raised from the 200/15min default so a load test measures the APPLICATION
+  # rather than the rate limiter. This is a load-testing configuration and is
+  # stated as such rather than passed off as a sensible production default —
+  # a real deployment would keep something close to the default, with a shared
+  # Redis store so the ceiling does not silently multiply by the replica count.
+  API_RATE_LIMIT_MAX: '2000000'
+  API_RATE_LIMIT_WINDOW_MS: '60000'
+
   # Consumed by the Postgres container, not the API. Kept here (rather than in
   # the Secret) because a username and a database name are not secrets — only
   # the password is.

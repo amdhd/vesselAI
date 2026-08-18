@@ -1,0 +1,72 @@
+# Horizontal Pod Autoscaler for the API.
+#
+# HOW IT WORKS: the HPA controller polls metrics-server every ~15s, compares the
+# average CPU across ready pods against the target, and computes
+#   desired = ceil(current_replicas * current_metric / target_metric)
+# then writes that number to the Deployment's replica count. It does not create
+# pods itself — it only edits the Deployment, which is why `kubectl get hpa` and
+# `kubectl get deploy` can briefly disagree.
+#
+# THE PREREQUISITE PEOPLE MISS: averageUtilization is a PERCENTAGE OF THE CPU
+# REQUEST, not of a core. This Deployment requests 100m, so 60% means 60m of CPU
+# per pod. A container with NO cpu request has no denominator, and the HPA
+# reports <unknown> and never scales. metrics-server must also be running —
+# k3s ships it, which is why this needs no extra install here.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api
+  namespace: vesselmind
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api
+
+  # minReplicas 2, not 1: with one replica a rolling update or a node drain has
+  # nowhere to put traffic. maxReplicas 8 is bounded by the laptop — each pod
+  # requests 100m CPU and the cluster has 5 cores total, shared with Postgres,
+  # Traefik and the rest of kube-system.
+  minReplicas: 2
+  maxReplicas: 8
+
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # 60%, not 80%. Scaling takes time — metrics lag ~15-30s, then a pod
+          # has to be scheduled, pulled, started and pass readiness. Targeting
+          # 80% means the decision to scale is made when there is only 20%
+          # headroom left to absorb the delay.
+          averageUtilization: 60
+
+  # behavior is the part that separates a working HPA from a flapping one.
+  behavior:
+    scaleUp:
+      # React fast. Zero stabilisation window means the controller acts on the
+      # current reading rather than waiting to confirm a trend — under load,
+      # hesitating costs latency for real users.
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100        # allow doubling
+          periodSeconds: 15
+        - type: Pods
+          value: 4          # ...or +4 pods
+          periodSeconds: 15
+      selectPolicy: Max     # whichever grants more headroom
+    scaleDown:
+      # Deliberately slow, and ASYMMETRIC with scaleUp. Scaling down too eagerly
+      # is how you get flapping: traffic dips, pods are killed, traffic returns,
+      # and now you are cold-starting under load. Five minutes of sustained low
+      # CPU is required before shrinking, and then only 50% at a time.
+      #
+      # The asymmetry encodes the cost difference: scaling up too early wastes a
+      # little CPU, scaling down too early drops requests.
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60

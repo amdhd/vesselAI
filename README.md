@@ -382,6 +382,90 @@ cd frontend && npx vercel deploy
 
 ---
 
+## Running on Kubernetes
+
+The app runs on a local k3d cluster (k3s v1.35.5, one server + two agents).
+Manifests are in `k8s/base/`; the design decisions are commented in the files
+themselves.
+
+| Workload | Object | Why that object |
+|---|---|---|
+| Postgres | StatefulSet + headless Service + volumeClaimTemplate | Stable identity and stable storage. Note this gives neither replication nor HA — that needs an operator or RDS |
+| Express API | Deployment + ClusterIP Service + HPA | Stateless and interchangeable, so rolling replacement is correct |
+| React SPA | Deployment + ClusterIP Service | Static files from nginx; the Ingress does the routing, not nginx |
+| Migrations + seed | Job (initContainers, then a main container) | Runs once and stops. An initContainer on the API would re-run on every pod start forever |
+| Credentials | SealedSecret | Encrypted in git; only the in-cluster controller can decrypt |
+
+Entry point is a single Traefik Ingress with path fan-out: `/api` and
+`/socket.io` to the API, everything else to the SPA. Same-origin, so there is no
+CORS to configure.
+
+### Measured autoscaling and load test
+
+k6, driven through the Ingress at `http://localhost:8080` — the same path a
+browser takes, so Traefik's capacity is included rather than bypassed. The
+endpoint under test is `GET /api/fleet`: authenticated, and backed by a Postgres
+query through Prisma. `/api/health` would give prettier numbers and prove
+nothing, since it never touches the database.
+
+Profile: 60 virtual users, 30s ramp / 120s hold / 30s ramp-down.
+
+| Metric | Result |
+|---|---|
+| Requests | 85,534 |
+| Throughput | **473.6 req/s** |
+| Latency p95 | **11.04 ms** |
+| Latency median | 3.87 ms |
+| Latency max | 545 ms |
+| Failed requests | **0** (0.00%) |
+| Rate-limited (429) | **0** |
+| Replicas | **3 → 8** |
+| HPA decision → new pods Ready | **12 s** |
+
+Scaling behaviour, from the HPA's own events:
+
+```
+10:56:32Z  SuccessfulRescale  New size: 7   (cpu above target)
+10:56:47Z  SuccessfulRescale  New size: 8   (cpu above target)
+```
+
+Two steps 15 seconds apart, matching the configured 15s policy period. Each new
+pod was Ready 12 seconds after creation, consistently across all eight.
+
+`scaleUp` and `scaleDown` are deliberately asymmetric: scale-up has a zero
+stabilisation window, scale-down waits 300s. The asymmetry encodes the cost
+difference — scaling up early wastes a little CPU, scaling down early drops
+requests. Visible in the result: after load stopped, CPU fell to 14% and the
+deployment stayed at 8 replicas rather than flapping.
+
+**Caveats, because the numbers are only worth what they disclose:**
+
+- The HPA **hit its `maxReplicas` ceiling of 8**, so this measures the ceiling,
+  not where it would have settled. 8 is bounded by a 5-core laptop, not by the app.
+- `/api/fleet` returns 3 seeded vessels from a tiny database. These latencies say
+  little about behaviour at realistic data volumes.
+- Load originates from one machine on the same host as the cluster, so there is
+  no real network between client and server.
+- The API rate limit was raised for the test (`API_RATE_LIMIT_MAX`), which is
+  stated in the ConfigMap as a load-testing setting rather than passed off as a
+  production default.
+
+### A production bug this surfaced
+
+The API sits behind Traefik, and `TRUST_PROXY` was unset — so `req.ip` was
+Traefik's pod IP for every request, and the per-IP rate limiter counted the
+entire internet into **one bucket of 200 requests per 15 minutes**. The first 200
+requests from anyone would have locked out everybody.
+
+Fixed by setting `TRUST_PROXY=1` (trust exactly one hop, and take the client IP
+from `X-Forwarded-For`). The hop count matters: trusting more hops than exist
+lets a client forge its own IP and defeat the limiter from the other direction.
+
+Still outstanding, and honest about it: `express-rate-limit` uses an in-process
+store, so each replica counts independently and the effective ceiling is
+`replicas × max`. At 8 replicas that is 8× the intended limit. A shared Redis
+store is the fix.
+
 ## How this maps to an FDE role
 
 The Forward Deployed Engineer JD asks for specific things. Here's where each one lives in this repo:

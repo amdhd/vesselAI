@@ -1,10 +1,25 @@
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { AuthenticatedRequest } from './auth';
+import { env } from '../config/env';
 
-// General API — broad abuse protection
+// General API — broad abuse protection.
+//
+// Window and ceiling come from the environment (defaults unchanged: 200 per 15
+// minutes) so they can be tuned per deployment without a code change. Two real
+// cases: a load test needs them raised, and any deployment where many users
+// share an egress IP needs them raised.
+//
+// NOTE: this limiter counts per IP, which means it is only correct if the app
+// can SEE the client's IP. Behind a proxy or Ingress that requires TRUST_PROXY
+// to be set — otherwise every request appears to come from the proxy and the
+// entire user base shares one bucket. See app.ts.
+//
+// Also per-pod: the default store is in-process memory, so N replicas means N
+// independent counters and an effective ceiling of N x max. A shared store
+// (Redis) is the fix, and is why this is abuse protection rather than a quota.
 export const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 min
-  max: 200,
+  windowMs: env.API_RATE_LIMIT_WINDOW_MS,
+  max: env.API_RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later' },
