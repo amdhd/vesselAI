@@ -5,11 +5,17 @@ and what a real team does differently. Phase 3 of the Kubernetes migration.
 
 ## The problem
 
-The API's production image cannot migrate its own database. `backend/Dockerfile.prod`
-has a `prune` stage running `npm prune --omit=dev`, and the Prisma CLI is a
-devDependency — so the runtime image deliberately does not contain the tool that
-applies migrations. That is correct for image size and attack surface, and it
-means migrations need a *different image*.
+The migration and seed steps need tooling the API's runtime image does not fully
+carry. `backend/Dockerfile.prod` runs `npm prune --omit=dev` in a `prune` stage,
+which removes `ts-node` — so `prisma/seed.ts` cannot run there.
+
+**Correction (Phase 4).** This document originally claimed the Prisma CLI was
+also pruned away. It is not. `@prisma/client` declares `prisma` as an optional
+peer dependency, so npm keeps it in the production tree, and the runtime image
+ships a working `node_modules/.bin/prisma` (verified: 5.22.0). Migrations alone
+could have run from the runtime image. Seeding could not, which is why the Job
+still targets the `build` stage — the right conclusion, reached originally for
+the wrong reason.
 
 Solution: build the `build` stage of the same Dockerfile as a second image. It
 still carries the Prisma CLI, `ts-node`, and `prisma/migrations/`.
