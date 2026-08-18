@@ -1,0 +1,49 @@
+# Dev overlay — the local k3d cluster.
+#
+# This is where the load-testing settings live. They were previously in the base,
+# which meant the "shared" definition carried a rate limit of two million
+# requests. A base that quietly contains one environment's compromises is not a
+# base; it is that environment with extra steps.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: vesselmind
+
+resources:
+  - ../../base
+
+# Merged into the base ConfigMap by name.
+patches:
+  - target:
+      kind: ConfigMap
+      name: vesselmind-config
+    patch: |-
+      - op: replace
+        path: /data/LOG_LEVEL
+        value: debug
+      # Effectively unlimited, so k6 measures the application rather than the
+      # rate limiter. Never do this in prod — see the prod overlay.
+      - op: replace
+        path: /data/API_RATE_LIMIT_MAX
+        value: '2000000'
+      - op: replace
+        path: /data/API_RATE_LIMIT_WINDOW_MS
+        value: '60000'
+
+  # Smaller footprint: this shares a laptop with Prometheus, Grafana and Docker.
+  - target:
+      kind: Deployment
+      name: api
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: api
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 2
+      - op: replace
+        path: /spec/maxReplicas
+        value: 8

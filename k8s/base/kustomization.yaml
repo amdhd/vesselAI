@@ -1,0 +1,39 @@
+# Kustomize base: the complete, deployable definition of the stack.
+#
+# WHY KUSTOMIZE AND NOT HELM (or templating): Kustomize patches structured YAML.
+# The base stays valid, applyable Kubernetes manifests that a person can read and
+# `kubectl apply -f` directly — there is no template language, no {{ }}, and
+# nothing that only becomes real YAML after rendering. The cost is that it can
+# only patch what already exists: it cannot generate a variable number of
+# objects, and complex conditionals are genuinely awkward. That trade is right
+# for a handful of environments and wrong for a redistributable chart.
+#
+# `kubectl` ships kustomize (v5.8.1), so `kubectl apply -k` needs no extra tool.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - 00-namespace.yaml
+  - 01-configmap.yaml
+  - 02-sealedsecret.yaml
+  - 03-postgres-service.yaml
+  - 04-postgres-statefulset.yaml
+  - 05-api-deployment.yaml
+  - 06-api-service.yaml
+  - 07-db-init-job.yaml
+  - 08-web-configmap.yaml
+  - 09-web-deployment.yaml
+  - 10-ingress.yaml
+  - 11-api-hpa.yaml
+  - 12-postgres-backup.yaml
+  - 13-analytics.yaml
+  - 14-warehouse-cronjob.yaml
+  - 15-worker-deployment.yaml
+
+# Applied to every object, so anything created here is identifiable and
+# deletable as a set. Kustomize also propagates these into selectors where it
+# knows they belong.
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: vesselmind
