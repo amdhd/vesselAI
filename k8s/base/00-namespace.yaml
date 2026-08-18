@@ -1,0 +1,6 @@
+# Everything for Phase 1 lives in one namespace so the whole stack can be torn
+# down with a single `kubectl delete namespace vesselmind`.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vesselmind

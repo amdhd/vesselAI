@@ -1,0 +1,28 @@
+# ClusterIP Service in front of the API pods.
+#
+# ClusterIP is the default type: a stable virtual IP + DNS name reachable only
+# from inside the cluster. Rejected for now:
+#   - NodePort: opens a high port on every node. Crude, and unnecessary while
+#     `kubectl port-forward` exists.
+#   - LoadBalancer: on k3d this provisions klipper-lb; in EKS it provisions a
+#     real (billable) ELB. Either way, external exposure is Phase 4's Ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: vesselmind
+spec:
+  type: ClusterIP
+  # Matches the Deployment's pod labels. When this is wrong you get a Service
+  # with an EMPTY Endpoints list and connections that hang or refuse — the most
+  # common self-inflicted wound in Kubernetes. First thing to check:
+  #   kubectl get endpoints api -n vesselmind
+  selector:
+    app: vesselmind-api
+  ports:
+    - name: http
+      port: 3001
+      # Refers to the container's NAMED port ("http" in the Deployment) rather
+      # than the number. The name is the contract, so changing the port becomes
+      # a one-line edit instead of a hunt through three files.
+      targetPort: http
