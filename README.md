@@ -450,6 +450,52 @@ deployment stayed at 8 replicas rather than flapping.
   stated in the ConfigMap as a load-testing setting rather than passed off as a
   production default.
 
+### Observability
+
+Prometheus and Grafana run in a `monitoring` namespace, deployed from
+hand-written manifests in `k8s/monitoring/` — no operator and no Helm chart.
+
+The app already exposed `http_request_duration_seconds` (a histogram labelled by
+method, route and status) via `prom-client`; nothing was consuming it until now.
+
+Grafana is at **http://localhost:8080/grafana**, dashboard *VesselMind API*, with
+four panels on one time axis:
+
+| Panel | Query |
+|---|---|
+| Request rate | `sum(rate(http_request_duration_seconds_count[1m]))` |
+| Latency p95 / p50 | `histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))` |
+| Ready replicas | `count(up{job="vesselmind-api"} == 1)` |
+| Rate by status code | `sum by (status) (rate(http_request_duration_seconds_count[1m]))` |
+
+Two decisions worth explaining:
+
+**Prometheus discovers pods, not the Service.** Scraping a Service load-balances
+across replicas, so each scrape hits a random pod and no pod's counters are ever
+complete. Scraping every pod directly is also what makes `count(up)` usable as a
+replica gauge — which is why there is no `kube-state-metrics` here.
+
+**Everything is provisioned from ConfigMaps.** A dashboard built by clicking in
+the UI lives in Grafana's database and dies with the pod. Provisioned from files,
+the datasource and dashboard are declarative, reviewable, and identical on any
+cluster.
+
+Verified live: 361 req/s, p95 10 ms, 8 ready replicas, zero 429s.
+
+**Limitations, deliberately:**
+
+- No operator, so no `ServiceMonitor` CRDs, no bundled alert rules, no
+  `node-exporter` or `kube-state-metrics`. `kube-prometheus-stack` is what a real
+  team installs; this is ~300 MB instead of ~1.5 GB and every line is explainable.
+- **No alerting.** Dashboards show you a problem only while someone is looking.
+- Prometheus storage is an `emptyDir` — history dies with the pod. Production
+  wants a PVC, and long-term retention wants `remote_write`.
+- `/metrics` is unauthenticated. `app.ts` supports `METRICS_TOKEN`; a real
+  deployment should set it, since the series disclose route names, traffic shape
+  and error rates.
+- Grafana allows anonymous viewing so the dashboard opens without a login. Fine
+  on a laptop, unacceptable anywhere else.
+
 ### A production bug this surfaced
 
 The API sits behind Traefik, and `TRUST_PROXY` was unset — so `req.ip` was

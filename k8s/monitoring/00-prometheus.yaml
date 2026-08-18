@@ -1,0 +1,165 @@
+# Monitoring lives in its own namespace: it outlives any one app, and it is the
+# thing you need working *while* the app namespace is broken.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
+# Prometheus discovers what to scrape by ASKING THE KUBERNETES API which pods
+# exist, so it needs permission to do that. This is the first hand-written RBAC
+# in the project.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: monitoring
+---
+# ClusterRole, not Role, because service discovery reads across ALL namespaces —
+# a namespaced Role cannot grant that. Read-only, and deliberately narrow: it can
+# enumerate pods and services, and it CANNOT read secrets or configmaps or write
+# anything. Worth contrasting with the `secrets-unsealer` ClusterRole that
+# sealed-secrets ships, which genuinely does need secret access.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+  - apiGroups: ['']
+    resources: ['nodes', 'services', 'endpoints', 'pods']
+    verbs: ['get', 'list', 'watch']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      # 15s: fast enough that a 2-minute load test produces a readable curve.
+      # Every series costs memory, so this is a real tradeoff, not a free dial.
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      # Pod-based discovery rather than scraping the Service. Scraping a Service
+      # would load-balance across pods, so each scrape lands on a random replica
+      # and no pod's counters are ever complete. Scraping every POD directly is
+      # what makes per-replica series — and therefore `count(up)` as a replica
+      # gauge — work at all.
+      - job_name: vesselmind-api
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [vesselmind]
+        relabel_configs:
+          # Keep only API pods.
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: vesselmind-api
+          # Skip pods that are terminating or not yet running, which would
+          # otherwise show as scrape failures during every rollout.
+          - source_labels: [__meta_kubernetes_pod_phase]
+            action: keep
+            regex: Running
+          # Point the scrape at the container port and the app's metrics path.
+          - source_labels: [__address__]
+            action: replace
+            regex: '([^:]+)(?::\d+)?'
+            replacement: '$1:3001'
+            target_label: __address__
+          # Carry the pod name through as a label so a single replica can be
+          # isolated on a graph.
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+        metrics_path: /metrics
+        # NOTE: /metrics is unauthenticated here. app.ts supports METRICS_TOKEN,
+        # and a real deployment should set it and give Prometheus a bearer token
+        # from a Secret — otherwise anyone inside the cluster can read the full
+        # series, which leaks route names, traffic shape and error rates.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v3.1.0
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            # 24h retention. This is a laptop, and the data is disposable.
+            - --storage.tsdb.retention.time=24h
+            - --web.enable-lifecycle
+          ports:
+            - name: http
+              containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: data
+              mountPath: /prometheus
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 5
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 768Mi
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        # LOCAL-ONLY: emptyDir means all metrics history dies with the pod. Fine
+        # for a laptop where the data is disposable; production wants a PVC, and
+        # anything long-term wants remote_write to Thanos/Mimir/Cortex rather
+        # than local disk.
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http
