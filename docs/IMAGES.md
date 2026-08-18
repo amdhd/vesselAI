@@ -159,3 +159,64 @@ dependency is. This is the same missing-ordering problem described in
 `MIGRATIONS.md`, and it keeps surfacing because Kubernetes genuinely has no
 dependency graph between objects. Argo CD sync-waves in Phase 8 are what finally
 express it declaratively.
+
+## Scanning: what the first run found
+
+Trivy on `vesselmind/api:0.1.0`, filtered to fixable HIGH and CRITICAL, returned
+twelve vulnerable packages from **two quite different sources** — and the
+distinction determined the fix.
+
+### Source 1: npm's own bundle, inside the base image
+
+`tar` (the only CRITICAL), `sigstore`, `glob`, `minimatch`, `cross-spawn`,
+`brace-expansion` — all under `usr/local/lib/node_modules/npm/`. These are npm's
+dependencies, shipped with `node:20-alpine`. Nothing in `package.json` controls
+them.
+
+The fix was not to patch them. **The runtime container runs
+`node dist/server.js` and never invokes npm**, so npm was deleted from the final
+stage:
+
+```dockerfile
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+```
+
+Removing an unused tool beats patching it: the vulnerabilities leave with it,
+and a compromised container has one less way to execute arbitrary code. Worth
+generalising — *why is this in my image at all* is usually a better question
+than *how do I patch this*.
+
+### Source 2: actual application dependencies
+
+`multer`, `ws`, `engine.io`, `socket.io-parser`, `form-data`, `ip-address` under
+`app/node_modules/`. These are real, and were fixed by upgrading.
+
+`multer 1.4.5-lts.2 → 2.2.0` is a **major version bump on a direct dependency**
+that handles file uploads. Typecheck and the full 94-test suite were run before
+and after; both clean. A major bump on an upload handler is exactly where a
+scanner's advice should not be taken on faith.
+
+### Result
+
+```
+trivy --severity HIGH,CRITICAL --ignore-unfixed  →  exit 0
+```
+
+Republished as `0.2.0`. **Not** as `0.1.0` — a rebuilt image with different
+content and the same tag is precisely the failure mode the immutable-tag policy
+above exists to prevent. Changing content means changing the tag, including when
+it is only a security patch.
+
+## A correction this phase produced
+
+Phase 3 stated that the Prisma CLI was pruned out of the runtime image, and used
+that to justify a separate migration image. Inspecting the image directly showed
+otherwise: `@prisma/client` declares `prisma` as an optional peer dependency, so
+npm keeps it in the production tree and `node_modules/.bin/prisma` works fine in
+the runtime image.
+
+The separate image is still needed — `ts-node` really is pruned, and the seed
+script needs it — so the conclusion held while the reasoning did not. Both
+`MIGRATIONS.md` and the Dockerfile comment have been corrected. Assertions about
+an image are cheap to verify and easy to get wrong from reading the Dockerfile
+alone.

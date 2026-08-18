@@ -3,8 +3,16 @@
 # Production image for the VesselMind API.
 # Stages:
 #   deps    — full install + generated Prisma client
-#   build   — compiled TypeScript (retains dev deps incl. the Prisma CLI, so a
-#             migrate one-off can target this stage: `prisma migrate deploy`)
+#   build   — compiled TypeScript (retains dev deps incl. ts-node, so a
+#             migrate+seed one-off can target this stage)
+#
+# NOTE, corrected after actually checking the image: the Prisma CLI is NOT
+# removed by the prune stage. `@prisma/client` declares `prisma` as an optional
+# peer dependency, so npm keeps it in the production tree and the runtime image
+# ships a working `node_modules/.bin/prisma` (5.22.0). Migrations alone could
+# therefore run from this image. Seeding could not — it needs ts-node, which the
+# prune genuinely does remove — which is why the one-off Job still targets the
+# `build` stage.
 #   prune   — production-only node_modules (keeps the generated Prisma client)
 #   runtime — slim, non-root final image
 
@@ -40,6 +48,15 @@ WORKDIR /app
 # openssl: the Prisma *query* engine needs it at runtime too, not just for
 # migrations. dumb-init gives us a real PID 1 (see below).
 RUN apk add --no-cache dumb-init openssl
+
+# Remove npm and npx from the runtime image. The container's command is
+# `node dist/server.js` — npm is never invoked, but node:20-alpine ships it
+# along with its own bundled dependency tree, which is where a Trivy scan found
+# six vulnerable packages including the image's only CRITICAL (node-tar).
+# Deleting an unused tool is a better fix than patching it: the vulnerabilities
+# leave with it, the image shrinks, and there is one less way to execute
+# arbitrary code inside a compromised container.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 COPY --from=prune /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

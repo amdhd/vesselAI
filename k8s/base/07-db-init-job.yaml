@@ -86,7 +86,7 @@ spec:
         # enough here because `migrate` retries on its own once connected, and
         # honest about what it does not prove.
         - name: wait-for-db
-          image: k3d-vesselmind-registry:5111/vesselmind/migrate:0.1.0
+          image: k3d-vesselmind-registry:5111/vesselmind/migrate:0.2.0
           imagePullPolicy: IfNotPresent
           command:
             - node
@@ -113,7 +113,7 @@ spec:
                   name: vesselmind-secrets
                   key: DATABASE_URL
         - name: migrate
-          image: k3d-vesselmind-registry:5111/vesselmind/migrate:0.1.0
+          image: k3d-vesselmind-registry:5111/vesselmind/migrate:0.2.0
           imagePullPolicy: IfNotPresent
           # node_modules/.bin directly, not `npx`. npx wants a writable npm
           # cache under $HOME and will reach for the network if it decides the
@@ -128,7 +128,7 @@ spec:
 
       containers:
         - name: seed
-          image: k3d-vesselmind-registry:5111/vesselmind/migrate:0.1.0
+          image: k3d-vesselmind-registry:5111/vesselmind/migrate:0.2.0
           imagePullPolicy: IfNotPresent
           # Every write in prisma/seed.ts is an upsert, so re-running is safe and
           # this Job is idempotent. That matters: a Job that cannot be re-run is
