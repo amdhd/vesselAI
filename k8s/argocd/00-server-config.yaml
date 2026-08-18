@@ -1,0 +1,38 @@
+# Argo CD server configuration for serving under a subpath.
+#
+# The UI is exposed at http://localhost:8080/argocd, alongside the app and
+# Grafana, on the one Ingress this cluster has. Two settings make that work and
+# both are required:
+#   server.rootpath  — Argo must know its own base path, or its redirects and
+#                      asset URLs point at / and the UI half-loads.
+#   server.insecure  — Argo terminates TLS itself by default. Behind an Ingress
+#                      that speaks plain HTTP to the backend, that produces a
+#                      redirect loop. LOCAL-ONLY: production terminates TLS at
+#                      the Ingress and leaves this off.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  server.rootpath: /argocd
+  server.basehref: /argocd
+  server.insecure: 'true'
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd
+  namespace: argocd
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /argocd
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80

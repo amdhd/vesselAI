@@ -1,0 +1,83 @@
+# The Application: Argo CD's unit of "keep this bit of git and this bit of
+# cluster in agreement".
+#
+# PULL, NOT PUSH — the distinction that matters.
+#   PUSH (what CI does today): a pipeline holds cluster credentials and runs
+#     `kubectl apply` from outside. Simple, and it means CI can reach production,
+#     so anyone who compromises CI can too. It also has no idea what happens
+#     afterwards — if someone edits a live object, CI never finds out.
+#   PULL (this): a controller INSIDE the cluster reads git and reconciles.
+#     No external system holds cluster credentials, and because it reconciles
+#     continuously rather than once per deploy, it detects and can revert drift.
+#
+# The honest tradeoff: pull-based means the cluster needs read access to the repo
+# (trivial here — it is public) and that a deploy is no longer a synchronous
+# thing you can watch a pipeline finish. You trade "I saw it succeed" for "it
+# converges, and I can see whether it has".
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vesselmind
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/amdhd/vesselAI.git
+    targetRevision: main
+    # Points at the Kustomize overlay, not the base — the same thing a human
+    # would `kubectl apply -k`. Argo detects kustomization.yaml and renders it
+    # itself; there is no separate build step to keep in sync.
+    path: k8s/overlays/dev
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vesselmind
+
+  syncPolicy:
+    # AUTOMATED SYNC, enabled once main became the source of truth.
+    #
+    # Before Phase 7 merged, main did not contain the Pod Security Standards,
+    # NetworkPolicies or PodDisruptionBudgets — so turning this on would have
+    # made Argo faithfully DELETE them, because git said they did not exist.
+    # That is the tool working correctly and is the whole hazard of GitOps:
+    # it enforces whatever git says, including "that hardening is not real".
+    automated:
+      # Revert manual changes to live objects. This is the property that makes
+      # the cluster's state knowable — without it, GitOps tells you about drift
+      # but does nothing about it.
+      selfHeal: true
+      # Delete objects removed from git. The one to think hardest about: it
+      # means deleting a file deletes the object, PersistentVolumeClaims
+      # included. Enabled here because this cluster is disposable; on anything
+      # holding real data it deserves a conversation first.
+      prune: true
+    retry:
+      limit: 3
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 3m
+
+    # PREVIOUSLY: automated sync was off.
+    #
+    # Argo would otherwise make the cluster match `main` immediately — and main
+    # does not yet contain Phase 7, so it would cheerfully revert the Pod
+    # Security Standards, NetworkPolicies and PodDisruptionBudgets. That is
+    # exactly the power of the tool and exactly its hazard: it will enforce
+    # whatever git says, including "that hardening does not exist".
+    #
+    # Manual sync first turned that hazard into a demonstration: Argo reported
+    # OutOfSync across all 37 objects and showed exactly which differed, without
+    # touching any of them.
+    #
+    # ADOPTING EXISTING RESOURCES: everything here was originally created with
+    # `kubectl apply` by hand, so none of it carried Argo's tracking annotation
+    # (argocd.argoproj.io/tracking-id — v3 tracks by annotation, not the older
+    # app.kubernetes.io/instance label). Argo therefore reported every object as
+    # OutOfSync until one sync took ownership. Worth knowing before migrating a
+    # live cluster into GitOps: the first sync is an adoption, not a no-op.
+    syncOptions:
+      - CreateNamespace=false
+      # The namespace carries Pod Security labels and is managed in the overlay;
+      # letting Argo create a bare one would drop them.
