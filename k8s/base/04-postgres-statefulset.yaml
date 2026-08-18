@@ -45,6 +45,8 @@ spec:
       # image declares STOPSIGNAL SIGINT (fast shutdown) to avoid exactly this;
       # worth verifying with `kubectl describe pod` rather than trusting it.
       terminationGracePeriodSeconds: 60
+      serviceAccountName: postgres
+      automountServiceAccountToken: false
 
       # DELIBERATELY NO securityContext HERE. The postgres image's entrypoint
       # starts as root, chowns PGDATA, and drops to the `postgres` user itself

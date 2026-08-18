@@ -56,7 +56,12 @@ spec:
       backoffLimit: 2
       # Fresh pod per attempt, so a failed attempt's logs survive.
       template:
+        metadata:
+          labels:
+            tier: batch
         spec:
+          serviceAccountName: batch
+          automountServiceAccountToken: false
           restartPolicy: Never
           containers:
             - name: pg-dump

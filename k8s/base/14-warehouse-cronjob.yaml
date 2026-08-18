@@ -52,6 +52,8 @@ spec:
       activeDeadlineSeconds: 1800
       template:
         spec:
+          serviceAccountName: batch
+          automountServiceAccountToken: false
           restartPolicy: Never
           securityContext:
             fsGroup: 10001

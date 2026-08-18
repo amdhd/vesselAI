@@ -51,6 +51,8 @@ spec:
       labels:
         app: vesselmind-analytics
     spec:
+      serviceAccountName: analytics
+      automountServiceAccountToken: false
       securityContext:
         # The image creates uid 10001 and chowns /app to it.
         runAsNonRoot: true

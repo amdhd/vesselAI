@@ -19,6 +19,8 @@ spec:
       labels:
         app: vesselmind-web
     spec:
+      serviceAccountName: web
+      automountServiceAccountToken: false
       containers:
         - name: web
           image: k3d-vesselmind-registry:5111/vesselmind/web:0.2.0

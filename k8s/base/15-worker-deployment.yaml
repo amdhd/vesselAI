@@ -44,6 +44,8 @@ spec:
       # Prisma, exits 0), unlike server.ts — so this grace period is actually
       # used rather than decorative.
       terminationGracePeriodSeconds: 30
+      serviceAccountName: worker
+      automountServiceAccountToken: false
       containers:
         - name: worker
           image: k3d-vesselmind-registry:5111/vesselmind/api:0.4.0

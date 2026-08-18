@@ -39,6 +39,8 @@ spec:
       # connections, drains, then exits. Left at the 30s default and named here
       # so the gap is on the record.
       terminationGracePeriodSeconds: 30
+      serviceAccountName: api
+      automountServiceAccountToken: false
 
       containers:
         - name: api
