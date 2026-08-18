@@ -1,0 +1,27 @@
+# Headless Service for the Postgres StatefulSet.
+#
+# clusterIP: None is the entire point. A normal Service allocates a virtual IP
+# and load-balances across pods, which is meaningless for a database with one
+# writer. Headless instead publishes DNS A records for the pods themselves, and
+# — because a StatefulSet references this Service via spec.serviceName — creates
+# the stable per-pod record postgres-0.postgres.vesselmind.svc.cluster.local.
+#
+# Alternative rejected: an ordinary ClusterIP Service. It would work at one
+# replica, but it gives you a load-balanced VIP over a set of database pods,
+# which is the wrong abstraction the moment there is more than one.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: vesselmind
+spec:
+  clusterIP: None
+  # Must match the StatefulSet's pod labels exactly. When this is wrong the
+  # symptom is silence: the Service exists, DNS resolves to nothing, and the API
+  # hangs on connect. Check with `kubectl get endpoints postgres -n vesselmind`.
+  selector:
+    app: vesselmind-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432

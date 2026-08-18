@@ -1,0 +1,156 @@
+# Postgres as a StatefulSet.
+#
+# WHY NOT A DEPLOYMENT: a Deployment treats its pods as interchangeable — random
+# names, no ordering, and every replica sharing one PVC (or none). A StatefulSet
+# gives three things a database needs:
+#   1. Stable identity: the pod is always `postgres-0`, so its DNS name survives
+#      restarts and reschedules.
+#   2. Stable storage: each replica gets its OWN PersistentVolumeClaim from
+#      volumeClaimTemplates, and that claim is re-attached to the same ordinal
+#      after any restart.
+#   3. Ordered, one-at-a-time rollout and scale-down.
+#
+# WHAT IT DOES NOT GIVE YOU: replication. A StatefulSet at replicas: 3 is three
+# independent Postgres instances with three separate disks, not a cluster. Real
+# HA needs an operator (CloudNativePG, Zalando) or a managed service. Be precise
+# about this distinction — it is the most common thing people overstate.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: vesselmind
+spec:
+  # MUST equal the headless Service name above. Without it the per-pod DNS
+  # records are never created and postgres-0.postgres... does not resolve.
+  # This is the single field people forget.
+  serviceName: postgres
+
+  replicas: 1
+
+  # Immutable after creation. Changing a selector means deleting and recreating
+  # the object, so pick labels you can live with.
+  selector:
+    matchLabels:
+      app: vesselmind-postgres
+
+  template:
+    metadata:
+      labels:
+        app: vesselmind-postgres
+    spec:
+      # Postgres treats SIGTERM as "smart shutdown": it waits for existing
+      # clients to disconnect on their own, which can outlast the grace period
+      # and end in a SIGKILL — an unclean stop requiring crash recovery on the
+      # next boot. 60s is generous for a laptop with one client. The official
+      # image declares STOPSIGNAL SIGINT (fast shutdown) to avoid exactly this;
+      # worth verifying with `kubectl describe pod` rather than trusting it.
+      terminationGracePeriodSeconds: 60
+
+      # DELIBERATELY NO securityContext HERE. The postgres image's entrypoint
+      # starts as root, chowns PGDATA, and drops to the `postgres` user itself
+      # via gosu. Forcing runAsNonRoot breaks initdb with a permission error on
+      # the freshly-provisioned volume. In production this is moot: Postgres
+      # belongs on RDS, not in the cluster.
+      containers:
+        - name: postgres
+          # Pinned to match docker-compose.yml, so a Phase 2 failure is never
+          # "did the database version change?"
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: postgres
+              containerPort: 5432
+
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: vesselmind-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: vesselmind-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: vesselmind-secrets
+                  key: POSTGRES_PASSWORD
+
+            # PGDATA points at a SUBDIRECTORY of the mount, not the mount itself.
+            # initdb refuses to run in a directory that is not empty, and many
+            # volume types arrive with something already in them (ext4's
+            # lost+found being the classic). k3d's local-path provisioner hands
+            # over a clean directory so this would work either way here — set
+            # anyway, because the habit is what transfers to a real cluster.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+
+          # READINESS ONLY, NO LIVENESS — a judgement call, argue with me.
+          # Readiness failing just pulls the pod out of the Service endpoints,
+          # which is what we want while the database is starting or recovering.
+          # A liveness probe would RESTART the container, and restarting a
+          # Postgres that is slowly replaying WAL turns a delay into an outage
+          # loop. The failure mode a liveness probe is meant to catch (a wedged
+          # process that still holds its port) is rare for Postgres and better
+          # handled by a human.
+          #
+          # exec, not httpGet: there is no HTTP endpoint to hit. Wrapped in
+          # `sh -c` because exec probes do not run a shell, so $VAR is not
+          # expanded in a bare command array.
+          #
+          # -h 127.0.0.1 matters: during initdb, Postgres runs a temporary
+          # server bound to the unix socket only. Probing over TCP avoids
+          # reporting Ready before the real, network-listening server is up.
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - exec pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+
+          # requests = what the SCHEDULER reserves when placing the pod.
+          # limits   = what the KERNEL enforces once it is running.
+          # Exceeding a memory limit is a hard kill (OOMKilled, exit 137).
+          # Exceeding a CPU limit is throttling — slow, never killed. Those are
+          # two different mechanisms and Phase 2 breaks #2 and #7 exist to make
+          # the difference visible.
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+
+  # NOT spec.template.spec.volumes. volumeClaimTemplates creates one PVC per
+  # replica, named <template>-<statefulset>-<ordinal> — here
+  # "postgres-data-postgres-0".
+  #
+  # THE PVC OUTLIVES THE POD. Deleting the pod, or the entire StatefulSet, does
+  # NOT delete this claim; Kubernetes deliberately refuses to destroy data on
+  # your behalf. The data survives, the pod comes back, and it re-attaches. To
+  # actually reclaim the disk you delete the PVC by hand. Phase 2 break #6 is
+  # this sentence, demonstrated.
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: ['ReadWriteOnce']
+        # storageClassName omitted on purpose -> k3d's default, local-path.
+        # LOCAL-ONLY: local-path is a hostPath directory on one node. The volume
+        # is bound to that node forever, there is no replication, and if the
+        # node dies the data dies. Fine for a laptop; in production this is RDS.
+        resources:
+          requests:
+            storage: 2Gi
