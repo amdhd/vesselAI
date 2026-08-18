@@ -48,11 +48,29 @@ spec:
       serviceAccountName: postgres
       automountServiceAccountToken: false
 
-      # DELIBERATELY NO securityContext HERE. The postgres image's entrypoint
-      # starts as root, chowns PGDATA, and drops to the `postgres` user itself
-      # via gosu. Forcing runAsNonRoot breaks initdb with a permission error on
-      # the freshly-provisioned volume. In production this is moot: Postgres
-      # belongs on RDS, not in the cluster.
+      # RUN AS THE IMAGE'S OWN postgres USER (uid 70 in the alpine image).
+      #
+      # Phase 1 deliberately left this off, reasoning that the entrypoint starts
+      # as root, chowns PGDATA and drops privileges via gosu — so forcing
+      # runAsNonRoot would break initdb on a fresh volume. That reasoning was
+      # right about the mechanism and wrong about the conclusion: `fsGroup` makes
+      # the kubelet chgrp the volume on mount, so the data directory is already
+      # group-writable by the time the entrypoint runs, and it skips the chown
+      # path entirely when it is not root.
+      #
+      # This is what PSS `restricted` forces you to confront rather than defer.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          # Restricts which syscalls the container may make, using the container
+          # runtime's default profile. Required by PSS `restricted`, and one of
+          # the cheapest real hardening wins available — it costs nothing and
+          # blocks whole classes of kernel-surface attacks.
+          type: RuntimeDefault
+
       containers:
         - name: postgres
           # Pinned to match docker-compose.yml, so a Phase 2 failure is never
@@ -90,6 +108,10 @@ spec:
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
 
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ['ALL']
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data

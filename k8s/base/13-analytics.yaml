@@ -54,6 +54,12 @@ spec:
       serviceAccountName: analytics
       automountServiceAccountToken: false
       securityContext:
+        seccompProfile:
+          # Restricts which syscalls the container may make, using the container
+          # runtime's default profile. Required by PSS `restricted`, and one of
+          # the cheapest real hardening wins available — it costs nothing and
+          # blocks whole classes of kernel-surface attacks.
+          type: RuntimeDefault
         # The image creates uid 10001 and chowns /app to it.
         runAsNonRoot: true
         runAsUser: 10001
@@ -107,6 +113,10 @@ spec:
                   key: JWT_SECRET
             - name: NODE_ENV
               value: production
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ['ALL']
           volumeMounts:
             - name: warehouse
               mountPath: /app/data-platform/data

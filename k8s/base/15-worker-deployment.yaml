@@ -44,6 +44,13 @@ spec:
       # Prisma, exits 0), unlike server.ts — so this grace period is actually
       # used rather than decorative.
       terminationGracePeriodSeconds: 30
+      securityContext:
+        seccompProfile:
+          # Restricts which syscalls the container may make, using the container
+          # runtime's default profile. Required by PSS `restricted`, and one of
+          # the cheapest real hardening wins available — it costs nothing and
+          # blocks whole classes of kernel-surface attacks.
+          type: RuntimeDefault
       serviceAccountName: worker
       automountServiceAccountToken: false
       containers:

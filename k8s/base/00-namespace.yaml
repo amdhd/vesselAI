@@ -1,6 +1,45 @@
-# Everything for Phase 1 lives in one namespace so the whole stack can be torn
+# Everything for the app lives in one namespace so the whole stack can be torn
 # down with a single `kubectl delete namespace vesselmind`.
+#
+# POD SECURITY STANDARDS, enforced at `restricted` — the strictest of the three
+# built-in levels. This is admission control: the API server REJECTS a
+# non-compliant pod outright rather than reporting it later. There is no agent
+# and nothing to install; it is three labels.
+#
+# The three modes serve different purposes and are worth using together:
+#   enforce — reject violating pods
+#   audit   — record violations in the audit log (catches what enforce would
+#             have blocked, if you ever loosen it)
+#   warn    — return a warning to whoever ran kubectl, which is how the
+#             violations below were found before anything was enforced
+#
+# WHAT `restricted` DEMANDED, and what each one cost:
+#   - Postgres had to stop running as root. Phase 1 argued it could not, because
+#     the entrypoint chowns PGDATA before dropping privileges. That was right
+#     about the mechanism and wrong about the conclusion: fsGroup makes the
+#     kubelet chgrp the volume on mount, so the entrypoint skips the chown path
+#     entirely. Now runs as uid 70 with the data intact.
+#   - The migration Job had to stop running as root — predicted in Phase 3 and
+#     deferred to "a later phase". This is that phase. It never needed root:
+#     everything it reads is world-readable and its only writes are to /tmp and
+#     to Postgres over the network.
+#   - The warehouse CronJob had to work from /tmp, because /app is root-owned in
+#     its image and dbt writes target/ and logs/ into its project directory.
+#   - Every pod needed seccompProfile: RuntimeDefault, which nothing had.
+#
+# Pinned to `latest` deliberately: policy definitions get stricter over time, and
+# pinning to a version silently opts out of future tightening. The tradeoff is
+# that a cluster upgrade can start rejecting pods that were fine before — which
+# is why `audit` and `warn` are set alongside, so that surfaces as a warning
+# rather than a production outage.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: vesselmind
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest

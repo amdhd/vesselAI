@@ -63,6 +63,15 @@ spec:
           serviceAccountName: batch
           automountServiceAccountToken: false
           restartPolicy: Never
+          # uid 70 is the postgres user in the alpine image. fsGroup makes the
+          # backup PVC group-writable so a non-root process can write dumps to it.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            fsGroup: 70
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - name: pg-dump
               # Same image and therefore the same major version as the server.
@@ -117,6 +126,10 @@ spec:
                     secretKeyRef:
                       name: vesselmind-secrets
                       key: POSTGRES_PASSWORD
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ['ALL']
               volumeMounts:
                 - name: backups
                   mountPath: /backups

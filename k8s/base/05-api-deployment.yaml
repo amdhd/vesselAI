@@ -39,6 +39,13 @@ spec:
       # connections, drains, then exits. Left at the 30s default and named here
       # so the gap is on the record.
       terminationGracePeriodSeconds: 30
+      securityContext:
+        seccompProfile:
+          # Restricts which syscalls the container may make, using the container
+          # runtime's default profile. Required by PSS `restricted`, and one of
+          # the cheapest real hardening wins available — it costs nothing and
+          # blocks whole classes of kernel-surface attacks.
+          type: RuntimeDefault
       serviceAccountName: api
       automountServiceAccountToken: false
 
