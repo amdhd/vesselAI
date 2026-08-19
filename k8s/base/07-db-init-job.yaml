@@ -31,14 +31,44 @@
 #       kubectl apply -f k8s/base/07-db-init-job.yaml
 #       kubectl wait --for=condition=complete job/db-init -n vesselmind
 #       kubectl apply -f k8s/base/
-#   A real setup encodes that dependency declaratively instead — Argo CD
-#   sync-waves or Helm hooks. That is Phase 8's job. Until then the ordering
-#   lives in a runbook, and pretending otherwise would be dishonest.
+#
+#   That runbook ordering was a weakness worth naming, and post-Phase 8 it is
+#   gone: the annotations in metadata make this an Argo CD PreSync hook, so the
+#   controller runs this Job to completion BEFORE applying anything else in the
+#   sync, and a failed Job fails the whole sync. The ordering between
+#   migrations and the app is now part of the manifests, not somebody's memory.
+#   It is a hook rather than sync-waves on purpose: waves only SEQUENCE applies,
+#   they never wait for anything to finish — a migration needs a completion
+#   signal, which is exactly what a Job provides.
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: db-init
   namespace: vesselmind
+  # ARGO CD PRE-SYNC HOOK — solves two problems at once. See the header for the
+  # ordering half; this comment is the immutability half.
+  #
+  # A Job's pod template is IMMUTABLE after creation, and GitOps does not know
+  # that: `apply`ing an updated Job while the old one exists fails on an
+  # immutable field, which fails the whole sync. ttlSecondsAfterFinished below
+  # deletes Jobs 10 minutes after they finish, so most syncs find no Job and
+  # succeed — which HIDES the trap until the one sync that lands while a Job
+  # exists. hook-delete-policy: BeforeHookCreation makes Argo delete the
+  # previous hook Job before creating the new one, so the conflict is
+  # structurally impossible instead of merely unlikely.
+  #
+  # Two consequences, both acceptable:
+  #   - Every Argo sync re-runs this Job. That was already happening; the
+  #     migrate step is a no-op with no pending migrations and every seed write
+  #     is an upsert, so re-running is the designed-for case.
+  #   - Hook resources are not self-healed or pruned like regular resources;
+  #     drift on this Job is not detected between syncs. Fine for a one-shot.
+  #
+  # Outside Argo (plain `kubectl apply -k`) the annotations are inert and the
+  # delete-then-apply dance in the runbook still applies.
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   # How many times the whole Job may fail before Kubernetes gives up. Low on
   # purpose: a failing migration is a bug to read, not something to retry into

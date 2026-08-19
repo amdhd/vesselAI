@@ -104,7 +104,11 @@ Fields that carry weight:
   deliberately: a failing migration is a bug to read, not something to retry into
   submission.
 - **`ttlSecondsAfterFinished: 600`** — deletes the Job and its pods 10 minutes
-  after completion. Without it, finished Jobs accumulate forever.
+  after completion. Without it, finished Jobs accumulate forever. It also used
+  to *hide* a trap: Jobs are immutable, and because the TTL usually removed the
+  old Job before the next sync, the sync that landed while a Job still existed
+  failed on the immutable field. `hook-delete-policy: BeforeHookCreation` now
+  makes that structurally impossible.
 - **`restartPolicy: Never`** — each attempt gets a *fresh pod*, so a failed
   attempt's logs survive for inspection. `OnFailure` restarts the container in
   place and makes forensics harder.
@@ -131,10 +135,14 @@ kubectl wait --for=condition=complete job/db-init -n vesselmind --timeout=240s
 kubectl apply -f k8s/base/
 ```
 
-That dependency currently lives in a runbook, which is a weakness worth naming
-rather than hiding. A real setup encodes it declaratively — **Argo CD sync-waves**
-or **Helm hooks** — so the ordering is part of the manifests instead of part of
-somebody's memory. That arrives in Phase 8.
+That dependency lived in a runbook — a weakness worth naming rather than hiding.
+It is now encoded declaratively: the Job carries Argo CD **PreSync hook**
+annotations (`07-db-init-job.yaml`), so the controller runs it to completion
+**before** applying the rest of the sync, and a failed Job fails the whole sync.
+A hook, not sync-waves, on purpose: waves only sequence applies and never wait
+for anything to finish, while a migration needs a completion signal — which is
+exactly what a Job provides. The kubectl sequence above remains the manual path
+outside Argo.
 
 ## Consequence: NODE_ENV back to production
 
