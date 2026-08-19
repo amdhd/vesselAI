@@ -129,9 +129,16 @@ so the schema is not merely present but correctly versioned; a future
 
 ```bash
 kubectl get pods -n vesselmind -l job-name=postgres-backup --sort-by=.metadata.creationTimestamp
+kubectl apply --dry-run=server -f k8s/jobs/postgres-restore.yaml   # preflight: proves admission accepts it
 kubectl apply -f k8s/jobs/postgres-restore.yaml
 kubectl wait --for=condition=complete job/postgres-restore -n vesselmind --timeout=300s
 kubectl logs job/postgres-restore -n vesselmind
 ```
+
+The preflight line matters more than it looks: the Job is deliberately not in
+the kustomization, so nothing exercises it between incidents, and Phase 7's
+Pod Security Standards rejected it at admission until its securityContext was
+added. Dry-running before the real apply turns a silent regression into a loud
+one.
 
 Delete the Job afterwards — a completed Job blocks re-applying the same name.

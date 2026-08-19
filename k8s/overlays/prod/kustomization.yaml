@@ -34,9 +34,8 @@ patches:
       kind: Deployment
       name: api
     patch: |-
-      - op: replace
-        path: /spec/replicas
-        value: 3
+      # NOTE: no replicas here. The HPA owns /spec/replicas — declaring it in
+      # git makes Argo CD selfHeal fight the autoscaler (see 05-api-deployment.yaml).
       - op: replace
         path: /spec/template/spec/containers/0/resources/requests/memory
         value: 256Mi
@@ -44,6 +43,8 @@ patches:
         path: /spec/template/spec/containers/0/resources/requests/cpu
         value: 250m
 
+  # minReplicas 3 is also the resting pod count — the HPA owns /spec/replicas
+  # (see 05-api-deployment.yaml).
   - target:
       kind: HorizontalPodAutoscaler
       name: api

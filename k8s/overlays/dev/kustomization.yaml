@@ -30,13 +30,9 @@ patches:
         value: '60000'
 
   # Smaller footprint: this shares a laptop with Prometheus, Grafana and Docker.
-  - target:
-      kind: Deployment
-      name: api
-    patch: |-
-      - op: replace
-        path: /spec/replicas
-        value: 2
+  # The resting pod count comes from the HPA's minReplicas below, NOT a replicas
+  # field on the Deployment — the HPA owns /spec/replicas, and declaring it in
+  # git makes Argo CD selfHeal fight the autoscaler (see 05-api-deployment.yaml).
   - target:
       kind: HorizontalPodAutoscaler
       name: api

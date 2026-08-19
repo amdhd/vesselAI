@@ -34,6 +34,30 @@ spec:
     server: https://kubernetes.default.svc
     namespace: vesselmind
 
+  # THE HPA OWNS /spec/replicas ON THE API DEPLOYMENT — so this Application
+  # ignores that field. Phase 8 enabled selfHeal while the manifest still
+  # declared replicas, and the result was two controllers fighting: under load
+  # the HPA scaled up and Argo reverted it to the git value within one
+  # reconciliation, forever. The autoscaler was effectively disabled and the
+  # load-test numbers unreproducible.
+  #
+  # The fix has two halves, both required. This is half 1: the HPA's live
+  # writes are not drift. Half 2: the field no longer exists in git
+  # (05-api-deployment.yaml), so Argo has nothing to revert it TO — without it
+  # the live object's replicas would keep showing OutOfSync, since the
+  # Deployment defaults to 1 when the manifest omits the field.
+  #
+  # Scoped to the api Deployment BY NAME, not to all Deployments: web has no
+  # HPA, so its replicas should keep self-healing — docs/GITOPS.md demonstrates
+  # exactly that with a manual kubectl scale.
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: api
+      namespace: vesselmind
+      jsonPointers:
+        - /spec/replicas
+
   syncPolicy:
     # AUTOMATED SYNC, enabled once main became the source of truth.
     #
@@ -45,7 +69,9 @@ spec:
     automated:
       # Revert manual changes to live objects. This is the property that makes
       # the cluster's state knowable — without it, GitOps tells you about drift
-      # but does nothing about it.
+      # but does nothing about it. One deliberate carve-out above: the HPA's
+      # writes to the api Deployment's /spec/replicas are ignored, because a
+      # controller and git disagreeing about one field is a fight, not drift.
       selfHeal: true
       # Delete objects removed from git. The one to think hardest about: it
       # means deleting a file deletes the object, PersistentVolumeClaims

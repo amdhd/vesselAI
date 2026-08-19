@@ -4,6 +4,22 @@
 # database as a side effect of a routine deploy. This is a break-glass object,
 # applied deliberately.
 #
+# THE COST OF THAT DECISION, PAID IN PHASE 7: because this file is not in the
+# kustomization, nothing renders it — no CI, no Argo sync, no admission ever saw
+# it. When Phase 7 enforced Pod Security Standards at `restricted` on this
+# namespace, this Job (which had no securityContext at all) started being
+# rejected at admission, and nothing noticed because nothing exercised it. The
+# break-glass path was broken by the very hardening it lives outside of.
+#
+# Kept out of the kustomization still — a restore must remain a deliberate act —
+# but the price of that is that its compliance is verified only when someone
+# remembers to check. Before depending on this in an incident, prove it:
+#
+#   kubectl apply --dry-run=server -f k8s/jobs/postgres-restore.yaml
+#
+# The securityContext below mirrors the backup CronJob (12-postgres-backup.yaml),
+# which is the same image doing the same work in reverse.
+#
 # backoffLimit: 0 — a failed restore must not retry automatically. Re-running a
 # partial restore over a partially restored database makes diagnosis harder, and
 # the operator needs to look before trying again.
@@ -17,7 +33,29 @@ metadata:
 spec:
   backoffLimit: 0
   template:
+    metadata:
+      labels:
+        # Not cosmetic: the NetworkPolicy guarding Postgres
+        # (17-networkpolicies.yaml) admits ingress only from pods labelled
+        # tier: batch. Without this, the restore pod is accepted by admission
+        # and then its psql connection is silently dropped — a connect timeout
+        # that looks like a database problem during an incident.
+        tier: batch
     spec:
+      serviceAccountName: batch
+      automountServiceAccountToken: false
+      # PSS `restricted` — the same set as the backup job. uid 70 is the
+      # postgres user in the alpine image, numeric because the kubelet cannot
+      # verify a named user against runAsNonRoot. The backups are written by
+      # uid 70, so the same uid can read them. No fsGroup, deliberately: it
+      # would chgrp the shared backup volume on mount, and a break-glass tool
+      # whose only job is reading should not be mutating volume metadata.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
       restartPolicy: Never
       containers:
         - name: restore
@@ -41,9 +79,23 @@ spec:
               valueFrom: { configMapKeyRef: { name: vesselmind-config, key: POSTGRES_DB } }
             - name: PGPASSWORD
               valueFrom: { secretKeyRef: { name: vesselmind-secrets, key: POSTGRES_PASSWORD } }
+          # PSS `restricted`.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ['ALL']
           volumeMounts:
             - name: backups
               mountPath: /backups
+          # Mirror the backup job's footprint. The namespace LimitRange would
+          # default these in, but explicit is better for a break-glass pod you
+          # cannot afford to lose to a quota surprise.
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 256Mi
       volumes:
         - name: backups
           persistentVolumeClaim:
