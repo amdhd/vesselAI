@@ -3,24 +3,42 @@
 # WHY A DEPLOYMENT AND NOT A STATEFULSET: the API holds nothing on disk and no
 # per-instance identity. Any replica can serve any request, so interchangeable
 # pods with rolling replacement is exactly right. (Two caveats that become real
-# in Phase 3 when this goes to replicas: 3 — Socket.io keeps connection state
+# since the HPA took over replicas (2-8 pods) — Socket.io keeps connection state
 # in-process, and express-rate-limit counts in per-pod memory, so the effective
-# rate limit triples. Neither matters at one replica.)
+# rate limit multiplies with every scale-up. Neither mattered at one replica.)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: api
   namespace: vesselmind
 spec:
-  # Three replicas from Phase 3 onward. Two app-level caveats that are fine here
-  # and would not be in production, both flagged rather than fixed:
+  # NO spec.replicas HERE, ON PURPOSE — putting it back re-breaks the cluster.
+  # Phase 8 enabled Argo CD selfHeal while this line still said replicas: 3
+  # (patched to 2 in dev). The HPA owns the same field, so under load the two
+  # controllers fought: the HPA scaled 2->5, Argo reverted it to the git value
+  # within one reconciliation, the HPA scaled again — forever. Argo was doing
+  # exactly what git told it to, and git contradicted the autoscaler. The Phase
+  # 5 load-test numbers were not reproducible in the middle of that fight.
+  #
+  # The fix has two halves, and both are required:
+  #   1. The field is gone, so git no longer contradicts the HPA. The resting
+  #      pod count is now the HPA's minReplicas (2 in dev, 3 in prod — set in
+  #      the overlays). The cost: a fresh cluster briefly starts at the
+  #      Deployment default of 1 replica until the HPA's first sync.
+  #   2. The Argo Application ignores /spec/replicas on this Deployment
+  #      (k8s/argocd/01-application.yaml), so the HPA's live writes are not
+  #      drift. Without half 2, the live object's replicas (set by the HPA)
+  #      would differ from the rendered manifest and show OutOfSync forever;
+  #      without half 1, Argo has a git value to revert TO.
+  #
+  # The two app-level caveats of the multi-replica world, flagged rather than
+  # fixed:
   #   - express-rate-limit counts requests in per-pod memory, so the effective
-  #     rate limit is now three times what the config says. A shared store
-  #     (Redis) is the real fix.
+  #     rate limit multiplies with every scale-up. A shared store (Redis) is
+  #     the real fix.
   #   - Socket.io keeps connection state in-process. Without sticky sessions or
   #     a Redis adapter, a client whose requests land on different pods gets a
   #     broken handshake. Nothing depends on websockets yet, so it is latent.
-  replicas: 3
 
   selector:
     matchLabels:
