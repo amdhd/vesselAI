@@ -95,6 +95,16 @@ spec:
           volumeMounts:
             - name: warehouse
               mountPath: /seed
+          # PSS `restricted`. Phase 7 added these to the main container below
+          # and missed this initContainer — admission checks EVERY container,
+          # so the whole pod (and with it the analytics service) has been
+          # rejected since. The pod-level context above (runAsNonRoot, uid,
+          # seccomp) does not cover these two; restricted demands them
+          # per-container.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ['ALL']
       containers:
         - name: analytics
           image: k3d-vesselmind-registry:5111/vesselmind/analytics:0.3.0
