@@ -38,11 +38,47 @@ data:
       gzip_comp_level 6;
       gzip_types text/plain text/css application/json application/javascript application/xml image/svg+xml;
 
+      # SECURITY HEADERS — nginx below would otherwise set only Cache-Control,
+      # and a browser loading this SPA deserves the basics.
+      #
+      # The CSP is the one to keep an eye on when the frontend changes: every
+      # external dependency must be allow-listed here or it silently stops
+      # loading. Today's list:
+      #   fonts.googleapis.com / fonts.gstatic.com   IBM Plex via Google Fonts
+      #   unpkg.com                                   leaflet.css (style-src) and
+      #                                              the marker icons its CSS
+      #                                              references (img-src)
+      #   *.basemaps.cartocdn.com                     CARTO map tiles (img-src)
+      #   'unsafe-inline' in style-src                components set inline style
+      #                                              attributes; stylesheets
+      #                                              themselves still come from
+      #                                              hashed files on 'self'
+      # Everything else is 'self': the JS bundle is compiled into the image
+      # (leaflet included, via npm), the API and socket.io are same-origin —
+      # ws:/wss: kept explicit — and nothing may embed this app in a frame.
+      add_header X-Frame-Options "DENY" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+      add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://unpkg.com https://*.basemaps.cartocdn.com; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'" always;
+
+      # add_header INHERITANCE GOTCHA: a location that sets ANY add_header of
+      # its own REPLACES the entire server-level set. The two locations below
+      # set Cache-Control, so they repeat these four headers instead of
+      # inheriting them. (And none of this takes effect until nginx reloads —
+      # a ConfigMap volume update swaps the file, but nginx re-reads config
+      # only on reload or restart, hence the rollout-restart step in the
+      # runbook.)
+
       # Vite writes content-hashed filenames into /assets, so the bytes at a
       # given URL can never change. Cache them hard.
       location /assets/ {
         expires 1y;
         add_header Cache-Control "public, immutable";
+        # Repeats the server-level security headers — see the inheritance note.
+        add_header X-Frame-Options "DENY" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://unpkg.com https://*.basemaps.cartocdn.com; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'" always;
         try_files $uri =404;
       }
 
@@ -50,6 +86,11 @@ data:
       # bundles to load, so a stale copy pins the browser to a deleted build.
       location = /index.html {
         add_header Cache-Control "no-cache";
+        # Repeats the server-level security headers — see the inheritance note.
+        add_header X-Frame-Options "DENY" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://unpkg.com https://*.basemaps.cartocdn.com; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'" always;
       }
 
       # SPA fallback: React Router owns the paths, so any unmatched URL returns
