@@ -40,6 +40,16 @@
 #   It is a hook rather than sync-waves on purpose: waves only SEQUENCE applies,
 #   they never wait for anything to finish — a migration needs a completion
 #   signal, which is exactly what a Job provides.
+#
+#   ONE QUALIFIER, LEARNED ON THE LIVE CLUSTER: this guarantee holds for FULL
+#   syncs only. Resource-scoped partial syncs — what selfHeal fires on drift —
+#   skip hooks entirely by design, and a partial sync replaces an in-flight
+#   full sync's operation without waiting for this Job. Verified twice in
+#   controller logs: the full sync correctly reported "waiting for completion
+#   of hook batch/Job/db-init", and ~2s later a self-heal partial sync recorded
+#   the operation Succeeded while the Job was still running. That is why
+#   automated.selfHeal is off in k8s/argocd/01-application.yaml — hooks and
+#   self-heal cannot coexist until Argo closes that race.
 apiVersion: batch/v1
 kind: Job
 metadata:

@@ -78,9 +78,10 @@ which is only an improvement if git is actually the source of truth.
 from the cluster. That is the point, and it is also how a PersistentVolumeClaim
 disappears because somebody tidied a directory.
 
-## Self-healing, demonstrated
+## Self-healing, demonstrated — and then deliberately disabled
 
-With `selfHeal: true`, a manual change to a live object is reverted:
+During Phase 8 we ran the drift demo with `selfHeal: true`: a manual change
+to a live object gets reverted:
 
 ```
 $ kubectl scale deployment/web -n vesselmind --replicas=5
@@ -91,8 +92,28 @@ $ kubectl scale deployment/web -n vesselmind --replicas=5
 Argo's controller logged `Syncing` and `Partial sync operation to 1a71c3b`, and
 the deployment returned to the two replicas the overlay specifies.
 
-This is what makes cluster state knowable. Without it, GitOps reports drift and
-does nothing about it — useful, but a much weaker claim.
+Self-heal is now OFF, not because the demo failed but because of a verified
+interaction with the db-init PreSync hook (`k8s/base/07-db-init-job.yaml`):
+the hook Job, while it exists, looks like drift to the self-heal loop, which
+responds with a resource-scoped partial sync. Partial syncs skip hooks by
+design, and a partial sync REPLACES an in-flight full sync's operation — twice
+on the live cluster a full sync was recorded `Succeeded` ~2s in while the hook
+Job was still running, and once the replacement hook Job was never created at
+all. The full story is in the comment on `automated.selfHeal` in
+`k8s/argocd/01-application.yaml`.
+
+The trade this makes: auto-sync on git change still works (full syncs run the
+hook), but drift correction is now a manual `argocd app sync` — GitOps reports
+drift and a human decides, instead of the controller reverting it.
+
+Recovery note: a partial sync's operation persists in `status.operationState`
+and, through the controller's informer write-back, kept resurfacing in later
+syncs even after selfHeal was off — each new full sync was replaced ~2s in by
+a resurrected partial one. The fix was purging the field once
+(`kubectl patch app vesselmind -n argocd --type=merge -p
+'{"status":{"operationState":null}}'`), after which a full sync ran the hook
+end to end: `waiting for completion of hook batch/Job/db-init`, then
+`successfully synced (all tasks run)` with `hookPhase: Succeeded`.
 
 ## Access
 
