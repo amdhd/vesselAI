@@ -355,3 +355,38 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ github.sha }}
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:main
           cache-from: type=gha,scope=${{ matrix.image }}
+
+  # ---------------------------------------------------------------------------
+  # Static validation of the Kubernetes manifests.
+  #
+  # Catches a class of bug that does NOT fail at apply time: a ResourceQuota
+  # smaller than the workloads' peak demand. The manifests apply cleanly, and the
+  # failure surfaces later as an HPA reporting desired: N while the ReplicaSet
+  # emits FailedCreate "exceeded quota" and pods never appear — which looks like
+  # the autoscaler working. Arithmetic in CI is far cheaper than that at 2am.
+  # ---------------------------------------------------------------------------
+  k8s-manifests:
+    name: Kubernetes manifests — render + quota headroom
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install --no-cache-dir pyyaml
+
+      # kubectl ships kustomize, so no extra tool is needed. Rendering is itself
+      # a test: a broken patch (a JSON `replace` against a path that no longer
+      # exists, say) fails here rather than on a cluster.
+      - name: Render overlays and check quota headroom
+        run: |
+          set -euo pipefail
+          for overlay in dev prod; do
+            echo "::group::$overlay"
+            kubectl kustomize "k8s/overlays/$overlay" > "/tmp/$overlay.yaml"
+            python3 k8s/scripts/check-quota-headroom.py "$overlay" < "/tmp/$overlay.yaml"
+            echo "::endgroup::"
+          done

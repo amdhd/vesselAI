@@ -64,3 +64,44 @@ patches:
       - op: replace
         path: /spec/replicas
         value: 4
+
+  # ResourceQuota sized for THIS overlay's peak, not the laptop's.
+  #
+  # The base quota is dev-shaped: 3 CPU of requests, which the api HPA alone
+  # blows through at 12 of its 20 replicas. A quota below peak demand does not
+  # fail at apply time — it fails later and silently: the HPA reports desired: 20
+  # while the ReplicaSet emits FailedCreate "exceeded quota" and pods never
+  # appear, so the autoscaler looks like it is working. That is a much worse
+  # failure than a rejected manifest.
+  #
+  # Numbers come from k8s/scripts/check-quota-headroom.py, which renders the
+  # overlay and sums every workload at its maximum replica count (HPA maxReplicas
+  # where one exists). Measured peak for prod: 5.30 CPU / 5.62Gi requests,
+  # 12.80 CPU / 12.38Gi limits. Set with roughly a third headroom on top, because
+  # Jobs and CronJobs draw from the same quota and must not be starved by a
+  # fully-scaled API — a migration that cannot schedule blocks a deploy.
+  #
+  # limits are quota-enforced too, and are deliberately far above requests: that
+  # gap IS the burst capacity. Sizing limits equal to requests would remove the
+  # headroom that makes limits worth setting.
+  - target:
+      kind: ResourceQuota
+      name: vesselmind
+    patch: |-
+      - op: replace
+        path: /spec/hard/requests.cpu
+        value: '8'
+      - op: replace
+        path: /spec/hard/requests.memory
+        value: 10Gi
+      - op: replace
+        path: /spec/hard/limits.cpu
+        value: '20'
+      - op: replace
+        path: /spec/hard/limits.memory
+        value: 20Gi
+      # 20 api + 4 web + postgres + analytics + worker + batch, with room for a
+      # rollout running old and new pods at once.
+      - op: replace
+        path: /spec/hard/pods
+        value: '60'
