@@ -15,17 +15,25 @@ metadata:
   namespace: monitoring
 ---
 # ClusterRole, not Role, because service discovery reads across ALL namespaces —
-# a namespaced Role cannot grant that. Read-only, and deliberately narrow: it can
-# enumerate pods and services, and it CANNOT read secrets or configmaps or write
-# anything. Worth contrasting with the `secrets-unsealer` ClusterRole that
-# sealed-secrets ships, which genuinely does need secret access.
+# a namespaced Role cannot grant that. Read-only, and it CANNOT read secrets or
+# configmaps or write anything. Worth contrasting with the `secrets-unsealer`
+# ClusterRole that sealed-secrets ships, which genuinely does need secret access.
+#
+# `pods` ONLY, because that is all this Prometheus uses: the scrape config below
+# has a single kubernetes_sd_configs entry with `role: pod`. It previously also
+# granted nodes, services and endpoints — copied from the common example rather
+# than derived from what is configured — in a file whose comment claimed least
+# privilege. Least privilege you have not checked is just a claim.
+#
+# Adding a `role: node` or `role: endpoints` scrape job means adding the matching
+# resource back here; discovery fails with a clear RBAC error, not silence.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: prometheus
 rules:
   - apiGroups: ['']
-    resources: ['nodes', 'services', 'endpoints', 'pods']
+    resources: ['pods']
     verbs: ['get', 'list', 'watch']
 ---
 apiVersion: rbac.authorization.k8s.io/v1

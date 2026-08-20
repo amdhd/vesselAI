@@ -78,11 +78,22 @@ spec:
                   # The pipeline writes the warehouse next to its inputs, and dbt
                   # writes target/ and logs/ into its project directory. /app is
                   # root-owned in this image, so under PSS `restricted` — running
-                  # as uid 10001 — none of that is writable. Copying the project
-                  # into /tmp (world-writable, and an emptyDir here rather than
-                  # the container's writable layer) makes the whole pipeline run
-                  # unprivileged with no image change.
-                  cp -r /app/data-platform /tmp/work
+                  # as uid 10001 — none of that is writable. Working from /tmp (an
+                  # emptyDir, so the size is bounded and visible rather than
+                  # growing in the container's writable layer) makes the whole
+                  # pipeline run unprivileged with no image change.
+                  #
+                  # COPY ONLY WHAT IS WRITTEN TO; SYMLINK WHAT IS ONLY READ.
+                  # This used to `cp -r` the entire project, raw data included.
+                  # With the sample CSV that is harmless; with a real NOAA daily
+                  # file (5-12 million rows, hundreds of MB) it duplicates the
+                  # whole input on every run — doubling I/O and disk for no
+                  # benefit, and risking the emptyDir sizeLimit alongside the
+                  # DuckDB file and dbt's output. data/raw is read-only input, so
+                  # a symlink is enough and costs nothing.
+                  mkdir -p /tmp/work/data
+                  cp -r /app/data-platform/ingestion /app/data-platform/dbt /tmp/work/
+                  ln -s /app/data-platform/data/raw /tmp/work/data/raw
                   cd /tmp/work
 
                   echo "=== bronze: land raw CSV untouched ==="
