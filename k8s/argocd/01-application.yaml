@@ -67,12 +67,33 @@ spec:
     # That is the tool working correctly and is the whole hazard of GitOps:
     # it enforces whatever git says, including "that hardening is not real".
     automated:
-      # Revert manual changes to live objects. This is the property that makes
-      # the cluster's state knowable — without it, GitOps tells you about drift
-      # but does nothing about it. One deliberate carve-out above: the HPA's
-      # writes to the api Deployment's /spec/replicas are ignored, because a
-      # controller and git disagreeing about one field is a fight, not drift.
-      selfHeal: true
+      # Self-heal is OFF on purpose. It was enabled in Phase 8 and disabled in
+      # Phase 9 after a live-verified defect: self-heal silently breaks the
+      # db-init PreSync hook's ordering guarantee (k8s/base/07-db-init-job.yaml).
+      #
+      # The mechanism, as observed on this cluster (controller logs, two full
+      # syncs, both sabotaged):
+      #   1. While the hook Job exists — its ~30s run plus the 600s TTL — Argo
+      #      lists it as a drift candidate (it carries the hook finalizer the
+      #      engine adds at sync time, and stale manifest caches see it as a
+      #      plain Job from before it became a hook).
+      #   2. selfHeal responds to drift with a PARTIAL sync scoped to the
+      #      drifted resource. Partial syncs skip hooks BY DESIGN
+      #      (controller/sync.go: skipHooks = applyStrategy || len(resources)>0),
+      #      so the Job is never waited on — and the partial sync REPLACES the
+      #      in-flight full sync's operation, because autoSync only declines
+      #      while a PENDING operation exists, not a running one.
+      #   3. Both full syncs were recorded Succeeded ~2s in with the hook still
+      #      Running (and the second time the replacement hook Job was never
+      #      created at all): "successfully synced (no more tasks)", hookPhase
+      #      forever Running. The exact failure mode the hook exists to prevent.
+      #
+      # So drift correction is a deliberate manual step (argocd app sync), and
+      # auto-sync on git change still works — those are full syncs and run the
+      # hook. Keeping drift correction while using PreSync hooks would need the
+      # Job's drift suppressed in ignoreDifferences AND the partial-sync
+      # replacement race closed; for this cluster, off is the honest trade.
+      selfHeal: false
       # Delete objects removed from git. The one to think hardest about: it
       # means deleting a file deletes the object, PersistentVolumeClaims
       # included. Enabled here because this cluster is disposable; on anything

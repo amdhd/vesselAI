@@ -144,6 +144,16 @@ for anything to finish, while a migration needs a completion signal — which is
 exactly what a Job provides. The kubectl sequence above remains the manual path
 outside Argo.
 
+One qualifier, verified on the live cluster and worth knowing before you rely
+on the guarantee: it holds for **full syncs only**. Resource-scoped partial
+syncs — the kind `selfHeal` fires on drift — skip hooks entirely by design, and
+a partial sync replaces an in-flight full sync's operation without waiting for
+the Job. Twice during verification a full sync correctly reported
+`waiting for completion of hook batch/Job/db-init` and ~2s later a self-heal
+partial sync recorded the operation `Succeeded` while the Job was still
+running; on the second round the replacement hook Job was never created.
+That is why `automated.selfHeal` is off in `k8s/argocd/01-application.yaml`.
+
 ## Consequence: NODE_ENV back to production
 
 With a seeded database there is finally a real account, so the demo-login bypass
