@@ -99,11 +99,19 @@ spec:
           # pause never restarts a healthy process.
           #
           # WHAT A BAD EXEC PROBE COSTS: exec probes fork a process inside the
-          # container on every period. Something heavy (a shell pipeline, a psql
-          # connection) run every 5s is real, permanent CPU and memory overhead
-          # attributed to your pod, and under load the probe itself can time out
-          # and kill a container that was merely busy. This one is a single stat
-          # syscall on a 30s period.
+          # container on every period, forever. That cost is charged to your pod's
+          # limits, and under load a heavy probe can time out and kill a container
+          # that was merely busy.
+          #
+          # This probe used to run `node -e ...`, which spawns a whole ~40MB V8
+          # runtime every 30 seconds inside a container limited to 384Mi — to
+          # read one file's mtime. A busybox shell doing the same work costs
+          # roughly a millisecond and a few hundred KB. Worth stating plainly
+          # because an earlier version of this comment claimed the Node probe was
+          # "a single stat syscall", which it very much was not.
+          #
+          # Fails closed: a missing heartbeat file exits 1 rather than erroring
+          # out of the arithmetic.
           #
           # WHAT IT PROVES, honestly: the event loop is turning and timers fire.
           # That catches a wedged process, which is what liveness is for. It does
@@ -115,13 +123,13 @@ spec:
           livenessProbe:
             exec:
               command:
-                - node
-                - -e
+                - /bin/sh
+                - -c
                 - |
-                  const fs = require('fs');
-                  const p = process.env.WORKER_HEARTBEAT_PATH || '/tmp/worker-heartbeat';
-                  const age = Date.now() - fs.statSync(p).mtimeMs;
-                  if (age > 90000) { console.error('heartbeat stale: ' + age + 'ms'); process.exit(1); }
+                  f=${WORKER_HEARTBEAT_PATH:-/tmp/worker-heartbeat}
+                  [ -f "$f" ] || { echo "no heartbeat file at $f"; exit 1; }
+                  age=$(( $(date +%s) - $(stat -c %Y "$f") ))
+                  [ "$age" -lt 90 ] || { echo "heartbeat stale: ${age}s"; exit 1; }
             initialDelaySeconds: 20
             periodSeconds: 30
             timeoutSeconds: 5
