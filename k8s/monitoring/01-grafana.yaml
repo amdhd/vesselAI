@@ -156,6 +156,16 @@ spec:
               value: http://localhost:8080/grafana
             - name: GF_SERVER_SERVE_FROM_SUB_PATH
               value: 'true'
+            # The image's default admin password is admin/admin. This overrides
+            # it: Grafana applies admin_password from config to the admin user
+            # at every startup, so the pod just needs the env var. The value
+            # comes from a SealedSecret (02-grafana-sealedsecret.yaml) — the
+            # plaintext lives only in the cluster, where RBAC can gate it.
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-secrets
+                  key: admin-password
             # LOCAL-ONLY: anonymous read access so the dashboard opens without a
             # login. Convenient on a laptop, unacceptable anywhere else — metrics
             # disclose route names, traffic shape and error rates. Production
