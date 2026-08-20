@@ -8,3 +8,6 @@ dist/
 *.log
 prisma/migrations/
 uploads/
+
+# k6 writes its run summary here (k8s/loadtest/api-load.js handleSummary).
+loadtest-summary.json
