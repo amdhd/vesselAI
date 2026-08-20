@@ -33,15 +33,38 @@ straight into peak traffic.
 
 ### Two things the dump script does that are easy to skip
 
-**It verifies the archive before declaring success.**
+**It verifies the archive before publishing it — and `gzip -t` alone is not
+enough.**
 
-```sh
-gzip -t "$OUT"
+Measured on this cluster: when `pg_dump` fails, the pipeline still writes a
+**valid, empty gzip stream of 20 bytes**, and `gzip -t` **passes** on it.
+Restoring that file succeeds and produces an empty database — the worst possible
+outcome, because it looks like recovery worked.
+
+Three separate failed runs left exactly such files on the backup volume:
+
+```
+  POISON  /backups/vesselmind-20260819T113947Z.sql.gz  20 bytes
+  POISON  /backups/vesselmind-20260819T113957Z.sql.gz  20 bytes
+  POISON  /backups/vesselmind-20260819T114017Z.sql.gz  20 bytes
 ```
 
-A truncated write — exactly what a full disk produces — yields a file of
-plausible size that fails only on restore day. Testing the archive turns a silent
-corruption into a loud job failure.
+So the job now runs three checks, cheapest first, and publishes atomically:
+
+| Check | Catches |
+|---|---|
+| `gzip -t` | truncation mid-write |
+| size ≥ 512 bytes | the empty-stream case above |
+| `PostgreSQL database dump` header | a valid gzip that is not a dump at all |
+
+The dump is written to a `.partial` name and `mv`d to its final name only after
+all three pass. Since the restore only globs `*.sql.gz`, a run that dies halfway
+leaves nothing the restore can ever select.
+
+**It waits for Postgres.** The schedule is independent of the database's state:
+after a cluster restart, or while Postgres replays WAL, a dump fires against a
+server not yet accepting connections — which is precisely what produced those
+20-byte files.
 
 **It enforces retention.**
 
@@ -82,16 +105,28 @@ Tables: `0`. The app immediately reported:
 
 **3. Restore**
 
-A one-off Job mounting the same PVC, taking the newest archive:
+A one-off Job mounting the same PVC. It waits for Postgres, then validates the
+archive with the same three checks before touching the database — the last line
+of defence, since archives written before the backup job was hardened may still
+be on the volume.
 
-```sh
-LATEST=$(ls -1t /backups/vesselmind-*.sql.gz | head -1)
-gzip -t "$LATEST"
-gunzip -c "$LATEST" | psql -v ON_ERROR_STOP=1 -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE"
+If the newest archive fails validation the job **fails loudly** rather than
+falling back to an older one. Silently restoring yesterday's data instead of
+today's is data loss that looks like success:
+
+```
+candidate: /backups/vesselmind-20260819T113947Z.sql.gz
+REFUSING: ... is only 20 bytes — an empty or failed dump.
+Valid candidates, newest first:
+  /backups/vesselmind-20260820T042858Z.sql.gz (12829 bytes)
+  /backups/vesselmind-20260818T111241Z.sql.gz (6637 bytes)
 ```
 
-`ON_ERROR_STOP=1` matters: without it `psql` continues past failed statements and
-exits 0, producing a "successful" restore of a partially populated database.
+Verified: the job failed, and the database was untouched — 3 vessels before and
+after. An operator picks explicitly with `RESTORE_FILE=<path>`.
+
+`ON_ERROR_STOP=1` matters too: without it `psql` continues past failed statements
+and exits 0, producing a "successful" restore of a partially populated database.
 
 **4. Verify**
 

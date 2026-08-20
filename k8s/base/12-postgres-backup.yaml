@@ -85,24 +85,83 @@ spec:
                 - |
                   set -euo pipefail
                   STAMP=$(date +%Y%m%dT%H%M%SZ)
-                  OUT="/backups/vesselmind-${STAMP}.sql.gz"
+                  FINAL="/backups/vesselmind-${STAMP}.sql.gz"
+                  # Written under a .partial name and only renamed once verified.
+                  # The restore only ever globs *.sql.gz, so a run that dies
+                  # halfway leaves nothing it can select.
+                  TMP="/backups/.vesselmind-${STAMP}.sql.gz.partial"
+                  trap 'rm -f "$TMP"' EXIT
+
+                  # WAIT FOR POSTGRES. The CronJob's schedule is independent of
+                  # the database's state: after a cluster restart, or while
+                  # Postgres is replaying WAL, a dump fires against a server that
+                  # is not accepting connections yet. That produced the exact
+                  # 20-byte file described below.
+                  i=0
+                  until pg_isready -h "$PGHOST" -U "$PGUSER" -q; do
+                    i=$((i+1))
+                    [ "$i" -gt 60 ] && { echo "postgres not ready after 120s"; exit 1; }
+                    sleep 2
+                  done
 
                   # --clean --if-exists makes the dump self-contained: it drops
                   # existing objects before recreating them, so a restore does
                   # not require a manually emptied database first.
                   pg_dump --clean --if-exists --no-owner --no-privileges \
                     -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" \
-                    | gzip -9 > "$OUT"
+                    | gzip -9 > "$TMP"
 
-                  # Verify the dump is readable BEFORE declaring success. gzip -t
-                  # catches a truncated write, which is exactly what a disk-full
-                  # backup produces — and a truncated file is the failure mode
-                  # that looks fine until restore day.
-                  gzip -t "$OUT"
-                  echo "backup ok: $OUT ($(wc -c < "$OUT") bytes)"
+                  # VERIFY BEFORE PUBLISHING — and `gzip -t` alone is not enough.
+                  #
+                  # Measured: when pg_dump fails, the pipeline still writes a
+                  # VALID, EMPTY gzip stream of 20 bytes, and `gzip -t` PASSES on
+                  # it. Restoring that file succeeds and produces an empty
+                  # database — the worst possible outcome, because it looks like
+                  # recovery worked. `set -o pipefail` catches the dump's exit
+                  # code, but only when the failure is an exit code; a partial
+                  # dump that ends early is not.
+                  #
+                  # So three checks, cheapest first:
+                  #   1. gzip integrity  — catches truncation mid-write
+                  #   2. minimum size    — catches the empty-stream case
+                  #   3. content marker  — proves it is actually a pg_dump and
+                  #                        not some other valid gzip file
+                  gzip -t "$TMP"
+
+                  SIZE=$(wc -c < "$TMP")
+                  if [ "$SIZE" -lt 512 ]; then
+                    echo "REFUSING TO PUBLISH: dump is only ${SIZE} bytes — an empty or failed dump"
+                    exit 1
+                  fi
+
+                  # NOTE the `|| true` and the case statement rather than the
+                  # obvious `gunzip -c "$TMP" | head -20 | grep -q ...`. Under
+                  # `set -o pipefail`, `head` closing the pipe early makes gunzip
+                  # exit 141 (SIGPIPE), and pipefail reports that as failure even
+                  # when grep matched — so the obvious form rejects VALID backups,
+                  # and only sometimes, depending on whether gunzip finished
+                  # writing before head exited. Capturing first avoids the race.
+                  HEADER=$(gunzip -c "$TMP" 2>/dev/null | head -20 || true)
+                  case "$HEADER" in
+                    *"PostgreSQL database dump"*) ;;
+                    *)
+                      echo "REFUSING TO PUBLISH: no pg_dump header — not a database dump"
+                      exit 1
+                      ;;
+                  esac
+
+                  # Only now does it become a candidate for restore. mv within one
+                  # filesystem is atomic, so no reader can ever see a half-written
+                  # backup under its final name.
+                  mv "$TMP" "$FINAL"
+                  echo "backup ok: $FINAL (${SIZE} bytes, header verified)"
 
                   # Retention: keep 7 days. Unbounded backups fill the volume and
                   # then every FUTURE backup fails, which is a slow-motion outage.
+                  # Sweep abandoned partials from earlier failed runs as well as
+                  # aged-out backups. Without this a repeatedly-failing job
+                  # slowly fills the volume with .partial files.
+                  find /backups -name '.vesselmind-*.partial' -mmin +60 -delete
                   find /backups -name 'vesselmind-*.sql.gz' -mtime +7 -delete
                   echo "retained: $(ls -1 /backups/vesselmind-*.sql.gz | wc -l) file(s)"
               env:

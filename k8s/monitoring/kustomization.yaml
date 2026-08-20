@@ -1,0 +1,26 @@
+# Monitoring is its own Kustomization and its own Argo CD Application.
+#
+# WHY SEPARATE FROM THE APP. Before this, k8s/monitoring/ was applied by hand:
+# the Argo Application points at k8s/overlays/dev, so Prometheus, Grafana and the
+# Grafana admin SealedSecret were outside GitOps entirely. Nothing reconciled
+# them, nothing reported drift, and a fix committed to git only took effect if
+# somebody remembered to run `kubectl apply -f k8s/monitoring/`.
+#
+# Separate rather than folded into the app overlay for two reasons:
+#   - Different lifecycle. Monitoring should survive and keep working while the
+#     application is being changed or is broken — it is how you SEE that it is
+#     broken. Sharing an Application means one bad app sync can block it.
+#   - Different namespace, and the app overlay sets `namespace: vesselmind`,
+#     which would rewrite these objects into the wrong place.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - 00-prometheus.yaml
+  - 01-grafana.yaml
+  - 02-grafana-sealedsecret.yaml
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: vesselmind-monitoring

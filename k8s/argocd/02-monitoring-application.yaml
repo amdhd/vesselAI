@@ -1,0 +1,44 @@
+# Argo CD Application for the monitoring stack.
+#
+# Closes a real gap: k8s/monitoring/ was applied by hand, so the Grafana admin
+# password SealedSecret — added specifically to close a security finding — only
+# reached the cluster if someone remembered to apply it. A fix that depends on
+# being remembered is not a fix.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vesselmind-monitoring
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/amdhd/vesselAI.git
+    targetRevision: main
+    path: k8s/monitoring
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      # selfHeal off, matching the app Application: self-heal issues partial
+      # syncs, and consistency between the two Applications matters more than a
+      # marginal gain here.
+      selfHeal: false
+      # prune off, deliberately, and this differs from the app Application.
+      # Prometheus' PVC-less emptyDir and Grafana's provisioned dashboards are
+      # cheap to recreate, but pruning a monitoring stack because a file moved
+      # in git means losing observability at exactly the moment you are changing
+      # something. Removals here should be deliberate.
+      prune: false
+    retry:
+      limit: 3
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 3m
+    syncOptions:
+      # The namespace is defined in 00-prometheus.yaml with its own comments.
+      - CreateNamespace=false

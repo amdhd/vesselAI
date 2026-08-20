@@ -65,12 +65,67 @@ spec:
             - -c
             - |
               set -euo pipefail
-              LATEST=$(ls -1t /backups/vesselmind-*.sql.gz | head -1)
-              echo "restoring from: $LATEST"
-              gzip -t "$LATEST"
-              gunzip -c "$LATEST" | psql -v ON_ERROR_STOP=1 -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" >/dev/null
-              echo "restore completed"
+
+              # WAIT FOR POSTGRES. A restore is run during an incident, often
+              # right after the database has been restarted — so "is it accepting
+              # connections yet" is a real question, not a formality.
+              i=0
+              until pg_isready -h "$PGHOST" -U "$PGUSER" -q; do
+                i=$((i+1))
+                [ "$i" -gt 60 ] && { echo "postgres not ready after 120s"; exit 1; }
+                sleep 2
+              done
+
+              # RESTORE_FILE lets an operator name a specific archive. Without it,
+              # the newest is used — but only if it passes validation. It is NOT
+              # silently skipped in favour of an older one: quietly restoring
+              # yesterday's data instead of today's is data loss that looks like
+              # success. Fail loudly, list the candidates, let a human choose.
+              TARGET="${RESTORE_FILE:-$(ls -1t /backups/vesselmind-*.sql.gz 2>/dev/null | head -1)}"
+              [ -n "$TARGET" ] || { echo "no backups found in /backups"; exit 1; }
+              echo "candidate: $TARGET"
+
+              # VALIDATE BEFORE TOUCHING THE DATABASE — and gzip -t is not enough.
+              # A failed pg_dump leaves a VALID, EMPTY 20-byte gzip stream that
+              # gzip -t passes; restoring it succeeds and empties the database,
+              # which is worse than failing because it looks like recovery worked.
+              # (The backup job now refuses to publish such a file, but archives
+              # written before that change may still be on this volume, and this
+              # is the last line of defence.)
+              gzip -t "$TARGET" || { echo "REFUSING: $TARGET is not a valid gzip archive"; exit 1; }
+
+              SIZE=$(wc -c < "$TARGET")
+              if [ "$SIZE" -lt 512 ]; then
+                echo "REFUSING: $TARGET is only ${SIZE} bytes — an empty or failed dump."
+                echo "Valid candidates, newest first:"
+                for f in $(ls -1t /backups/vesselmind-*.sql.gz 2>/dev/null); do
+                  sz=$(wc -c < "$f")
+                  [ "$sz" -ge 512 ] && echo "  $f (${sz} bytes)"
+                done
+                echo "Re-run with RESTORE_FILE=<path> to choose one explicitly."
+                exit 1
+              fi
+
+              # `|| true` and a case statement, not `| head | grep -q`: under
+              # pipefail, head closing the pipe makes gunzip exit 141 and the
+              # pipeline report failure even on a match.
+              HEADER=$(gunzip -c "$TARGET" 2>/dev/null | head -20 || true)
+              case "$HEADER" in
+                *"PostgreSQL database dump"*) ;;
+                *) echo "REFUSING: $TARGET has no pg_dump header — not a database dump"; exit 1 ;;
+              esac
+
+              echo "validated ($SIZE bytes, header ok) — restoring"
+              # ON_ERROR_STOP=1 matters: without it psql continues past failed
+              # statements and exits 0, producing a "successful" restore of a
+              # partially populated database.
+              gunzip -c "$TARGET" | psql -v ON_ERROR_STOP=1 -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" >/dev/null
+              echo "restore completed from $TARGET"
           env:
+            # Optional override: kubectl set env job/postgres-restore RESTORE_FILE=/backups/...
+            # Empty means "newest, if it validates".
+            - name: RESTORE_FILE
+              value: ''
             - name: PGHOST
               value: postgres-0.postgres.vesselmind.svc.cluster.local
             - name: PGUSER
