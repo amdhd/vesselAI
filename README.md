@@ -537,11 +537,25 @@ recovery — in [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md).
   pods with the app answering 200 throughout, and an unsatisfiable budget made
   the same drain refuse with *"Cannot evict pod as it would violate the pod's
   disruption budget"*.
-- **ResourceQuota + LimitRange**, tested by breaching them on purpose.
+- **ResourceQuota + LimitRange**, tested by breaching them on purpose, and sized
+  per environment against measured peak demand — `k8s/scripts/check-quota-headroom.py`
+  renders an overlay, sums every workload at its maximum replica count (HPA
+  `maxReplicas` where one exists, including LimitRange defaults for containers
+  that declare no limits) and fails if peak exceeds the quota. It runs in CI.
+
+  This caught a real bug: the prod overlay inherited the laptop-sized base quota,
+  so its API HPA would have stopped scaling at 12 of its 20 replicas — reporting
+  `desired: 20` while the ReplicaSet emitted `FailedCreate: exceeded quota` and
+  pods silently never appeared. A quota below peak demand does not fail at apply
+  time; it fails later, and looks like the autoscaler working.
 
 ### GitOps
 
-Argo CD reconciles the cluster against `main` continuously, with `selfHeal` on:
+Argo CD reconciles the cluster against `main`. Drift is **detected** continuously
+and surfaced as `OutOfSync`; it is **not** auto-reverted, and that is a decision
+rather than an omission.
+
+`selfHeal` was on initially, and the drift demo worked exactly as advertised:
 
 ```
 $ kubectl scale deployment/web --replicas=5
@@ -549,10 +563,26 @@ $ kubectl scale deployment/web --replicas=5
   REVERTED to 2 replicas after ~5s
 ```
 
-That property — not easier deploys — is the argument for pull-based delivery:
-cluster state becomes knowable. Push vs pull, the adoption gotcha (the first sync
-is not a no-op), and what is still missing are in
-[docs/GITOPS.md](docs/GITOPS.md).
+It was then turned **off**, because selfHeal issues *partial* syncs that skip
+`PreSync` hooks — so a self-heal could reconcile the application without ever
+running the database migration that is supposed to gate it. Detecting drift and
+fixing it deliberately is worth more than fixing it automatically past a safety
+gate. The reasoning is in the comment on `automated.selfHeal` and the full story
+in [docs/GITOPS.md](docs/GITOPS.md).
+
+Two related decisions worth reading together:
+
+- `spec.replicas` is **absent** from the API Deployment, and the Application sets
+  `ignoreDifferences` on that path. The HPA owns the field; declaring it in git
+  too meant two controllers writing one value, which under selfHeal became a real
+  fight — the autoscaler scaling up and Argo reverting it.
+- `db-init` is a `PreSync` hook with `hook-delete-policy: BeforeHookCreation`.
+  Jobs are immutable, so re-applying a changed one fails the whole sync; deleting
+  the previous hook first makes that structurally impossible rather than merely
+  unlikely.
+
+Push vs pull, the adoption gotcha (the first sync is not a no-op), and what is
+still missing are in [docs/GITOPS.md](docs/GITOPS.md).
 
 ### Supply chain
 
