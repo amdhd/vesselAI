@@ -10,7 +10,9 @@ metadata:
   name: vesselmind-monitoring
   namespace: argocd
 spec:
-  project: default
+  # Not `default`, which permits any repo, any namespace, any resource kind.
+  # See 04-appproject.yaml.
+  project: vesselmind
 
   source:
     repoURL: https://github.com/amdhd/vesselAI.git

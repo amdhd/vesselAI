@@ -1,0 +1,32 @@
+# Scopes the controller's view of the local cluster to the namespaces it manages.
+#
+# CONTAINS NO CREDENTIALS. Argo represents every destination cluster as a Secret,
+# and for the local one it authenticates with its own ServiceAccount token — the
+# `config` field carries TLS settings, not a key. It is a Secret because that is
+# the type Argo looks for, not because anything here is sensitive.
+#
+# WHY IT IS REQUIRED FOR LEAST PRIVILEGE. By default the application-controller
+# builds CLUSTER-WIDE informers, so it needs cluster-wide list/watch on every
+# kind it manages — which is why the permissions had to live in a ClusterRole,
+# and why `kubectl auth can-i get secrets -n kube-system` answered yes even after
+# the resource types were narrowed. Setting `namespaces` makes those informers
+# namespace-scoped, which is what allows the namespaced grants to move into Roles
+# in `vesselmind` and `monitoring` (03-controller-rbac.yaml).
+#
+# clusterResources: "true" is still needed — both Applications create their own
+# Namespace, and the monitoring one ships Prometheus' ClusterRole and binding.
+# Without it Argo would refuse to manage any cluster-scoped object.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: in-cluster
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: cluster
+stringData:
+  name: in-cluster
+  server: https://kubernetes.default.svc
+  namespaces: vesselmind,monitoring
+  clusterResources: 'true'
+  config: |
+    {"tlsClientConfig":{"insecure":false}}

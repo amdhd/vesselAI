@@ -130,6 +130,59 @@ The initial admin password lives in the `argocd-initial-admin-secret` Secret,
 readable by anyone with `get secret` in that namespace. **Local-only**: a real
 deployment rotates it, deletes that Secret, and puts SSO in front.
 
+## Argo CD's own permissions
+
+The upstream install grants the application-controller `apiGroups: ['*']`,
+`resources: ['*']`, `verbs: ['*']` — cluster-admin. Reasonable for a tool whose
+job is "apply arbitrary manifests"; unreasonable here, where the manifests are
+known and small. On EKS it means a controller reconciling from a public git repo
+can do anything to the cluster.
+
+Narrowed in two steps, because the first alone was not enough:
+
+**Resource types.** The ClusterRole now lists only what the two Applications
+actually manage, derived from their live status rather than guessed:
+
+```bash
+kubectl get app <name> -n argocd -o json | jq '.status.resources[] | .group + "/" + .kind'
+```
+
+Plus two additions that list does not reveal: `pods`/`replicasets`, read for
+health assessment, and `jobs`, because `db-init` is a PreSync hook and so never
+appears in `.status.resources`.
+
+**Namespaces.** Narrowing resource types still left `kubectl auth can-i get
+secrets -n kube-system` answering **yes**, because a ClusterRole applies to every
+namespace — arguably the single most valuable thing an attacker could want, and
+not meaningfully better than the cluster-admin it replaced. Setting `namespaces`
+on the in-cluster Secret makes the controller's informers namespace-scoped, which
+allows the namespaced grants to move into Roles in `vesselmind` and `monitoring`.
+The ClusterRole keeps only genuinely cluster-scoped kinds: `namespaces`,
+`clusterroles`, `clusterrolebindings`.
+
+`escalate` and `bind` are deliberately absent, so the controller cannot grant
+permissions it does not itself hold.
+
+Result:
+
+```
+get secrets -n kube-system          no        get secrets -n vesselmind        yes
+delete pods -n kube-system          no        create deployments -n vesselmind yes
+get secrets -n default              no        create deployments -n monitoring yes
+delete nodes                        no        create clusterroles              yes
+```
+
+Both Applications sync successfully with zero `forbidden` errors.
+
+**`resource.inclusions` must stay in step with the ClusterRole.** The controller
+otherwise tries to watch every kind in the cluster and logs `forbidden` for each
+one it can no longer see — noise that buries real errors, and the usual reason
+people conclude least-privilege Argo "does not work".
+
+**Apply order matters:** `03-controller-rbac.yaml` must be applied *after* the
+upstream `install.yaml`, which ships the permissive ClusterRole under the same
+name. Re-running the upstream install silently restores cluster-admin.
+
 ## What is still missing
 
 - **The image tag is not updated automatically.** CI publishes
