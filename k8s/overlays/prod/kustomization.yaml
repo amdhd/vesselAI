@@ -155,6 +155,16 @@ images:
     newName: ghcr.io/amdhd/vesselai-warehouse-builder
     digest: sha256:d3dff307cc603dd76d194481fd5b891c1b75ff6ff9c6df1eb48fee49b58a30b8
 
+  # Postgres is pinned by digest too — the policy is "production pins by digest",
+  # and an exception for the database would be the wrong one to make. This is the
+  # multi-arch INDEX digest, so it resolves on arm64 and on EKS's amd64 alike;
+  # pinning a per-architecture digest would work on one and fail on the other.
+  #
+  # This fixes mutability, NOT the rate limit noted below — those are separate
+  # problems and a digest only solves the first.
+  - name: postgres
+    digest: sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+
 # KEEPING THESE CURRENT is manual today, and that is the honest remaining gap.
 # CI publishes ghcr.io/amdhd/vesselai-*:<commit-sha> on every merge, but nothing
 # writes the resulting digest back here — so a deploy means resolving digests and
