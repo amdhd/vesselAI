@@ -79,7 +79,7 @@ spec:
         # Idempotent: it only copies when the file is absent, so a CronJob-built
         # warehouse is never overwritten by the stale baked one on pod restart.
         - name: seed-warehouse
-          image: k3d-vesselmind-registry:5111/vesselmind/analytics:0.3.0
+          image: vesselmind/analytics:0.3.0
           imagePullPolicy: IfNotPresent
           command:
             - /bin/sh
@@ -107,7 +107,7 @@ spec:
               drop: ['ALL']
       containers:
         - name: analytics
-          image: k3d-vesselmind-registry:5111/vesselmind/analytics:0.3.0
+          image: vesselmind/analytics:0.3.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

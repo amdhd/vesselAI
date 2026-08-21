@@ -34,6 +34,27 @@ FROM deps AS build
 COPY . .
 RUN npm run build
 
+# ---- migrate: the image the Kubernetes db-init Job runs ----
+#
+# Identical to `build` except npm is removed. The Job invokes
+# node_modules/.bin/prisma and node_modules/.bin/ts-node directly — never npm,
+# never npx — so npm is dead weight in the shipped artifact, and node:alpine
+# ships npm with its own vendored dependency tree (tar, minimatch, sigstore,
+# glob, cross-spawn, brace-expansion, ip-address). A Trivy scan of this stage
+# failed on 18 HIGH/CRITICAL findings, every one of them inside npm's vendor
+# directory and none reachable by anything this Job runs.
+#
+# Same reasoning as the runtime stage below: an unused tool is better removed
+# than patched. The vulnerabilities leave with it, and a compromised migration
+# pod loses a convenient way to install more code.
+#
+# It is a SEPARATE stage rather than deleting npm inside `build`, because the
+# `prune` stage below is FROM build and needs `npm prune` to work — and
+# docker-compose.prod.yml targets `build` for its migrate/seed one-offs, which
+# call npx and genuinely need npm.
+FROM build AS migrate
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 # ---- prune (production node_modules only; generated client is preserved) ----
 FROM build AS prune
 RUN npm prune --omit=dev

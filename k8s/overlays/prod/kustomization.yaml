@@ -105,3 +105,70 @@ patches:
       - op: replace
         path: /spec/hard/pods
         value: '60'
+
+# ---------------------------------------------------------------------------
+# IMAGES — this is what makes the overlay deployable to EKS at all.
+#
+# The base carries logical names (vesselmind/api). Dev maps them onto the local
+# k3d registry; prod maps them onto GHCR, which any cluster can reach. A cluster
+# in AWS cannot resolve `k3d-vesselmind-registry:5111`, so hardcoding it in the
+# base — as this project did until now — meant the manifests only ever ran on the
+# laptop that built them.
+#
+# PINNED BY DIGEST, not tag. A tag is a pointer someone can move; a digest IS the
+# content. Two nodes pulling the same tag can get different bytes, which is
+# exactly the class of "works on one node" problem you cannot debug. Digests were
+# resolved from the registry at the commit named below, not copied from a build
+# log:
+#
+#   crane digest ghcr.io/amdhd/vesselai-api:<sha>
+#   # or, with no tooling installed:
+#   TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:amdhd/vesselai-api:pull" | jq -r .token)
+#   curl -sI -H "Authorization: Bearer $TOKEN" \
+#     -H 'Accept: application/vnd.oci.image.index.v1+json' \
+#     https://ghcr.io/v2/amdhd/vesselai-api/manifests/<sha> | grep -i docker-content-digest
+#
+# NO imagePullSecrets NEEDED. Verified by pulling anonymously, which is what an
+# EKS node does: all three packages return HTTP 200 without credentials. If a
+# package is ever made private, add a pull secret to the ServiceAccounts rather
+# than to each pod — a secret on the SA applies to every pod that uses it. On EKS
+# the more idiomatic path is ECR, where the node's IAM role grants the pull and
+# there is no secret to rotate at all.
+#
+# Digests below are from commit 3ade74a (main at the time of writing).
+images:
+  - name: vesselmind/api
+    newName: ghcr.io/amdhd/vesselai-api
+    digest: sha256:3bec2f71691b7b807be94028c0dd08a9ac9444ec284a51eae0b639f9f6e783b9
+  - name: vesselmind/web
+    newName: ghcr.io/amdhd/vesselai-web
+    digest: sha256:ad793e6d74cd63e7d738ee23d502c7d5129a38a0e8a56c0eb5a5fae8890c847b
+  - name: vesselmind/analytics
+    newName: ghcr.io/amdhd/vesselai-analytics
+    digest: sha256:1d14c6e44508b32da94b83695bf31ba9b1d73d2cd142d86d1ca7187a011499f0
+
+  # THESE TWO ARE PINNED BY TAG, NOT DIGEST, AND THAT IS A KNOWN COMPROMISE.
+  #
+  # CI did not publish the build-stage images until this change, so no digest
+  # exists to pin yet — the first run on main creates them. `main` is a MUTABLE
+  # tag and everything above argues against exactly that.
+  #
+  # REQUIRED BEFORE PROD IS DEPLOYED: resolve these two digests with the command
+  # above and replace `newTag` with `digest`. Until then this overlay is not
+  # production-ready, and saying so here is better than a footnote nobody reads.
+  #
+  # These are batch images (migrations, warehouse rebuild), not serving images,
+  # so a mutable tag is less dangerous here than it would be on the API — but
+  # "less dangerous" is not "correct".
+  - name: vesselmind/migrate
+    newName: ghcr.io/amdhd/vesselai-migrate
+    newTag: main
+  - name: vesselmind/warehouse-builder
+    newName: ghcr.io/amdhd/vesselai-warehouse-builder
+    newTag: main
+
+# postgres:16-alpine comes from Docker Hub unchanged. On EKS that is a real
+# consideration: Docker Hub rate-limits anonymous pulls per source IP, and every
+# node behind one NAT gateway shares that quota. A node group scaling up during
+# an incident is exactly when you would hit it. Mirror it into ECR, or use ECR
+# Public / a pull-through cache, before relying on this in anger.

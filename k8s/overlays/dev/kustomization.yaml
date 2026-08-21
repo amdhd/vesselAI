@@ -43,3 +43,24 @@ patches:
       - op: replace
         path: /spec/maxReplicas
         value: 8
+
+# Images: the base carries logical names; this maps them onto the local k3d
+# registry that the cluster is wired to via `--registry-use`. Keeping the mapping
+# here rather than in the base is what lets the same manifests target EKS, where
+# this registry does not exist.
+images:
+  - name: vesselmind/api
+    newName: k3d-vesselmind-registry:5111/vesselmind/api
+    newTag: 0.5.1
+  - name: vesselmind/web
+    newName: k3d-vesselmind-registry:5111/vesselmind/web
+    newTag: 0.2.0
+  - name: vesselmind/analytics
+    newName: k3d-vesselmind-registry:5111/vesselmind/analytics
+    newTag: 0.3.0
+  - name: vesselmind/migrate
+    newName: k3d-vesselmind-registry:5111/vesselmind/migrate
+    newTag: 0.3.0
+  - name: vesselmind/warehouse-builder
+    newName: k3d-vesselmind-registry:5111/vesselmind/warehouse-builder
+    newTag: 0.3.0
