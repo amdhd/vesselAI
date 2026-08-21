@@ -60,7 +60,7 @@ images:
     newTag: 0.3.0
   - name: vesselmind/migrate
     newName: k3d-vesselmind-registry:5111/vesselmind/migrate
-    newTag: 0.2.0
+    newTag: 0.3.0
   - name: vesselmind/warehouse-builder
     newName: k3d-vesselmind-registry:5111/vesselmind/warehouse-builder
     newTag: 0.3.0

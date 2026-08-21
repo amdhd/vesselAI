@@ -296,7 +296,9 @@ jobs:
           - name: Migrate
             context: ./backend
             dockerfile: ./backend/Dockerfile.prod
-            target: build
+            # `migrate`, not `build`: same contents minus npm, whose vendored
+            # dependency tree accounts for every HIGH/CRITICAL in that stage.
+            target: migrate
             image: vesselai-migrate
           - name: Warehouse builder
             context: ./data-platform
