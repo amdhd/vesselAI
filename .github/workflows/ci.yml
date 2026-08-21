@@ -413,3 +413,27 @@ jobs:
             python3 k8s/scripts/check-quota-headroom.py "$overlay" < "/tmp/$overlay.yaml"
             echo "::endgroup::"
           done
+
+      # Catches two things that only surface at deploy time and look like
+      # infrastructure faults rather than manifest faults: an image that does not
+      # exist anywhere (ImagePullBackOff, which reads as a networking or
+      # credentials problem), and a mutable tag in production, where two nodes
+      # pulling the same tag can get different bytes.
+      #
+      # --require-digest applies to prod only. Dev points at a local k3d registry
+      # that CI cannot reach; those references are reported as SKIP rather than
+      # passed silently, because "could not verify" and "verified good" must not
+      # look the same.
+      #
+      # Registry rate limits (HTTP 429) are treated as SKIP, not failure — a
+      # check that goes red on throttling teaches people to re-run until green,
+      # which is worse than not checking.
+      - name: Verify image references resolve
+        run: |
+          set -euo pipefail
+          echo "::group::prod"
+          python3 k8s/scripts/check-image-refs.py prod --require-digest < /tmp/prod.yaml
+          echo "::endgroup::"
+          echo "::group::dev"
+          python3 k8s/scripts/check-image-refs.py dev < /tmp/dev.yaml
+          echo "::endgroup::"
