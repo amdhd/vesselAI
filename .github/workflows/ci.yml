@@ -287,6 +287,23 @@ jobs:
             dockerfile: ./data-platform/Dockerfile.prod
             image: vesselai-analytics
             trivyignore: ./data-platform/.trivyignore
+          # The two BUILD-STAGE images. These were never published, so the
+          # migration Job and the warehouse CronJob referenced images that
+          # existed only in a local k3d registry — meaning those two workloads
+          # would ImagePullBackOff on any real cluster. They carry tooling the
+          # runtime images deliberately prune (ts-node, the dbt toolchain), which
+          # is why they cannot simply reuse the runtime image.
+          - name: Migrate
+            context: ./backend
+            dockerfile: ./backend/Dockerfile.prod
+            target: build
+            image: vesselai-migrate
+          - name: Warehouse builder
+            context: ./data-platform
+            dockerfile: ./data-platform/Dockerfile.prod
+            target: build
+            image: vesselai-warehouse-builder
+            trivyignore: ./data-platform/.trivyignore
     steps:
       - uses: actions/checkout@v4
 
@@ -300,6 +317,9 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
+          # Empty for the runtime images (build the final stage); `build` for the
+          # two images that intentionally stop at an earlier stage.
+          target: ${{ matrix.target || '' }}
           load: true
           tags: ${{ matrix.image }}:${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.image }}
@@ -350,6 +370,7 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target || '' }}
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ github.sha }}
