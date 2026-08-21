@@ -135,37 +135,36 @@ patches:
 # the more idiomatic path is ECR, where the node's IAM role grants the pull and
 # there is no secret to rotate at all.
 #
-# Digests below are from commit 3ade74a (main at the time of writing).
+# All five digests are from commit a2853e3 — one build, one commit, so the whole
+# stack deploys as a consistent set rather than a mix of whatever each image
+# happened to be pinned to last.
 images:
   - name: vesselmind/api
     newName: ghcr.io/amdhd/vesselai-api
-    digest: sha256:3bec2f71691b7b807be94028c0dd08a9ac9444ec284a51eae0b639f9f6e783b9
+    digest: sha256:72a8fd856dad2c465e807f0c58181c33a9de61119d292f2b497adecd996212c4
   - name: vesselmind/web
     newName: ghcr.io/amdhd/vesselai-web
-    digest: sha256:ad793e6d74cd63e7d738ee23d502c7d5129a38a0e8a56c0eb5a5fae8890c847b
+    digest: sha256:b689a3f9846445cde812ddd5cd7b724296334cc346f6edcb657f81ecd4ebe00a
   - name: vesselmind/analytics
     newName: ghcr.io/amdhd/vesselai-analytics
-    digest: sha256:1d14c6e44508b32da94b83695bf31ba9b1d73d2cd142d86d1ca7187a011499f0
-
-  # THESE TWO ARE PINNED BY TAG, NOT DIGEST, AND THAT IS A KNOWN COMPROMISE.
-  #
-  # CI did not publish the build-stage images until this change, so no digest
-  # exists to pin yet — the first run on main creates them. `main` is a MUTABLE
-  # tag and everything above argues against exactly that.
-  #
-  # REQUIRED BEFORE PROD IS DEPLOYED: resolve these two digests with the command
-  # above and replace `newTag` with `digest`. Until then this overlay is not
-  # production-ready, and saying so here is better than a footnote nobody reads.
-  #
-  # These are batch images (migrations, warehouse rebuild), not serving images,
-  # so a mutable tag is less dangerous here than it would be on the API — but
-  # "less dangerous" is not "correct".
+    digest: sha256:ec8d7275dc3ac0c4b63eb3698f39ccfe3bb70a726729eddea40d4ea43ea58ce8
   - name: vesselmind/migrate
     newName: ghcr.io/amdhd/vesselai-migrate
-    newTag: main
+    digest: sha256:fc2c8e43e200bf16b95c31075661d590123d6d686866d5d2893bc436af6c600f
   - name: vesselmind/warehouse-builder
     newName: ghcr.io/amdhd/vesselai-warehouse-builder
-    newTag: main
+    digest: sha256:d3dff307cc603dd76d194481fd5b891c1b75ff6ff9c6df1eb48fee49b58a30b8
+
+# KEEPING THESE CURRENT is manual today, and that is the honest remaining gap.
+# CI publishes ghcr.io/amdhd/vesselai-*:<commit-sha> on every merge, but nothing
+# writes the resulting digest back here — so a deploy means resolving digests and
+# editing this file. The two ways to close it:
+#   - Argo CD Image Updater, which watches the registry and commits the new
+#     reference itself; or
+#   - a CI step that resolves the digest after publishing and commits it, which
+#     is more auditable because the change arrives as a reviewable diff.
+# Until one exists, treat this block as the promotion record: changing it IS the
+# deploy.
 
 # postgres:16-alpine comes from Docker Hub unchanged. On EKS that is a real
 # consideration: Docker Hub rate-limits anonymous pulls per source IP, and every
