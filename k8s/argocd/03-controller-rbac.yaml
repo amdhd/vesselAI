@@ -1,0 +1,171 @@
+# Least-privilege ClusterRole for the Argo CD application-controller.
+#
+# WHAT IT REPLACES. The upstream install grants the controller:
+#     apiGroups: ['*']  resources: ['*']  verbs: ['*']
+# i.e. cluster-admin. That is a reasonable default for a tool whose job is
+# "apply arbitrary manifests", and an unreasonable one here, where the set of
+# manifests is known and small. On a laptop it is a footnote; on EKS it means a
+# controller that reconciles from a public git repo can do anything to the
+# cluster, and the blast radius of a compromised repo or a bad merge is total.
+#
+# HOW THE LIST WAS DERIVED — from what the two Applications actually manage,
+# read out of their live status, not guessed:
+#     kubectl get app <name> -n argocd -o json | jq '.status.resources[] | .group + "/" + .kind'
+#
+# Two additions beyond that list, both required and neither obvious:
+#   - pods, replicasets: the controller does not manage these directly but reads
+#     them to assess Deployment/StatefulSet health. Without them every workload
+#     reports Unknown.
+#   - jobs: db-init is a PreSync HOOK, so it never appears in .status.resources,
+#     but the controller creates and deletes it on every sync.
+#
+# PAIRED WITH resource.inclusions IN argocd-cm. RBAC alone would leave the
+# controller trying to watch every resource type in the cluster and logging
+# `forbidden` for each one it can no longer see — noise that hides real errors.
+# The inclusions list tells Argo to only watch what this role permits, so the two
+# stay consistent. Changing one without the other is how this breaks.
+#
+# APPLY ORDER MATTERS: this must be applied AFTER the upstream install.yaml,
+# which ships the permissive version under the same name. Re-running the upstream
+# install silently restores cluster-admin — noted in docs/GITOPS.md.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argocd-application-controller
+rules:
+  # ONLY genuinely cluster-scoped kinds remain here. Everything namespaced moved
+  # to Roles in the two namespaces Argo manages (below), because a ClusterRole
+  # cannot be limited to a namespace — it applies everywhere.
+  #
+  # That distinction is the whole point of this change. With the namespaced rules
+  # in a ClusterRole, `kubectl auth can-i get secrets -n kube-system` answered
+  # YES, which is the single most valuable thing an attacker could want and was
+  # not meaningfully better than the cluster-admin it replaced.
+  - apiGroups: ['']
+    resources: ['namespaces']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  # The monitoring Application ships Prometheus' ClusterRole and binding, so this
+  # is genuinely required. `escalate` and `bind` are deliberately absent: without
+  # them the controller cannot grant permissions it does not itself hold, which
+  # bounds what a malicious manifest could award itself.
+  - apiGroups: ['rbac.authorization.k8s.io']
+    resources: ['clusterroles', 'clusterrolebindings']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+---
+# Namespaced permissions, granted only where Argo actually deploys. Paired with
+# the `namespaces: vesselmind,monitoring` field on the in-cluster Secret, which
+# makes the controller's informers namespace-scoped so it never needs a
+# cluster-wide LIST of these kinds.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-application-controller
+  namespace: vesselmind
+rules:
+  - apiGroups: ['']
+    resources:
+      - configmaps
+      - secrets
+      - services
+      - serviceaccounts
+      - persistentvolumeclaims
+      - resourcequotas
+      - limitranges
+      - pods
+      - events
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['']
+    resources: ['pods/log']
+    verbs: ['get', 'list']
+  - apiGroups: ['apps']
+    resources: ['deployments', 'statefulsets', 'replicasets']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['batch']
+    resources: ['jobs', 'cronjobs']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['networking.k8s.io']
+    resources: ['ingresses', 'networkpolicies']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['autoscaling']
+    resources: ['horizontalpodautoscalers']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['policy']
+    resources: ['poddisruptionbudgets']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['rbac.authorization.k8s.io']
+    resources: ['roles', 'rolebindings']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['bitnami.com']
+    resources: ['sealedsecrets']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-application-controller
+  namespace: vesselmind
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argocd-application-controller
+subjects:
+  - kind: ServiceAccount
+    name: argocd-application-controller
+    namespace: argocd
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-application-controller
+  namespace: monitoring
+rules:
+  - apiGroups: ['']
+    resources:
+      - configmaps
+      - secrets
+      - services
+      - serviceaccounts
+      - persistentvolumeclaims
+      - resourcequotas
+      - limitranges
+      - pods
+      - events
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['']
+    resources: ['pods/log']
+    verbs: ['get', 'list']
+  - apiGroups: ['apps']
+    resources: ['deployments', 'statefulsets', 'replicasets']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['batch']
+    resources: ['jobs', 'cronjobs']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['networking.k8s.io']
+    resources: ['ingresses', 'networkpolicies']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['autoscaling']
+    resources: ['horizontalpodautoscalers']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['policy']
+    resources: ['poddisruptionbudgets']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['rbac.authorization.k8s.io']
+    resources: ['roles', 'rolebindings']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['bitnami.com']
+    resources: ['sealedsecrets']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-application-controller
+  namespace: monitoring
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argocd-application-controller
+subjects:
+  - kind: ServiceAccount
+    name: argocd-application-controller
+    namespace: argocd

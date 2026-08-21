@@ -1,0 +1,60 @@
+# AppProject: Argo's OWN authorization layer, independent of Kubernetes RBAC.
+#
+# WHY BOTH. RBAC bounds what the controller's ServiceAccount can do to the
+# cluster. An AppProject bounds what an Application is allowed to ASK for — which
+# repo it may deploy from, which namespaces it may target, and which kinds it may
+# create. They fail differently and that is the point: RBAC failures surface as
+# `forbidden` from the API server after Argo has already decided to act, while
+# project violations are refused by Argo before anything is submitted, with a
+# message naming the Application.
+#
+# The concrete threat this closes: an Application manifest is a file in a git
+# repo. Anyone who can merge can point one at a different repo, or at
+# kube-system. Without a project, Argo would happily do it.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: vesselmind
+  namespace: argocd
+spec:
+  description: VesselMind application and its monitoring stack
+
+  # Only this repository. `'*'` — the default project's value — means any
+  # Application in this project could deploy from anywhere on the internet.
+  sourceRepos:
+    - https://github.com/amdhd/vesselAI.git
+
+  # Only these two namespaces. Note kube-system and argocd are absent: an
+  # Application in this project cannot modify the cluster's control plane or
+  # Argo itself, which is the loop that makes a compromised repo unrecoverable.
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: vesselmind
+    - server: https://kubernetes.default.svc
+      namespace: monitoring
+
+  # Cluster-scoped resources are the dangerous ones, so they are allow-listed
+  # explicitly rather than left open. Namespace is needed because both
+  # Applications create their own; ClusterRole/Binding because the monitoring
+  # stack ships Prometheus' RBAC.
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+
+  # NAMESPACED RESOURCES ARE LEFT UNRESTRICTED, deliberately.
+  #
+  # The first draft of this file blacklisted ResourceQuota and LimitRange, on the
+  # reasoning that those govern a namespace's limits and a workload should not
+  # rewrite its own. Checking before applying showed the vesselmind Application
+  # legitimately MANAGES both — they are how the quota gets into the cluster at
+  # all — so the blacklist would have broken the next sync. Left as a comment
+  # because the instinct was right and the target was wrong.
+  #
+  # The namespaced blast radius is already bounded by `destinations` above: an
+  # Application in this project can only touch `vesselmind` and `monitoring`.
+  # Within a namespace it is meant to manage, letting it manage everything is the
+  # correct answer.

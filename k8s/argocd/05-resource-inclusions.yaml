@@ -1,0 +1,55 @@
+# Tell Argo which resource types to watch — the mirror image of the narrowed
+# ClusterRole in 03-controller-rbac.yaml.
+#
+# WHY IT IS REQUIRED, not optional. By default the application-controller builds
+# an informer over EVERY resource type the API server exposes, so it can assess
+# health and detect orphans. With RBAC narrowed, each type it can no longer list
+# produces a `forbidden` error, repeatedly, forever — which both wastes cycles
+# and buries genuine errors in noise. Narrowing RBAC without this is how people
+# conclude that least-privilege Argo "does not work".
+#
+# The two lists must stay in step: a kind added here but not to the ClusterRole
+# produces forbidden errors; added there but not here is simply never watched.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  resource.inclusions: |
+    - apiGroups: [""]
+      kinds:
+        - Namespace
+        - ConfigMap
+        - Secret
+        - Service
+        - ServiceAccount
+        - PersistentVolumeClaim
+        - ResourceQuota
+        - LimitRange
+        - Pod
+      clusters: ["*"]
+    - apiGroups: ["apps"]
+      kinds: ["Deployment", "StatefulSet", "ReplicaSet"]
+      clusters: ["*"]
+    - apiGroups: ["batch"]
+      kinds: ["Job", "CronJob"]
+      clusters: ["*"]
+    - apiGroups: ["networking.k8s.io"]
+      kinds: ["Ingress", "NetworkPolicy"]
+      clusters: ["*"]
+    - apiGroups: ["autoscaling"]
+      kinds: ["HorizontalPodAutoscaler"]
+      clusters: ["*"]
+    - apiGroups: ["policy"]
+      kinds: ["PodDisruptionBudget"]
+      clusters: ["*"]
+    - apiGroups: ["rbac.authorization.k8s.io"]
+      kinds: ["Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding"]
+      clusters: ["*"]
+    - apiGroups: ["bitnami.com"]
+      kinds: ["SealedSecret"]
+      clusters: ["*"]
