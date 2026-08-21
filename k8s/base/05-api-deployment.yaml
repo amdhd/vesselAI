@@ -142,9 +142,16 @@ spec:
           # readiness endpoint would run `SELECT 1` and fail closed. Worth
           # watching in Phase 2 break #6 — the pod will stay green while the
           # database is gone.
+          # READINESS TESTS THE DEPENDENCY, liveness does not. /api/ready runs
+          # SELECT 1 against Postgres; /api/health only proves the process is
+          # answering. Pointing readiness at /api/health — as this did until now
+          # — means a pod whose database is unreachable reports Ready, takes
+          # traffic and 500s it. Worse, during a rolling update it lets
+          # Kubernetes retire healthy old pods in favour of new ones that cannot
+          # reach the database at all.
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: /api/ready
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10

@@ -10,6 +10,7 @@ import pinoHttp from 'pino-http';
 import type { Server as SocketIOServer } from 'socket.io';
 import { env } from './config/env';
 import { logger } from './lib/logger';
+import { prisma } from './lib/prisma';
 import { metricsMiddleware, registry } from './lib/metrics';
 import { apiLimiter, authLimiter } from './middleware/rateLimiter';
 import { errorHandler, notFound } from './middleware/errorHandler';
@@ -80,6 +81,58 @@ export function createApp(io?: SocketIOServer): Application {
     res.end(await registry.metrics());
   });
 
+  // PROBE ENDPOINTS ARE REGISTERED ABOVE THE RATE LIMITER, deliberately.
+  //
+  // They used to sit below it. Probes arrive from the kubelet's node IP, not a
+  // user's, and at readiness every 10s plus liveness every 20s that is 9
+  // requests a minute per pod — roughly 135 in a 15-minute window against a
+  // limit of 200. Two thirds of that IP's budget spent on health checks, and a
+  // 429 returned to a probe reads as "unhealthy", which restarts a container
+  // that was fine. Excluding probes from the limiter is the fix; giving the
+  // limiter a bigger number would only move the problem.
+
+  /**
+   * LIVENESS: is this process wedged?
+   *
+   * Deliberately does NOT touch the database. A liveness probe that fails on a
+   * database outage restarts every pod in a loop while the database is down —
+   * turning a dependency outage into an application outage as well, and
+   * discarding warm connection pools exactly when reconnecting is expensive.
+   */
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  /**
+   * READINESS: can this pod actually serve a request?
+   *
+   * It CAN touch the database, and must. Prisma connects lazily, so a pod whose
+   * database is unreachable still answers /api/health with 200 — it reports
+   * Ready, receives traffic and 500s it.
+   *
+   * The failure that makes this more than cosmetic is a rolling update: if new
+   * pods cannot reach Postgres (a bad secret, a NetworkPolicy, a wrong host),
+   * a liveness-style check passes, Kubernetes marks them Ready and retires the
+   * healthy old pods. A readiness probe that tests the dependency stops the
+   * rollout instead, leaving the working pods in place.
+   *
+   * `SELECT 1` rather than a real query: it proves the connection pool can
+   * reach the server and get an answer, without depending on any table existing
+   * or on data that might legitimately be empty.
+   */
+  app.get('/api/ready', async (_req, res) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      res.json({ status: 'ready' });
+    } catch (err) {
+      // 503, not 500: this is "not ready yet", which is what readiness means.
+      // The reason is logged rather than returned — a probe endpoint should not
+      // disclose connection strings or driver internals to whoever can reach it.
+      logger.warn({ err }, 'readiness check failed');
+      res.status(503).json({ status: 'not ready' });
+    }
+  });
+
   app.use(apiLimiter);
   app.use(compression({
     // Skip SSE streams — compression buffers responses and breaks streaming
@@ -119,10 +172,6 @@ export function createApp(io?: SocketIOServer): Application {
   app.use('/api/weather', weatherRoutes);
   app.use('/api/ais', aisRoutes);
   app.use('/api/imports', importRoutes);
-
-  app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
-  });
 
   // Unmatched API routes → structured 404 (must come after all routes)
   app.use('/api', notFound);

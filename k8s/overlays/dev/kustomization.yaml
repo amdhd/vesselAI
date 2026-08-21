@@ -51,7 +51,7 @@ patches:
 images:
   - name: vesselmind/api
     newName: k3d-vesselmind-registry:5111/vesselmind/api
-    newTag: 0.5.1
+    newTag: 0.6.0
   - name: vesselmind/web
     newName: k3d-vesselmind-registry:5111/vesselmind/web
     newTag: 0.2.0
