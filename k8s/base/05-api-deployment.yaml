@@ -76,7 +76,7 @@ spec:
           # An explicit version tag, never :latest. :latest makes rollouts
           # non-deterministic (you cannot tell which build is running) and is
           # precisely what Phase 2 break #1 exploits.
-          image: k3d-vesselmind-registry:5111/vesselmind/api:0.5.1
+          image: vesselmind/api:0.5.1
 
           # PULLED FROM A REGISTRY, not side-loaded. Phase 4 replaced
           # `k3d image import` — which has no equivalent outside a laptop — with

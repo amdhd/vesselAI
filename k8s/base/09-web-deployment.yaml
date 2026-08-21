@@ -30,7 +30,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: web
-          image: k3d-vesselmind-registry:5111/vesselmind/web:0.2.0
+          image: vesselmind/web:0.2.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
