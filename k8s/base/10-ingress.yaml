@@ -34,6 +34,28 @@ spec:
   # unclaimed Ingress silently does nothing, and "silently does nothing" is the
   # worst failure mode to debug.
   ingressClassName: traefik
+  # TLS.
+  #
+  # LOCALLY there is no domain and no CA, so no `secretName` is given: Traefik
+  # serves its built-in self-signed certificate. That is not trust — a browser
+  # will warn — but it is real encryption, and more importantly it exercises the
+  # wiring, so TLS is not something first attempted on the day it matters.
+  #
+  # ON EKS this changes shape rather than being added. With the AWS Load Balancer
+  # Controller the ALB terminates TLS using an ACM certificate, declared through
+  # annotations on this object:
+  #     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:...
+  #     alb.ingress.kubernetes.io/ssl-redirect: '443'
+  # With an nginx or Traefik ingress instead, cert-manager issues a real
+  # certificate from Let's Encrypt into `secretName` below. Either way the
+  # decision is which issuer, not whether.
+  #
+  # WHY IT MATTERS MORE THAN IT LOOKS HERE: this Ingress currently answers on
+  # localhost. On EKS the same object becomes a public load balancer with a DNS
+  # name, and everything crossing it — login credentials, JWTs, the Argo CD
+  # session cookie — is in cleartext until this is real.
+  tls:
+    - {}
   rules:
     - http:
         paths:

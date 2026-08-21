@@ -166,3 +166,26 @@ describe('unmatched API route', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('probe endpoints', () => {
+  it('liveness answers without touching the database', async () => {
+    const res = await request(app).get('/api/health');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
+  });
+
+  it('readiness reports 503 when the database is unreachable', async () => {
+    // The suite runs without DATABASE_URL, so Prisma cannot connect. That is
+    // precisely the condition readiness must catch and liveness must ignore:
+    // before this endpoint existed, the probe hit /api/health, got 200, and the
+    // pod was marked Ready while every database-backed route failed.
+    const res = await request(app).get('/api/ready');
+    expect(res.status).toBe(503);
+    expect(res.body.status).toBe('not ready');
+  });
+
+  it('readiness does not leak connection details in its body', async () => {
+    const res = await request(app).get('/api/ready');
+    expect(JSON.stringify(res.body)).not.toMatch(/postgres|password|prisma/i);
+  });
+});

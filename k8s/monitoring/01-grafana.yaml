@@ -166,14 +166,21 @@ spec:
                 secretKeyRef:
                   name: grafana-secrets
                   key: admin-password
-            # LOCAL-ONLY: anonymous read access so the dashboard opens without a
-            # login. Convenient on a laptop, unacceptable anywhere else — metrics
-            # disclose route names, traffic shape and error rates. Production
-            # puts SSO in front of this.
+            # ANONYMOUS ACCESS IS OFF.
+            #
+            # It was on, described as a local-only convenience because the
+            # Ingress only listened on localhost. That reasoning stops holding
+            # the moment this runs on EKS, where the same Ingress becomes a
+            # public load balancer with a real DNS name — and metrics disclose
+            # route names, traffic shape and error rates, which is a map of the
+            # application for anyone who asks.
+            #
+            # A setting whose safety depends on where it happens to be deployed
+            # is a setting that will eventually be deployed somewhere else. The
+            # admin password already comes from a SealedSecret, so requiring a
+            # login costs nothing.
             - name: GF_AUTH_ANONYMOUS_ENABLED
-              value: 'true'
-            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
-              value: Viewer
+              value: 'false'
             - name: GF_USERS_ALLOW_SIGN_UP
               value: 'false'
             - name: GF_ANALYTICS_REPORTING_ENABLED
@@ -234,6 +241,28 @@ metadata:
   namespace: monitoring
 spec:
   ingressClassName: traefik
+  # TLS.
+  #
+  # LOCALLY there is no domain and no CA, so no `secretName` is given: Traefik
+  # serves its built-in self-signed certificate. That is not trust — a browser
+  # will warn — but it is real encryption, and more importantly it exercises the
+  # wiring, so TLS is not something first attempted on the day it matters.
+  #
+  # ON EKS this changes shape rather than being added. With the AWS Load Balancer
+  # Controller the ALB terminates TLS using an ACM certificate, declared through
+  # annotations on this object:
+  #     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:...
+  #     alb.ingress.kubernetes.io/ssl-redirect: '443'
+  # With an nginx or Traefik ingress instead, cert-manager issues a real
+  # certificate from Let's Encrypt into `secretName` below. Either way the
+  # decision is which issuer, not whether.
+  #
+  # WHY IT MATTERS MORE THAN IT LOOKS HERE: this Ingress currently answers on
+  # localhost. On EKS the same object becomes a public load balancer with a DNS
+  # name, and everything crossing it — login credentials, JWTs, the Argo CD
+  # session cookie — is in cleartext until this is real.
+  tls:
+    - {}
   rules:
     - http:
         paths:
