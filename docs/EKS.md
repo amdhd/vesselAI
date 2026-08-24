@@ -198,15 +198,61 @@ putting SSO in front of it, which is what would make publishing it defensible.
 
 ```bash
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.13.2/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.1/manifests/install.yaml
 kubectl -n argocd rollout status deploy/argocd-server
+```
+
+**`--server-side` is required, not a preference.** A plain `kubectl apply` fails:
+
+```
+The CustomResourceDefinition "applicationsets.argoproj.io" is invalid:
+metadata.annotations: Too long: may not be more than 262144 bytes
+```
+
+Client-side apply stores the whole manifest in a
+`last-applied-configuration` annotation, and that CRD exceeds the limit.
+Server-side apply does not write that annotation. The failure is partial —
+Argo CD's Deployments install fine and only the ApplicationSet CRD is missing,
+so it looks like a working install until something needs that CRD.
+
+**Match the version to the k3d cluster** (`docs/GITOPS.md`). The RBAC in
+`03-controller-rbac.yaml` was written against v3.5.1; running a different minor
+against it is asking for permission errors that look like RBAC bugs.
+
+Then the namespaces, **before** the RBAC:
+
+```bash
+kubectl apply -f k8s/base/00-namespace.yaml
+kubectl kustomize k8s/overlays/prod-monitoring | grep -A20 'kind: Namespace' | kubectl apply -f -
+```
+
+`03-controller-rbac.yaml` puts namespaced Roles in `vesselmind` and
+`monitoring`, and those namespaces are normally created by Argo *syncing* —
+which needs the RBAC. Creating them from their own manifests first breaks the
+cycle and keeps the `restricted` Pod Security labels, which a bare
+`kubectl create namespace` would not.
+
+```bash
 kubectl apply -f k8s/argocd/03-controller-rbac.yaml
 kubectl apply -f k8s/argocd/04-appproject.yaml
 kubectl apply -f k8s/argocd/05-resource-inclusions.yaml
+kubectl apply -f k8s/argocd/06-in-cluster.yaml
+kubectl -n argocd rollout restart statefulset/argocd-application-controller
 ```
 
-Apply the least-privilege RBAC from Phase 8 (`#73`) rather than leaving Argo on
+That applies Phase 8's least-privilege RBAC (`#73`) instead of leaving Argo on
 the bundled `cluster-admin`.
+
+**`06-in-cluster.yaml` is not optional.** It scopes the controller's informers
+to `vesselmind,monitoring`; without it the controller builds cluster-wide
+informers and the namespaced Roles are not sufficient. The restart is what makes
+the new scope take effect.
+
+**`00-server-config.yaml` is deliberately skipped on EKS.** It sets
+`server.rootpath: /argocd` and `server.insecure: 'true'` for k3d's path-based
+Traefik ingress. Reached by port-forward at the root path with Argo's own TLS,
+none of that applies.
 
 ### 6. Deploy
 
