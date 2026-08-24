@@ -99,12 +99,52 @@ that presents as Pending pods with CPU and memory visibly free.
 
 ### 3. Cluster controllers, by hand
 
+First tell the load balancer controller which VPC it is in. **This changes on
+every rebuild** — the VPC is generated, unlike the role ARNs whose names are
+deterministic:
+
+```bash
+terraform -chdir=terraform output -raw vpc_id
+```
+
+Update `--aws-vpc-id=` in
+`k8s/aws/load-balancer-controller/kustomization.yaml` to match, then:
+
 ```bash
 kubectl apply -k k8s/aws/sealed-secrets
-kubectl apply -k k8s/aws/load-balancer-controller
 kubectl apply -k k8s/aws/cluster-autoscaler
+kubectl apply -k k8s/aws/load-balancer-controller   # will partially fail
+kubectl apply -k k8s/aws/load-balancer-controller   # run it twice
 kubectl -n kube-system rollout status deploy/aws-load-balancer-controller
 ```
+
+**The load balancer controller apply must be run twice**, and the first failure
+is expected:
+
+```
+error: resource mapping not found for kind "IngressClassParams" ... ensure CRDs are installed first
+```
+
+The bundle defines that CRD *and* an instance of it in one file, and kubectl
+cannot use a CRD it is creating in the same pass. The second apply succeeds.
+Argo CD handles this on its own with retries, which is why it only bites during
+manual bootstrap.
+
+**Why `--aws-vpc-id` is needed at all**, since it looks like something the
+controller should discover: by default it asks the EC2 instance metadata
+service. The node group sets `HttpPutResponseHopLimit = 1`, which stops **pods**
+reaching IMDS — deliberately, because that is what prevents an SSRF in any pod
+from stealing the node's IAM credentials. It is the recommended posture for a
+cluster using IRSA, and it breaks the controller's default:
+
+```
+unable to initialize AWS cloud: failed to get VPC ID: ec2imds: GetMetadata, context deadline exceeded
+```
+
+The controller then never starts, so no Ingress is reconciled and no ALB
+appears — while the Ingress object shows nothing wrong. Nothing is
+misconfigured here; correct hardening broke a default, which is its own
+category of failure and worth recognising as such.
 
 **Why by hand and not via Argo CD.** The load balancer controller is what turns
 Ingress objects into an ALB — including the Ingress that Argo CD's own UI is

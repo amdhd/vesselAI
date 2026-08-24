@@ -46,3 +46,31 @@ patches:
       - op: replace
         path: /spec/template/spec/containers/0/args/0
         value: --cluster-name=vesselmind
+
+      # *** REQUIRED BECAUSE IMDS IS CORRECTLY LOCKED DOWN ***
+      #
+      # By default the controller discovers its VPC and region by calling the
+      # EC2 instance metadata service. The node group sets
+      # HttpPutResponseHopLimit = 1, which stops PODS reaching IMDS at all —
+      # deliberately, because that hop limit is what prevents an SSRF in any pod
+      # from stealing the node's IAM credentials. It is the recommended posture
+      # for a cluster using IRSA, and it breaks the controller's default:
+      #
+      #   unable to initialize AWS cloud: failed to get VPC ID:
+      #   ec2imds: GetMetadata, canceled, context deadline exceeded
+      #
+      # The controller then never starts, so no Ingress is ever reconciled and
+      # no ALB is created — while the Ingress object shows nothing wrong. Good
+      # security breaking a default config is worth recognising as its own
+      # category of failure: nothing here is misconfigured.
+      #
+      # THE VPC ID CHANGES ON EVERY REBUILD. Unlike the role ARNs above (whose
+      # names are deterministic), this is generated. After `terraform apply`:
+      #   terraform -chdir=terraform output -raw vpc_id
+      # and update the line below. docs/EKS.md carries this as a numbered step.
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --aws-vpc-id=vpc-0cb2000d6b1283ed4
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --aws-region=us-east-1
