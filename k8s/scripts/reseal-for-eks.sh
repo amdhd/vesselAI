@@ -142,10 +142,28 @@ kubectl create secret generic "$SECRET_NAME" \
 
 echo "==> wrote $OUT"
 echo
+# The overlay references this path permanently, so regenerating is enough — no
+# wiring step. Verify rather than assume, because a patch that is written but
+# not referenced renders a perfectly valid overlay carrying the WRONG cluster's
+# ciphertext, and the first sign of that is pods failing to start.
+if ! grep -q "sealedsecret-patch.yaml" k8s/overlays/prod/kustomization.yaml; then
+  echo
+  echo "WARNING: k8s/overlays/prod/kustomization.yaml does not reference this file."
+  echo "Without it the overlay still renders — using the k3d ciphertext, which"
+  echo "this cluster cannot decrypt. Add under patches:"
+  echo "    - path: sealedsecret-patch.yaml"
+  echo "      target: { kind: SealedSecret, name: $SECRET_NAME }"
+  exit 1
+fi
+
+echo "==> overlay references the patch (checked)"
+echo
 echo "Next:"
-echo "  1. Add it to k8s/overlays/prod/kustomization.yaml under patches: if not already there."
-echo "  2. Commit it. The ciphertext is safe to commit — that is the entire point."
-echo "  3. Argo CD syncs it; the controller decrypts it into a real Secret."
+echo "  1. git add k8s/overlays/prod/sealedsecret-patch.yaml && commit && push."
+echo "     The ciphertext is safe to commit — that is the entire point, and it is"
+echo "     useless without this cluster's private key."
+echo "  2. Argo CD syncs from git, not your working tree, so it must be PUSHED."
+echo "  3. The controller decrypts it into a real Secret."
 echo
 echo "The generated password and JWT secret exist ONLY inside the sealed file."
 echo "Nothing here holds a plaintext copy, so rotating means re-running this."
