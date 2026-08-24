@@ -49,13 +49,53 @@ spec:
       labels:
         app: vesselmind-api
     spec:
-      # backend/src/server.ts has NO SIGTERM handler. dumb-init (PID 1 in the
-      # image) forwards the signal correctly, but Node's default action is to
-      # exit immediately — so in-flight requests are dropped on every rollout
-      # regardless of how long this grace period is. Lengthening it would be
-      # cargo-culting; the fix is an app-side handler that stops accepting
-      # connections, drains, then exits. Left at the 30s default and named here
-      # so the gap is on the record.
+      # backend/src/server.ts HAS a SIGTERM handler (Phase 7) — it stops
+      # accepting connections, drains in-flight requests, then exits. dumb-init
+      # (PID 1 in the image) forwards the signal to it. This comment previously
+      # said the handler did not exist, which was true when written and became
+      # wrong once Phase 7 landed; a stale comment that describes a fixed gap is
+      # worse than none, because a reviewer trusts it.
+      #
+      # 30s is the grace period the handler drains within. The remaining
+      # subtlety is that endpoint removal and SIGTERM race: a pod can receive
+      # traffic for a moment after it starts draining, which the handler
+      # tolerates by finishing in-flight work rather than cutting it off.
+      # TOPOLOGY SPREAD — what makes the PodDisruptionBudget in 18-pdb.yaml
+      # mean something.
+      #
+      # Without this the scheduler is free to place every replica on ONE node.
+      # A PDB saying "keep 1 available" cannot help if all of them share a
+      # failure domain: drain that node and the budget blocks the drain forever
+      # rather than protecting anything, and losing that node takes the whole
+      # service regardless of replica count. Multi-node was chosen in Phase 1
+      # precisely so anti-affinity and topology spread stop being theory; this
+      # is that promise being kept.
+      #
+      # TWO DOMAINS, because they answer different failures:
+      #   kubernetes.io/hostname       -> survives one NODE dying
+      #   topology.kubernetes.io/zone  -> survives one AZ dying (EKS spans two)
+      # On k3d the zone key is absent on every node, so that constraint is
+      # simply inert locally — it does not need an overlay patch to be safe.
+      #
+      # whenUnsatisfiable: ScheduleAnyway, NOT DoNotSchedule. DoNotSchedule
+      # makes spread a hard requirement, which means a rollout that cannot
+      # satisfy it leaves pods Pending instead of degraded-but-running — and
+      # with the HPA scaling to 20 replicas across 3 nodes, a strict maxSkew of
+      # 1 is exactly the kind of constraint that deadlocks under load. Soft
+      # spreading gets the availability win without inventing a new outage.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: vesselmind-api
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: vesselmind-api
       terminationGracePeriodSeconds: 30
       securityContext:
         seccompProfile:

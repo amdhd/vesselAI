@@ -19,6 +19,42 @@ spec:
       labels:
         app: vesselmind-web
     spec:
+      # TOPOLOGY SPREAD — what makes the PodDisruptionBudget in 18-pdb.yaml
+      # mean something.
+      #
+      # Without this the scheduler is free to place every replica on ONE node.
+      # A PDB saying "keep 1 available" cannot help if all of them share a
+      # failure domain: drain that node and the budget blocks the drain forever
+      # rather than protecting anything, and losing that node takes the whole
+      # service regardless of replica count. Multi-node was chosen in Phase 1
+      # precisely so anti-affinity and topology spread stop being theory; this
+      # is that promise being kept.
+      #
+      # TWO DOMAINS, because they answer different failures:
+      #   kubernetes.io/hostname       -> survives one NODE dying
+      #   topology.kubernetes.io/zone  -> survives one AZ dying (EKS spans two)
+      # On k3d the zone key is absent on every node, so that constraint is
+      # simply inert locally — it does not need an overlay patch to be safe.
+      #
+      # whenUnsatisfiable: ScheduleAnyway, NOT DoNotSchedule. DoNotSchedule
+      # makes spread a hard requirement, which means a rollout that cannot
+      # satisfy it leaves pods Pending instead of degraded-but-running — and
+      # with the HPA scaling to 20 replicas across 3 nodes, a strict maxSkew of
+      # 1 is exactly the kind of constraint that deadlocks under load. Soft
+      # spreading gets the availability win without inventing a new outage.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: vesselmind-web
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: vesselmind-web
       serviceAccountName: web
       automountServiceAccountToken: false
       securityContext:
