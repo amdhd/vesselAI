@@ -1,0 +1,73 @@
+# k6 load generator, run INSIDE the cluster.
+#
+# WHY IN-CLUSTER RATHER THAN FROM A LAPTOP:
+#
+#   1. Latency. Driving us-east-1 from a laptop puts 200ms+ of WAN round trip
+#      into every sample, which dominates p95 and measures the internet rather
+#      than the application. The Phase 5 numbers on k3d were taken over
+#      localhost; an in-cluster run is the comparable measurement.
+#   2. NetworkPolicy. allow-api-ingress permits pods in this namespace
+#      (podSelector: {}), so a Job here is allowed to reach the API — an
+#      external generator is not, unless it comes through the ALB.
+#
+# WHAT THIS DOES NOT MEASURE: the ALB, TLS termination, and the ingress path.
+# Those are exercised separately by curling the public hostname. This measures
+# the application and the HPA, which is what Phase 5 asked for.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-load
+  namespace: vesselmind
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: k6-load
+    spec:
+      restartPolicy: Never
+      # PSS `restricted` is enforced on this namespace, so every field below is
+      # required rather than decorative — an earlier ad-hoc `kubectl run` was
+      # rejected for missing exactly these.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 12345
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: k6
+          image: grafana/k6:0.54.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ['ALL']
+          env:
+            # The Service, not the Ingress: this run is about the app and the
+            # HPA, and going through the ALB would add a hop this test is not
+            # trying to measure.
+            - name: BASE_URL
+              value: http://api:3001
+          # workingDir matters: handleSummary writes loadtest-summary.json by
+          # RELATIVE path, and the root filesystem is read-only. Without this the
+          # run finishes and the summary is discarded.
+          workingDir: /tmp
+          command: ['k6', 'run', '/scripts/api-load.js']
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 200m
+              memory: 128Mi
+            limits:
+              cpu: '1'
+              memory: 512Mi
+      volumes:
+        - name: script
+          configMap:
+            name: k6-script
+        - name: tmp
+          emptyDir: {}

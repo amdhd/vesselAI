@@ -61,5 +61,17 @@ export default function (data) {
 }
 
 export function handleSummary(data) {
-  return { 'loadtest-summary.json': JSON.stringify(data, null, 2) };
+  // stdout as well as the file. When k6 runs as a Job with a read-only root
+  // filesystem (k8s/loadtest/k6-job.yaml, required by PSS `restricted`), a
+  // relative file write fails and the ENTIRE summary is lost — the run
+  // completes, the thresholds are evaluated, and nothing is reported:
+  //
+  //   failed to handle the end-of-test summary ... read-only file system
+  //
+  // Writing to stdout means the numbers survive in `kubectl logs` regardless of
+  // where, or whether, the file lands.
+  return {
+    stdout: JSON.stringify(data.metrics, null, 2),
+    'loadtest-summary.json': JSON.stringify(data, null, 2),
+  };
 }
