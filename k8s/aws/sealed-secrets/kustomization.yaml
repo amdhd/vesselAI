@@ -1,0 +1,27 @@
+# Sealed Secrets controller, v0.38.4 — the same version Phase 1 installed on
+# k3d, pinned so both clusters decrypt with the same controller behaviour.
+#
+# WHY IT IS VENDORED NOW: Phase 1 installed this with
+#   kubectl apply -f https://github.com/.../v0.38.4/controller.yaml
+# straight from docs/K8S_PHASE1_CHECKLIST.md. That is fine for a laptop and
+# wrong under GitOps: Argo CD reconciles what is in git, so a controller that
+# exists only because somebody once ran a curl is exactly the drift Phase 8 set
+# out to eliminate. Vendoring makes the controller part of the desired state.
+#
+# THE KEY IS NOT IN GIT AND MUST NOT BE. This manifest installs the controller;
+# the controller generates its own RSA keypair on first start and stores it in a
+# Secret in kube-system. That private key is what decrypts every SealedSecret,
+# and it is deliberately not tracked here.
+#
+# CONSEQUENCE, and it is the thing that trips people: a fresh cluster generates
+# a NEW keypair, so SealedSecrets encrypted against the old cluster cannot be
+# decrypted by the new one. They apply cleanly, the controller logs a decryption
+# error, and the Secret is simply never created — so pods sit waiting on a
+# secret reference that will never resolve. This is why the EKS deployment
+# re-seals rather than reusing k8s/base/02-sealedsecret.yaml. See
+# k8s/scripts/reseal-for-eks.sh.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - controller-v0.38.4.yaml
