@@ -167,3 +167,9 @@ variable "domain_name" {
   type        = string
   default     = "ahmadhadi.org"
 }
+
+variable "github_repository" {
+  description = "owner/name of the GitHub repo allowed to push to ECR. The IAM trust policy pins to this exact repo."
+  type        = string
+  default     = "amdhd/vesselAI"
+}
