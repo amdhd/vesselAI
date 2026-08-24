@@ -1,0 +1,45 @@
+# The app Application, pointed at the PROD overlay.
+#
+# WHY A SEPARATE FILE rather than editing 01-application.yaml: that one targets
+# k8s/overlays/dev and is what the k3d cluster reconciles. Repointing it would
+# mean the laptop cluster starts pulling prod images from GHCR by digest,
+# against a ResourceQuota sized for EKS — so the two clusters need two
+# Applications. Same name is fine; they never coexist in one cluster.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vesselmind
+  namespace: argocd
+  finalizers:
+    # Deleting this Application deletes the resources it manages. Without the
+    # finalizer, `kubectl delete application` orphans every workload — which
+    # matters directly for `make destroy`, whose first step is removing the
+    # Applications so an auto-sync cannot re-create what step two deletes.
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: vesselmind
+  source:
+    repoURL: https://github.com/amdhd/vesselAI.git
+    targetRevision: main
+    path: k8s/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vesselmind
+  syncPolicy:
+    automated:
+      prune: true
+      # selfHeal off, matching the dev Application. Phase 8 established that
+      # self-heal issues PARTIAL syncs scoped to the drifted resource, which
+      # bypasses the db-init PreSync hook — so a drift correction can start the
+      # API against an unmigrated database.
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=true
+  ignoreDifferences:
+    # The HPA owns replicas. Without this Argo reports permanent drift and, with
+    # selfHeal on, would fight the autoscaler.
+    - group: apps
+      kind: Deployment
+      name: api
+      jsonPointers:
+        - /spec/replicas

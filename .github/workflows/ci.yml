@@ -270,6 +270,11 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Required for the OIDC handshake with AWS. Without it,
+      # configure-aws-credentials cannot mint a token and the ECR push fails
+      # with a confusing "Could not load credentials" rather than a permissions
+      # error. Scoped to this job only — no other job needs to assume a role.
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -377,6 +382,53 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ github.sha }}
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:main
+          cache-from: type=gha,scope=${{ matrix.image }}
+
+      # -----------------------------------------------------------------------
+      # ECR, for the EKS cluster.
+      #
+      # GUARDED ON A REPO VARIABLE, and this is not defensiveness for its own
+      # sake. The ECR repositories are created and destroyed with the cluster
+      # (terraform destroy owns them), so for most of this repo's life there is
+      # nothing to push to. An unconditional push would fail every merge to main
+      # whenever the burst cluster is down — training everyone to ignore a red
+      # pipeline, which is the worst outcome for a gate.
+      #
+      # So: set AWS_ECR_ROLE_ARN (repo variable, from `terraform output
+      # github_actions_ecr_role_arn`) when the cluster is up; unset it after
+      # `make destroy`. GHCR is the always-available registry and is unaffected.
+      #
+      # NO STORED AWS CREDENTIALS. The role is assumed via GitHub's OIDC
+      # provider, trusted by IAM in terraform/github-oidc.tf and pinned to this
+      # repository AND refs/heads/main — so a pull request from a fork cannot
+      # obtain it even by editing this file.
+      # -----------------------------------------------------------------------
+      - name: Configure AWS credentials (OIDC, no stored keys)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AWS_ECR_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ECR_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Log in to ECR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AWS_ECR_ROLE_ARN != ''
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ONE TAG ONLY, unlike the GHCR push above. The ECR repositories are
+      # IMMUTABLE (terraform/ecr.tf), so pushing a second, moving `:main` tag
+      # would succeed once and then fail on every subsequent merge. The SHA tag
+      # is the one that matters anyway — it is what the prod overlay resolves to
+      # a digest and pins.
+      - name: Push to ECR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AWS_ECR_ROLE_ARN != ''
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target || '' }}
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/vesselmind/${{ matrix.image }}:${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.image }}
 
   # ---------------------------------------------------------------------------

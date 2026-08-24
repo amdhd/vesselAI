@@ -125,26 +125,32 @@ resource "aws_iam_role_policy_attachment" "cluster_autoscaler" {
 # doing double duty: discovery for the autoscaler, and authorisation scope for
 # IAM. Removing them does not just stop autoscaling, it also revokes the
 # permission — which is the correct direction to fail in.
+# A managed node group creates exactly ONE Auto Scaling group, so these index
+# it directly rather than iterating.
+#
+# The first draft used for_each over the set of ASG names, which fails at PLAN
+# time with "Invalid for_each argument": the names do not exist until the node
+# group is created, and for_each keys must be known before apply. Caught by
+# running a plan; it would otherwise have failed partway through an apply, with
+# the cluster and node group already built and billing.
 locals {
-  node_asg_names = toset([
-    for asg in aws_eks_node_group.main.resources[0].autoscaling_groups : asg.name
-  ])
+  node_asg_name = aws_eks_node_group.main.resources[0].autoscaling_groups[0].name
 }
 
 resource "aws_autoscaling_group_tag" "autoscaler_enabled" {
-  for_each               = local.node_asg_names
-  autoscaling_group_name = each.value
+  autoscaling_group_name = local.node_asg_name
 
   tag {
-    key                 = "k8s.io/cluster-autoscaler/enabled"
-    value               = "true"
+    key   = "k8s.io/cluster-autoscaler/enabled"
+    value = "true"
+    # false: this tags the GROUP for discovery. Propagating it to each instance
+    # would put a meaningless tag on every node without changing behaviour.
     propagate_at_launch = false
   }
 }
 
 resource "aws_autoscaling_group_tag" "autoscaler_owned" {
-  for_each               = local.node_asg_names
-  autoscaling_group_name = each.value
+  autoscaling_group_name = local.node_asg_name
 
   tag {
     key                 = "k8s.io/cluster-autoscaler/${var.cluster_name}"

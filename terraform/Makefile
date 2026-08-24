@@ -61,9 +61,17 @@
 #      once the EKS cluster and its tags are deleted, finding what it left
 #      behind means eyeballing the console.
 #
-# WHAT THIS DOES NOT DO: it does not delete ECR repositories or their images
-# (they outlive the cluster by design, at ~$0.10/GB-month), and it does not
-# delete a Route 53 hosted zone created outside Terraform.
+# WHAT THIS DOES NOT DO: it does not delete a Route 53 hosted zone created
+# outside Terraform.
+#
+# ECR: `terraform destroy` DOES delete the repositories and their images, because
+# they are in Terraform state with force_delete = true. An earlier version of
+# this comment claimed they outlive the cluster; that was wrong. Deleting them is
+# the right behaviour for a burst cluster — a repository left behind is a slow
+# storage leak nobody checks — but it has one consequence worth knowing: the
+# CI job that publishes to ECR has nothing to push to while the cluster is down,
+# which is why that job is guarded on the AWS_ECR_ROLE_ARN repo variable rather
+# than running unconditionally. GHCR remains the always-available registry.
 #
 # ---------------------------------------------------------------------------
 # A PORTABILITY TRAP THAT MATTERS HERE MORE THAN USUAL
@@ -220,7 +228,7 @@ check-orphans: ## Step 4: list AWS objects Terraform does not own and may have l
 	  --region $(REGION) \
 	  --filter "Name=state,Values=available" \
 	  --query 'NatGateways[].[NatGatewayId,VpcId]' --output text 2>/dev/null || true
-	@echo "==> (ECR repositories are intentionally NOT checked — they outlive the cluster.)"
+	@echo "==> (ECR is not checked here: terraform destroy owns those repositories and deletes them.)"
 
 # If destroy-apps times out, the namespace is stuck on a finalizer. Do not reach
 # for the force-patch first: a finalizer that will not clear almost always means

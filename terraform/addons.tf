@@ -166,3 +166,38 @@ resource "aws_eks_addon" "metrics_server" {
 
   depends_on = [aws_eks_node_group.main]
 }
+
+# ---------------------------------------------------------------------------
+# cert-manager.
+#
+# NOT a general TLS decision — the public certificate for the ingress comes
+# from ACM (see acm.tf). This exists solely because the AWS Load Balancer
+# Controller's plain-YAML install bundle requires it.
+#
+# The controller registers a ValidatingWebhookConfiguration and a
+# MutatingWebhookConfiguration, and the API server will only call a webhook
+# over TLS. The Helm chart generates that certificate itself; the
+# v3_5_0_full.yaml bundle instead ships a cert-manager Issuer and Certificate
+# and expects cert-manager to mint it. Choosing plain YAML over Helm — the
+# project's stated rule — therefore drags in this dependency. Worth knowing
+# that the no-Helm decision has a real cost, and this is what it looks like.
+#
+# Without it, the LB controller's Certificate resource is rejected (no CRD),
+# the webhook has no serving cert, and the API server refuses to admit the
+# controller's own CRs — which presents as the controller failing to start for
+# reasons that never mention cert-manager.
+#
+# Community-owned addon rather than AWS-owned, and it needs no IAM: it issues
+# certificates inside the cluster and talks to no AWS API.
+#
+# ORDERING NOTE: Argo CD applies the controller bundle, and Terraform creates
+# this. If Argo syncs before cert-manager's CRDs are established the sync fails
+# and retries — self-correcting, but the first sync may show a transient error.
+# A sync wave on the controller Application is the tidy fix if it proves noisy.
+# ---------------------------------------------------------------------------
+resource "aws_eks_addon" "cert_manager" {
+  cluster_name = aws_eks_cluster.main.name
+  addon_name   = "cert-manager"
+
+  depends_on = [aws_eks_node_group.main]
+}

@@ -1,0 +1,41 @@
+# Monitoring, on EKS.
+#
+# Exists for one reason: the Grafana Ingress in k8s/monitoring targets Traefik,
+# which does not exist on EKS. Everything else about the monitoring stack is
+# identical between clusters, so this overlay is deliberately thin — if it ever
+# grows a second concern, that is a signal the base needs restructuring rather
+# than this file needing more patches.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: monitoring
+
+resources:
+  - ../../monitoring
+
+patches:
+  - target:
+      kind: Ingress
+      name: grafana
+    patch: |-
+      - op: replace
+        path: /spec/ingressClassName
+        value: alb
+      - op: add
+        path: /spec/rules/0/host
+        value: grafana.ahmadhadi.org
+      - op: add
+        path: /metadata/annotations
+        value:
+          alb.ingress.kubernetes.io/scheme: internet-facing
+          alb.ingress.kubernetes.io/target-type: ip
+          # SAME group as the app ingress. This is what keeps Grafana on the
+          # shared ALB instead of provisioning a second one at ~$16/month.
+          # The group is what makes host-based routing across three Ingress
+          # objects land on one load balancer.
+          alb.ingress.kubernetes.io/group.name: vesselmind
+          alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+          alb.ingress.kubernetes.io/ssl-redirect: '443'
+          # Grafana's own health endpoint. Unlike the app Ingress — where four
+          # backends share one check and only `/` is common — this Ingress has a
+          # single backend, so the check can be specific.
+          alb.ingress.kubernetes.io/healthcheck-path: /api/health

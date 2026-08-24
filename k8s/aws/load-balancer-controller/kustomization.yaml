@@ -1,0 +1,48 @@
+# AWS Load Balancer Controller, v3.5.0.
+#
+# Upstream ships two files and both are needed:
+#   v3_5_0_full.yaml     - CRDs, RBAC, the Deployment, and the admission
+#                          webhooks (plus the cert-manager Issuer/Certificate
+#                          that issues the webhook's serving cert).
+#   v3_5_0_ingclass.yaml - the `alb` IngressClass and its IngressClassParams.
+#                          Without this the Ingress in k8s/base has no class to
+#                          claim it, and an unclaimed Ingress silently does
+#                          nothing — the failure 10-ingress.yaml already warns
+#                          about.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - v3_5_0_full.yaml
+  - v3_5_0_ingclass.yaml
+
+patches:
+  # IRSA. Upstream cannot know the role ARN, so the ServiceAccount ships
+  # unannotated — and an unannotated SA means the controller falls back to the
+  # NODE's IAM identity, which has no ELB permissions. It then starts cleanly,
+  # watches Ingresses, and fails every ALB creation with AccessDenied in its own
+  # logs while the Ingress object shows nothing at all.
+  #
+  # The ARN is terraform output lb_controller_role_arn. Hardcoded because Argo
+  # CD renders this from git with no access to Terraform state; it changes if
+  # the AWS account or cluster name changes.
+  - target:
+      kind: ServiceAccount
+      name: aws-load-balancer-controller
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          eks.amazonaws.com/role-arn: arn:aws:iam::149751500899:role/vesselmind-lb-controller
+
+  # The controller tags every ALB it creates with the cluster name, and refuses
+  # to adopt resources belonging to a different one. Upstream's placeholder is
+  # literally "your-cluster-name"; left unpatched the controller starts and
+  # then cannot reconcile anything.
+  - target:
+      kind: Deployment
+      name: aws-load-balancer-controller
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/args/0
+        value: --cluster-name=vesselmind

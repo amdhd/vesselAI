@@ -149,6 +149,83 @@ patches:
         path: /spec/storageClassName
         value: gp3
 
+  # ---------------------------------------------------------------------------
+  # INGRESS: Traefik -> AWS Application Load Balancer.
+  #
+  # The base targets k3s's bundled Traefik. On EKS there is no Traefik, and an
+  # Ingress whose class nothing claims silently does nothing — the exact failure
+  # 10-ingress.yaml warns about. The path fan-out and the backends are unchanged;
+  # only the controller and how TLS terminates differ.
+  # ---------------------------------------------------------------------------
+  - target:
+      kind: Ingress
+      name: vesselmind
+    patch: |-
+      - op: replace
+        path: /spec/ingressClassName
+        value: alb
+
+      # A HOST, which the base deliberately does not have. Two things need it:
+      # external-dns reads it to decide which Route 53 record to create, and the
+      # load balancer controller uses it to find a matching ACM certificate.
+      # Without a host this Ingress answers on the ALB's own DNS name and
+      # neither of those can happen.
+      - op: add
+        path: /spec/rules/0/host
+        value: vesselmind.ahmadhadi.org
+
+      # TLS: drop the base's empty `tls: [{}]`. That entry exists so Traefik
+      # serves its self-signed certificate locally. On an ALB, TLS is configured
+      # by the annotations below and a tls block with no secretName just
+      # confuses the reader about where the certificate comes from.
+      - op: remove
+        path: /spec/tls
+
+      - op: add
+        path: /metadata/annotations
+        value:
+          # Public ALB. The alternative, `internal`, is only reachable inside
+          # the VPC — correct for an internal API, wrong for the app's front door.
+          alb.ingress.kubernetes.io/scheme: internet-facing
+
+          # target-type: ip sends traffic straight to POD IPs. The alternative,
+          # `instance`, routes via a NodePort on every node and then kube-proxy
+          # hops again to wherever the pod actually is — an extra hop, and it
+          # makes the ALB health check test the node rather than the pod. ip is
+          # possible here because the VPC CNI gives every pod a real VPC address.
+          alb.ingress.kubernetes.io/target-type: ip
+
+          # ONE ALB FOR THE WHOLE CLUSTER. Without a group, every Ingress object
+          # gets its own load balancer: app + Argo CD + Grafana would be three
+          # ALBs at ~$16/month each. A shared group merges them into one, with
+          # rules routed by host. This is the single largest avoidable cost in
+          # the ingress layer.
+          alb.ingress.kubernetes.io/group.name: vesselmind
+
+          # Listen on both, and send 80 to 443. The redirect matters more than it
+          # looks: without it the ALB answers plain HTTP happily, and every
+          # credential and JWT that PR #74 moved onto TLS travels in clear text
+          # for anyone who types the bare hostname.
+          alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+          alb.ingress.kubernetes.io/ssl-redirect: '443'
+
+          # NO certificate-arn ON PURPOSE. The controller discovers a matching
+          # ACM certificate from the host above. Pinning the ARN would work and
+          # is what most examples show — but the ARN contains a UUID that is new
+          # on every terraform apply, so a hardcoded one is wrong the moment the
+          # cluster is rebuilt, and wrong in a way that fails at ALB creation
+          # rather than at render. Discovery is stable across rebuilds.
+
+          # Health checks are ALB-wide for this Ingress and cannot differ per
+          # backend from here. `/` is the only path all four backends answer;
+          # the API's real readiness endpoint is /api/ready (PR #74), which is
+          # what the kubelet probe uses. VERIFY IN-CLUSTER whether per-service
+          # health-check overrides via Service annotations are honoured by
+          # v3.5.0 before assuming the API target group is checking the right
+          # thing — the kubelet probe already gates Service membership, so this
+          # is defence in depth rather than the primary signal.
+          alb.ingress.kubernetes.io/healthcheck-path: /
+
 # ---------------------------------------------------------------------------
 # IMAGES — this is what makes the overlay deployable to EKS at all.
 #
