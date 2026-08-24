@@ -15,6 +15,19 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
+  annotations:
+    # Wave 2, with the Deployment it targets.
+    #
+    # At the default wave 0 the HPA is created before Deployment/api exists and
+    # Argo's health check fails the sync outright:
+    #
+    #   the HPA controller was unable to get the target's current scale:
+    #   deployments.apps "api" not found
+    #
+    # Same shape as the PVC ordering problem: a wave-0 resource whose health
+    # depends on something in a later wave. The rule that falls out of both —
+    # a resource must not sync earlier than whatever its health depends on.
+    argocd.argoproj.io/sync-wave: '2'
   name: api
   namespace: vesselmind
 spec:
