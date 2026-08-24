@@ -119,6 +119,26 @@ resource "aws_eks_cluster" "main" {
     bootstrap_cluster_creator_admin_permissions = true
   }
 
+  # ENVELOPE ENCRYPTION FOR KUBERNETES SECRETS.
+  #
+  # EKS already encrypts etcd at rest with an AWS-owned key. This adds a second
+  # layer under a key in THIS account: the API server encrypts each Secret with
+  # a data key that KMS wraps, so reading etcd is not enough — an attacker also
+  # needs kms:Decrypt on aws_kms_key.eks, which is auditable in CloudTrail.
+  #
+  # *** THIS IS A ONE-WAY DOOR. *** Encryption can be ENABLED on an existing
+  # cluster but never disabled, and the key must never be deleted or every
+  # Secret in the cluster becomes unreadable. That is why the key has rotation
+  # on and a deletion window rather than being disposable.
+  #
+  # Scope is "secrets" because that is the only resource type EKS supports here.
+  encryption_config {
+    provider {
+      key_arn = aws_kms_key.eks.arn
+    }
+    resources = ["secrets"]
+  }
+
   enabled_cluster_log_types = var.cluster_log_types
 
   # The role must carry its policy BEFORE the cluster is created. Terraform
