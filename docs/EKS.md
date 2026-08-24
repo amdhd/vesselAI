@@ -99,17 +99,6 @@ that presents as Pending pods with CPU and memory visibly free.
 
 ### 3. Cluster controllers, by hand
 
-First tell the load balancer controller which VPC it is in. **This changes on
-every rebuild** — the VPC is generated, unlike the role ARNs whose names are
-deterministic:
-
-```bash
-terraform -chdir=terraform output -raw vpc_id
-```
-
-Update `--aws-vpc-id=` in
-`k8s/aws/load-balancer-controller/kustomization.yaml` to match, then:
-
 ```bash
 kubectl apply -k k8s/aws/sealed-secrets
 kubectl apply -k k8s/aws/cluster-autoscaler
@@ -130,9 +119,8 @@ cannot use a CRD it is creating in the same pass. The second apply succeeds.
 Argo CD handles this on its own with retries, which is why it only bites during
 manual bootstrap.
 
-**Why `--aws-vpc-id` is needed at all**, since it looks like something the
-controller should discover: by default it asks the EC2 instance metadata
-service. The node group sets `HttpPutResponseHopLimit = 1`, which stops **pods**
+**Why the controller is told its VPC at all**, since that looks like something
+it should discover: by default it asks the EC2 instance metadata service. The node group sets `HttpPutResponseHopLimit = 1`, which stops **pods**
 reaching IMDS — deliberately, because that is what prevents an SSRF in any pod
 from stealing the node's IAM credentials. It is the recommended posture for a
 cluster using IRSA, and it breaks the controller's default:
@@ -145,6 +133,12 @@ The controller then never starts, so no Ingress is reconciled and no ALB
 appears — while the Ingress object shows nothing wrong. Nothing is
 misconfigured here; correct hardening broke a default, which is its own
 category of failure and worth recognising as such.
+
+It is told **by tag** (`--aws-vpc-tags=Name=vesselmind-vpc`) rather than by id.
+The Name tag is derived from `cluster_name` in `terraform/vpc.tf`, so it is
+deterministic and needs no edit when the cluster is rebuilt — unlike the VPC id,
+which is generated fresh each time. Nothing in this bootstrap requires updating
+a generated value by hand.
 
 **Why by hand and not via Argo CD.** The load balancer controller is what turns
 Ingress objects into an ALB — including the Ingress that Argo CD's own UI is

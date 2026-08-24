@@ -64,13 +64,19 @@ patches:
       # security breaking a default config is worth recognising as its own
       # category of failure: nothing here is misconfigured.
       #
-      # THE VPC ID CHANGES ON EVERY REBUILD. Unlike the role ARNs above (whose
-      # names are deterministic), this is generated. After `terraform apply`:
-      #   terraform -chdir=terraform output -raw vpc_id
-      # and update the line below. docs/EKS.md carries this as a numbered step.
+      # LOOKUP BY TAG, NOT BY ID. The first fix here hardcoded
+      # --aws-vpc-id=vpc-0cb2000d6b1283ed4, which worked and was wrong: the VPC
+      # id is GENERATED, so it is stale the moment the cluster is rebuilt, and
+      # a stale id fails at controller startup rather than at render. The Name
+      # tag is derived from cluster_name in terraform/vpc.tf, so it is
+      # deterministic and survives every rebuild.
+      #
+      # Requires ec2:DescribeVpcs, which the vendored upstream policy already
+      # grants. The tag must be unique in the account+region: two VPCs sharing
+      # Name=vesselmind-vpc would make the lookup ambiguous.
       - op: add
         path: /spec/template/spec/containers/0/args/-
-        value: --aws-vpc-id=vpc-0cb2000d6b1283ed4
+        value: --aws-vpc-tags=Name=vesselmind-vpc
       - op: add
         path: /spec/template/spec/containers/0/args/-
         value: --aws-region=us-east-1
