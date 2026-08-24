@@ -2,6 +2,8 @@
 
 > Built from the actual code (backend read file-by-file; frontend, data platform, Angular, and tests covered by structured exploration passes). Every claim cites `file:line`. Context: this is a portfolio piece for a **Forward Deployed Engineer** role (agentic supply-chain AI company). The FDE angle matters as much as the engineering — the repo is built to demonstrate *integrating customer data sources, defending trust boundaries, and debugging integrations end-to-end*, not to be a production SaaS.
 
+> **Platform companion:** [`K8S_INTERVIEW_PREP.md`](K8S_INTERVIEW_PREP.md) covers the Kubernetes and EKS side — IRSA, probes, sync waves, NetworkPolicy, storage, cost, and the nine bugs that only surfaced when the cluster was rebuilt from an empty AWS account.
+
 ---
 
 ## 1. Elevator pitch (30 seconds)
