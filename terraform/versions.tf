@@ -33,10 +33,21 @@ provider "aws" {
   # Every resource gets these without repeating them. Cost allocation works off
   # tags, so a burst cluster that tags nothing is one you cannot afterwards ask
   # "what did that actually cost me" about.
+  # Cost allocation runs off tags, so an untagged burst cluster is one you
+  # cannot afterwards ask "what did that actually cost me" about.
+  #
+  # Service + Environment are the two keys the FinOps tagging policy requires,
+  # and Environment must be one of Dev/Stage/Prod. This previously read
+  # Environment = "burst", which is more descriptive but is not a value any
+  # standard tooling recognises — cost explorer groupings, budget filters and
+  # policy checks all assume the conventional set. The descriptive meaning moved
+  # to Lifecycle rather than being lost.
   default_tags {
     tags = {
+      Service     = "vesselmind"
+      Environment = "Dev"
+      Lifecycle   = "burst"
       Project     = "vesselmind"
-      Environment = "burst"
       ManagedBy   = "terraform"
       Phase       = "9"
     }
