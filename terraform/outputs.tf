@@ -57,3 +57,18 @@ output "node_role_arn" {
   value       = aws_iam_role.node.arn
   description = "Node instance role. Carries ECR read access, which is why no imagePullSecret is needed."
 }
+
+output "lb_controller_role_arn" {
+  value       = aws_iam_role.lb_controller.arn
+  description = "IRSA role for the load balancer controller. Annotate its service account with this."
+}
+
+output "acm_certificate_arn" {
+  value       = aws_acm_certificate_validation.main.certificate_arn
+  description = "Validated certificate. Goes on the Ingress as alb.ingress.kubernetes.io/certificate-arn."
+}
+
+output "hostnames" {
+  value       = local.hostnames
+  description = "Hostnames the ingress will serve, all covered by the wildcard certificate."
+}

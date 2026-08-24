@@ -148,3 +148,21 @@ resource "aws_eks_addon" "vpc_cni" {
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
 }
+
+# ---------------------------------------------------------------------------
+# metrics-server.
+#
+# k3s ships this; EKS does not. Without it the HorizontalPodAutoscaler in
+# k8s/base/11-api-hpa.yaml reports `<unknown>/70%` forever and never scales —
+# which reads as a broken HPA rather than a missing metrics source, and is one
+# of the gaps between the laptop cluster and this one.
+#
+# Available as a managed addon, so there is nothing to install by hand and no
+# IRSA needed: metrics-server reads from the kubelet, not from any AWS API.
+# ---------------------------------------------------------------------------
+resource "aws_eks_addon" "metrics_server" {
+  cluster_name = aws_eks_cluster.main.name
+  addon_name   = "metrics-server"
+
+  depends_on = [aws_eks_node_group.main]
+}

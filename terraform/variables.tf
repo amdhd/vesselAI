@@ -161,3 +161,9 @@ variable "node_disk_size" {
   type        = number
   default     = 20
 }
+
+variable "domain_name" {
+  description = "Public domain for the ingress. Hosted zone must already exist in Route 53."
+  type        = string
+  default     = "ahmadhadi.org"
+}
