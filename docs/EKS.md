@@ -30,13 +30,45 @@ The order is load-bearing. Each step explains what breaks if it runs early.
 
 ```bash
 aws login --profile vesselmind
-export AWS_PROFILE=vesselmind
-eval "$(aws configure export-credentials --profile vesselmind --format env)"
+export AWS_PROFILE=vesselmind-tf
 ```
 
-The `eval` is not optional. `aws login` caches credentials where only the AWS
-CLI looks; Terraform uses the AWS Go SDK and fails with "No valid credential
-sources found" despite a perfectly valid session.
+Note the **`-tf` suffix** — that is a second profile that exists solely so
+Terraform can read the session:
+
+```ini
+[profile vesselmind-tf]
+credential_process = aws configure export-credentials --profile vesselmind --format process
+region = us-east-1
+```
+
+**Why a wrapper profile rather than the obvious `eval`.** `aws login` caches
+credentials in a location only the AWS CLI reads. Terraform uses the AWS Go SDK,
+which does not know about that cache, so pointing it at `vesselmind` directly
+fails with "No valid credential sources found" despite a perfectly valid
+session. The documented workaround is:
+
+```bash
+eval "$(aws configure export-credentials --profile vesselmind --format env)"   # don't
+```
+
+That works and is a trap. It exports a **frozen snapshot** with a fixed expiry,
+and a full apply takes 15–20 minutes. Both apply attempts during this phase died
+partway through when the snapshot expired:
+
+```
+Error: waiting for EKS Node Group create: ExpiredTokenException
+Error: waiting for EKS Add-On (aws-ebs-csi-driver) create: ExpiredTokenException
+```
+
+Neither was an infrastructure failure — AWS created the resources fine, and
+Terraform lost the ability to poll them, leaving a tainted node group and four
+addons missing from state. Recovering meant `terraform untaint` and a reconcile
+apply, twice.
+
+`credential_process` is a mechanism the **SDK** understands: instead of holding a
+snapshot, it re-invokes the CLI whenever it needs a credential, so a long apply
+refreshes itself. Set the profile once and no `eval` is ever needed again.
 
 ### 2. Infrastructure
 
@@ -69,10 +101,44 @@ that presents as Pending pods with CPU and memory visibly free.
 
 ```bash
 kubectl apply -k k8s/aws/sealed-secrets
-kubectl apply -k k8s/aws/load-balancer-controller
 kubectl apply -k k8s/aws/cluster-autoscaler
+kubectl apply -k k8s/aws/load-balancer-controller   # will partially fail
+kubectl apply -k k8s/aws/load-balancer-controller   # run it twice
 kubectl -n kube-system rollout status deploy/aws-load-balancer-controller
 ```
+
+**The load balancer controller apply must be run twice**, and the first failure
+is expected:
+
+```
+error: resource mapping not found for kind "IngressClassParams" ... ensure CRDs are installed first
+```
+
+The bundle defines that CRD *and* an instance of it in one file, and kubectl
+cannot use a CRD it is creating in the same pass. The second apply succeeds.
+Argo CD handles this on its own with retries, which is why it only bites during
+manual bootstrap.
+
+**Why the controller is told its VPC at all**, since that looks like something
+it should discover: by default it asks the EC2 instance metadata service. The node group sets `HttpPutResponseHopLimit = 1`, which stops **pods**
+reaching IMDS — deliberately, because that is what prevents an SSRF in any pod
+from stealing the node's IAM credentials. It is the recommended posture for a
+cluster using IRSA, and it breaks the controller's default:
+
+```
+unable to initialize AWS cloud: failed to get VPC ID: ec2imds: GetMetadata, context deadline exceeded
+```
+
+The controller then never starts, so no Ingress is reconciled and no ALB
+appears — while the Ingress object shows nothing wrong. Nothing is
+misconfigured here; correct hardening broke a default, which is its own
+category of failure and worth recognising as such.
+
+It is told **by tag** (`--aws-vpc-tags=Name=vesselmind-vpc`) rather than by id.
+The Name tag is derived from `cluster_name` in `terraform/vpc.tf`, so it is
+deterministic and needs no edit when the cluster is rebuilt — unlike the VPC id,
+which is generated fresh each time. Nothing in this bootstrap requires updating
+a generated value by hand.
 
 **Why by hand and not via Argo CD.** The load balancer controller is what turns
 Ingress objects into an ALB — including the Ingress that Argo CD's own UI is
@@ -117,17 +183,76 @@ from your working tree.
 
 ### 5. Argo CD
 
+Argo CD is **not** exposed publicly. It is the deployment control plane — anyone
+who reaches it can change what runs in the cluster — so it is reached by
+port-forward rather than through the ALB:
+
+```bash
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+```
+
+The wildcard certificate does cover `argocd.ahmadhadi.org`, so publishing it
+later is an Ingress patch rather than a certificate reissue. The cheap half is
+the Ingress; the expensive half is rotating the generated admin password and
+putting SSO in front of it, which is what would make publishing it defensible.
+
 ```bash
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.13.2/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.1/manifests/install.yaml
 kubectl -n argocd rollout status deploy/argocd-server
+```
+
+**`--server-side` is required, not a preference.** A plain `kubectl apply` fails:
+
+```
+The CustomResourceDefinition "applicationsets.argoproj.io" is invalid:
+metadata.annotations: Too long: may not be more than 262144 bytes
+```
+
+Client-side apply stores the whole manifest in a
+`last-applied-configuration` annotation, and that CRD exceeds the limit.
+Server-side apply does not write that annotation. The failure is partial —
+Argo CD's Deployments install fine and only the ApplicationSet CRD is missing,
+so it looks like a working install until something needs that CRD.
+
+**Match the version to the k3d cluster** (`docs/GITOPS.md`). The RBAC in
+`03-controller-rbac.yaml` was written against v3.5.1; running a different minor
+against it is asking for permission errors that look like RBAC bugs.
+
+Then the namespaces, **before** the RBAC:
+
+```bash
+kubectl apply -f k8s/base/00-namespace.yaml
+kubectl kustomize k8s/overlays/prod-monitoring | grep -A20 'kind: Namespace' | kubectl apply -f -
+```
+
+`03-controller-rbac.yaml` puts namespaced Roles in `vesselmind` and
+`monitoring`, and those namespaces are normally created by Argo *syncing* —
+which needs the RBAC. Creating them from their own manifests first breaks the
+cycle and keeps the `restricted` Pod Security labels, which a bare
+`kubectl create namespace` would not.
+
+```bash
 kubectl apply -f k8s/argocd/03-controller-rbac.yaml
 kubectl apply -f k8s/argocd/04-appproject.yaml
 kubectl apply -f k8s/argocd/05-resource-inclusions.yaml
+kubectl apply -f k8s/argocd/06-in-cluster.yaml
+kubectl -n argocd rollout restart statefulset/argocd-application-controller
 ```
 
-Apply the least-privilege RBAC from Phase 8 (`#73`) rather than leaving Argo on
+That applies Phase 8's least-privilege RBAC (`#73`) instead of leaving Argo on
 the bundled `cluster-admin`.
+
+**`06-in-cluster.yaml` is not optional.** It scopes the controller's informers
+to `vesselmind,monitoring`; without it the controller builds cluster-wide
+informers and the namespaced Roles are not sufficient. The restart is what makes
+the new scope take effect.
+
+**`00-server-config.yaml` is deliberately skipped on EKS.** It sets
+`server.rootpath: /argocd` and `server.insecure: 'true'` for k3d's path-based
+Traefik ingress. Reached by port-forward at the root path with Argo's own TLS,
+none of that applies.
 
 ### 6. Deploy
 

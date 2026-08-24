@@ -93,7 +93,23 @@ locals {
   #   - one `aws route53 change-resource-record-sets` after the ALB appears.
   hostnames = {
     app     = "vesselmind.${var.domain_name}"
-    argocd  = "argocd.${var.domain_name}"
     grafana = "grafana.${var.domain_name}"
   }
+
+  # NO PUBLIC HOSTNAME FOR ARGO CD, deliberately.
+  #
+  # Argo CD is the deployment control plane: anyone who gets into it can change
+  # what runs in the cluster, and it holds the credentials to do so. Exposing
+  # that admin UI on the public internet — protected only by a password that
+  # ships as a generated default — is a materially worse trade than for Grafana,
+  # which is read-only telemetry behind a sealed admin password.
+  #
+  # Reach it instead with:
+  #   kubectl port-forward svc/argocd-server -n argocd 8080:443
+  #
+  # The wildcard certificate still covers argocd.${var.domain_name} should this
+  # ever be revisited, so re-exposing it is an Ingress patch and not a
+  # certificate reissue. That is the cheap half; the expensive half is rotating
+  # the admin password and putting SSO in front of it, which is what would
+  # actually make it safe to publish.
 }
