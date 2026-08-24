@@ -11,3 +11,15 @@ uploads/
 
 # k6 writes its run summary here (k8s/loadtest/api-load.js handleSummary).
 loadtest-summary.json
+
+# Terraform (Phase 9)
+# Provider binaries — 600MB+, re-created by `terraform init`.
+terraform/.terraform/
+# State names every resource that exists, and can contain secret values in
+# plain text. Local state is a deliberate choice for a 3-day burst cluster
+# (see terraform/versions.tf); committing it would not be.
+*.tfstate
+*.tfstate.*
+crash.log
+# .terraform.lock.hcl IS committed on purpose: it pins provider versions so
+# every apply resolves the same code.
