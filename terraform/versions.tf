@@ -16,6 +16,14 @@ terraform {
       version = "~> 5.60"
     }
 
+    # Used once, to read the OIDC issuer's certificate so the IAM identity
+    # provider can be registered with a correct thumbprint. Older guides
+    # hardcode Amazon's root CA fingerprint; that value has rotated before, and
+    # a stale thumbprint breaks every IRSA assume-role in the cluster at once.
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 }
 
