@@ -47,3 +47,13 @@ output "kubeconfig_command" {
   value       = "aws eks update-kubeconfig --name ${var.cluster_name} --region ${var.region}"
   description = "Run this after apply — the Makefile's destroy guard requires this context."
 }
+
+output "ebs_csi_role_arn" {
+  value       = aws_iam_role.ebs_csi.arn
+  description = "IRSA role assumed by ebs-csi-controller-sa. Verify with: kubectl -n kube-system get sa ebs-csi-controller-sa -o yaml"
+}
+
+output "node_role_arn" {
+  value       = aws_iam_role.node.arn
+  description = "Node instance role. Carries ECR read access, which is why no imagePullSecret is needed."
+}

@@ -82,3 +82,82 @@ variable "api_public_access_cidrs" {
   type        = list(string)
   default     = ["0.0.0.0/0"]
 }
+
+# t3.medium x3, x86, ON_DEMAND — each part is a decision:
+#
+#   t3.medium  NOT t3.large, and the reasoning is worth keeping because the
+#              obvious choice is wrong. Both are 2 vCPU; t3.large's only
+#              advantage is 8GiB of RAM against t3.medium's 4GiB.
+#
+#              Measured demand, from k8s/scripts/check-quota-headroom.py run
+#              against the prod overlay, is 5.30 CPU / 5.62Gi at the HPA's
+#              20-replica peak. So:
+#
+#                2x t3.large  = 4 vCPU raw, ~3.86 allocatable -> DOES NOT FIT.
+#                               ~14.4Gi allocatable against a 5.6Gi peak, i.e.
+#                               61% of the memory is never touched.
+#                3x t3.medium = 6 vCPU raw, ~5.8 allocatable  -> fits.
+#                               ~10.1Gi allocatable, enough for the workloads
+#                               plus Prometheus (~2Gi) and Argo CD (~600Mi).
+#
+#              Three mediums are also $28/month CHEAPER than two larges, and
+#              give a THIRD NODE — which is what makes `kubectl drain` and the
+#              PodDisruptionBudget work in Phases 2 and 7 demonstrable rather
+#              than theoretical. Strictly better on every axis except spare RAM,
+#              which was the one resource already in surplus.
+#
+#   x86        NOT Graviton. t4g.medium is ~20% cheaper, but CI passes no
+#              `platforms:` to docker/build-push-action, so every image in GHCR
+#              and ECR is linux/amd64 only. Graviton needs multi-arch buildx —
+#              a real change, not a flag.
+#
+#   ON_DEMAND  Spot is ~68% cheaper ($0.0268/hr vs $0.0416) and the
+#              interruptions would be a genuinely good PodDisruptionBudget demo.
+#              Not for the first bring-up though: a spot reclaim mid-debug
+#              produces failures that look exactly like your own bug. Flip
+#              node_capacity_type to SPOT once the cluster is green.
+#
+# CAVEAT THAT MATTERS FOR PHASE 5's NUMBERS: t3 is BURSTABLE. Baseline is 20%
+# of 2 vCPU for a medium; under a sustained k6 load the CPU credit balance
+# drains and the instance throttles to that baseline. Any p95 latency or
+# scale-up time measured in that state is a measurement of credit exhaustion,
+# not of the application. Run the load test on c5.large (non-burstable, 2 vCPU
+# sustained, ~$0.085/hr) or enable T3 Unlimited, and record which was used.
+variable "node_instance_types" {
+  description = "Instance types for the managed node group."
+  type        = list(string)
+  default     = ["t3.medium"]
+}
+
+variable "node_capacity_type" {
+  description = "ON_DEMAND or SPOT. Start ON_DEMAND; move to SPOT once the cluster works."
+  type        = string
+  default     = "ON_DEMAND"
+}
+
+variable "node_desired_size" {
+  description = "Nodes at rest. Three, so the measured 5.30 CPU peak fits and a drain has two nodes to spill onto."
+  type        = number
+  default     = 3
+}
+
+variable "node_min_size" {
+  description = "Floor. Three — dropping to two puts the peak back out of reach."
+  type        = number
+  default     = 3
+}
+
+# Headroom above the measured peak, and a ceiling on what a runaway HPA can
+# cost. Five t3.medium is ~9.7 CPU allocatable against a 5.30 peak, and bounds
+# the node bill at ~$0.21/hr.
+variable "node_max_size" {
+  description = "Ceiling. Bounds the blast radius of a runaway HPA on the bill."
+  type        = number
+  default     = 5
+}
+
+variable "node_disk_size" {
+  description = "Root EBS volume per node, GiB. Images and ephemeral storage only — Postgres uses its own PVC."
+  type        = number
+  default     = 20
+}
