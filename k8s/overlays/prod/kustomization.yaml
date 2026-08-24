@@ -286,25 +286,37 @@ patches:
 # the more idiomatic path is ECR, where the node's IAM role grants the pull and
 # there is no secret to rotate at all.
 #
-# All five digests are from commit a2853e3 — one build, one commit, so the whole
+# All five digests are from commit bbbc328 — one build, one commit, so the whole
 # stack deploys as a consistent set rather than a mix of whatever each image
 # happened to be pinned to last.
+#
+# BUMPED FROM a2853e3 BECAUSE THE OLD PIN COULD NOT BECOME READY. PR #74 added
+# GET /api/ready and pointed the readiness probe at it; the pinned images
+# predated that commit, so every api pod answered the probe with 404 and stayed
+# 0/1 forever:
+#
+#   "url":"/api/ready" ... "statusCode":404
+#
+# Nothing was misconfigured — the manifest and the image simply described
+# different versions of the application. This is exactly the failure the note
+# below predicts, and the first time it has actually bitten: a manifest change
+# that depends on a code change is only safe once the digest moves with it.
 images:
   - name: vesselmind/api
     newName: ghcr.io/amdhd/vesselai-api
-    digest: sha256:72a8fd856dad2c465e807f0c58181c33a9de61119d292f2b497adecd996212c4
+    digest: sha256:cae29f88414554aeb291caf2d4ef44fcf291bffb6119449dbcfb3f8091cb11d0
   - name: vesselmind/web
     newName: ghcr.io/amdhd/vesselai-web
-    digest: sha256:b689a3f9846445cde812ddd5cd7b724296334cc346f6edcb657f81ecd4ebe00a
+    digest: sha256:05a32f021712e96b971526eddf3ac758d8abcffb917d4067afc4fb36d16ed95c
   - name: vesselmind/analytics
     newName: ghcr.io/amdhd/vesselai-analytics
-    digest: sha256:ec8d7275dc3ac0c4b63eb3698f39ccfe3bb70a726729eddea40d4ea43ea58ce8
+    digest: sha256:ad3476287911e415847ded7c9f89561e38795f1a0a50139f1644e0664850568b
   - name: vesselmind/migrate
     newName: ghcr.io/amdhd/vesselai-migrate
-    digest: sha256:fc2c8e43e200bf16b95c31075661d590123d6d686866d5d2893bc436af6c600f
+    digest: sha256:02bc6ea9da1d38a8f914eecf74ea9901227c95b0a6ed19c790ff53f1a2de062e
   - name: vesselmind/warehouse-builder
     newName: ghcr.io/amdhd/vesselai-warehouse-builder
-    digest: sha256:d3dff307cc603dd76d194481fd5b891c1b75ff6ff9c6df1eb48fee49b58a30b8
+    digest: sha256:6e360246a08819071eabf0dd6bbddddb2bf0ba73409e27468ad62a962e6f9b35
 
   # Postgres is pinned by digest too — the policy is "production pins by digest",
   # and an exception for the database would be the wrong one to make. This is the
