@@ -42,6 +42,13 @@
 #      namespace that hangs here is a signal, not a nuisance — see
 #      `make diagnose-stuck-namespace`.
 #
+#      Step 1 is conditional: Argo CD only ran on the local k3d cluster, so on
+#      a fresh EKS cluster there is no applications.argoproj.io CRD and no
+#      Application objects to delete. `kubectl delete ... --ignore-not-found`
+#      would NOT absorb that case — a missing CRD fails in client-side API
+#      discovery, which --ignore-not-found does not cover. The recipe checks
+#      for the CRD first.
+#
 #   3. THEN terraform destroy. Not before. The AWS Load Balancer Controller and
 #      the EBS CSI driver are pods on the node group; if Terraform removes the
 #      node group first, the controllers that own those finalizers are gone, the
@@ -167,8 +174,13 @@ destroy-apps: ## Step 1-2: remove Argo apps + namespaces so the ALB and EBS volu
 	fi; \
 	$(MAKE) --no-print-directory guard-context; \
 	echo "==> 1/2 Deleting Argo CD Applications (stops auto-sync re-creating what we delete)"; \
-	kubectl delete application vesselmind vesselmind-monitoring \
-	  -n $(ARGOCD_NS) --ignore-not-found --timeout=$(WAIT); \
+	if kubectl get crd applications.argoproj.io >/dev/null 2>&1; then \
+	  kubectl delete application vesselmind vesselmind-monitoring \
+	    -n $(ARGOCD_NS) --ignore-not-found --timeout=$(WAIT); \
+	else \
+	  echo "    Argo CD is not installed on this cluster (no applications.argoproj.io"; \
+	  echo "    CRD) — nothing to delete. Skipping to step 2."; \
+	fi; \
 	echo "==> Ingresses this cluster still owns, before we start:"; \
 	kubectl get ingress -A --no-headers --request-timeout=30s 2>/dev/null || true; \
 	echo "==> 2/2 Deleting namespaces (cascades: pods -> PVCs -> PVs -> EBS; Ingress -> ALB)"; \
