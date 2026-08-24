@@ -149,6 +149,19 @@ from your working tree.
 
 ### 5. Argo CD
 
+Argo CD is **not** exposed publicly. It is the deployment control plane — anyone
+who reaches it can change what runs in the cluster — so it is reached by
+port-forward rather than through the ALB:
+
+```bash
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+```
+
+The wildcard certificate does cover `argocd.ahmadhadi.org`, so publishing it
+later is an Ingress patch rather than a certificate reissue. The cheap half is
+the Ingress; the expensive half is rotating the generated admin password and
+putting SSO in front of it, which is what would make publishing it defensible.
+
 ```bash
 kubectl create namespace argocd
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.13.2/manifests/install.yaml
