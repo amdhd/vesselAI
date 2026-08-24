@@ -8,7 +8,7 @@ I built and hardened this solo as a demo-day portfolio piece for Forward Deploye
 
 **It also runs on Kubernetes, twice.** The same manifests deploy to a local k3d cluster and to a real **AWS EKS** cluster built from an empty account by Terraform — VPC, ECR, IRSA, an ALB with an ACM certificate, KMS-encrypted Secrets, GitOps reconciliation by Argo CD, and a measured load test on both. The EKS run is where the interesting failures were: nine bugs that a laptop cluster could not have surfaced, each one written up in [Running on Kubernetes](#running-on-kubernetes) rather than quietly fixed.
 
-**[The FDE headline features](#the-three-features-that-matter-for-an-fde) · [Data warehouse](#3-an-analytics-warehouse-duckdb--dbt-medallion) · [Kubernetes & EKS](#running-on-kubernetes) · [K8s interview prep](docs/K8S_INTERVIEW_PREP.md) · [Demo credentials](#demo-mode) · [What's real vs. mocked](#whats-real-vs-mocked) · [Engineering notes](#engineering-notes) · [How this maps to an FDE role](#how-this-maps-to-an-fde-role)**
+**[The FDE headline features](#the-three-features-that-matter-for-an-fde) · [Data warehouse](#3-an-analytics-warehouse-duckdb--dbt-medallion) · [Kubernetes & EKS](#running-on-kubernetes) · [Demo credentials](#demo-mode) · [What's real vs. mocked](#whats-real-vs-mocked) · [Engineering notes](#engineering-notes) · [How this maps to an FDE role](#how-this-maps-to-an-fde-role)**
 
 ---
 

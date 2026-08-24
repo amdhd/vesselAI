@@ -23,3 +23,24 @@ terraform/.terraform/
 crash.log
 # .terraform.lock.hcl IS committed on purpose: it pins provider versions so
 # every apply resolves the same code.
+
+# Personal working notes — kept locally, not part of the deliverable.
+#
+# These describe how the project was BUILT (prep material, review plans, phase
+# checklists, the working agreement I wrote for Claude) rather than what it
+# does. The repo's own docs — README, docs/EKS.md, docs/GITOPS.md,
+# docs/MIGRATIONS.md, docs/BACKUP_RESTORE.md, docs/IMAGES.md — are the
+# deliverable and stay tracked.
+#
+# NOTE: ignoring a path does not untrack it. These were removed from the index
+# with `git rm --cached`, which leaves them on disk and stops future changes
+# being staged. They remain in git HISTORY; scrubbing that needs a rewrite.
+docs/interview-prep.md
+docs/K8S_INTERVIEW_PREP.md
+docs/review-findings-plan.md
+docs/K8S_PHASE1_CHECKLIST.md
+
+# Working agreements / prompt specs for Claude Code.
+vesselmind-k8s-CLAUDE.md
+*claude-code-prompt-*.md
+CLAUDE.md
