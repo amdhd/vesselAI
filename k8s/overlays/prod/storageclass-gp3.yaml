@@ -71,3 +71,34 @@ parameters:
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
 reclaimPolicy: Delete
+---
+# A second class, Immediate-binding, for volumes with NO always-running consumer.
+#
+# THE PROBLEM IT SOLVES: gp3 above uses WaitForFirstConsumer, so a PVC stays
+# Pending until a pod claims it. Argo CD treats a Pending PVC as unhealthy and
+# will not advance to the next sync wave. postgres-backups is consumed only by
+# a CronJob, so nothing claims it between scheduled runs — it would sit Pending
+# forever and block the sync permanently.
+#
+# THE TRADE, stated because it is the same one WaitForFirstConsumer exists to
+# avoid: an Immediate volume is created in whatever AZ the provisioner picks,
+# before any scheduling decision. The consuming pod is then pinned to that AZ by
+# volume node affinity. For a nightly pg_dump that is acceptable; for the
+# database itself it would not be, which is why postgres-data stays on gp3.
+#
+# Use this class only for volumes whose consumer is intermittent. A volume with
+# a running Deployment behind it should use gp3 and bind where its pod lands.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3-immediate
+  annotations:
+    argocd.argoproj.io/sync-wave: '-1'
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  encrypted: "true"
+  fsType: ext4
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+reclaimPolicy: Delete
