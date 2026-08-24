@@ -77,3 +77,18 @@ output "cluster_autoscaler_role_arn" {
   value       = aws_iam_role.cluster_autoscaler.arn
   description = "IRSA role for cluster-autoscaler. Annotate the kube-system/cluster-autoscaler service account with it."
 }
+
+output "external_dns_role_arn" {
+  value       = aws_iam_role.external_dns.arn
+  description = "IRSA role for external-dns. Wired by the addon; nothing to annotate by hand."
+}
+
+output "github_actions_ecr_role_arn" {
+  value       = aws_iam_role.github_ecr.arn
+  description = "Set as the AWS_ECR_ROLE_ARN repo variable in GitHub so the publish job can assume it."
+}
+
+output "ecr_registry" {
+  value       = split("/", aws_ecr_repository.app[var.ecr_repositories[0]].repository_url)[0]
+  description = "<account>.dkr.ecr.<region>.amazonaws.com — the registry host CI logs in to."
+}
