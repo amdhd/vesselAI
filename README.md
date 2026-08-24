@@ -6,7 +6,9 @@ A full-stack, AI-powered SaaS platform for oil & gas vessel fleet operators — 
 
 I built and hardened this solo as a demo-day portfolio piece for Forward Deployed Engineering roles. The parts of the FDE job that matter most — wiring agentic AI into real data, defending trust boundaries, and debugging integrations end-to-end rather than trusting that they work — are exactly what this project is set up to show, not just describe.
 
-**[The FDE headline features](#the-three-features-that-matter-for-an-fde) · [Data warehouse](#3-an-analytics-warehouse-duckdb--dbt-medallion) · [Demo credentials](#demo-mode) · [What's real vs. mocked](#whats-real-vs-mocked) · [Engineering notes](#engineering-notes) · [How this maps to an FDE role](#how-this-maps-to-an-fde-role)**
+**It also runs on Kubernetes, twice.** The same manifests deploy to a local k3d cluster and to a real **AWS EKS** cluster built from an empty account by Terraform — VPC, ECR, IRSA, an ALB with an ACM certificate, KMS-encrypted Secrets, GitOps reconciliation by Argo CD, and a measured load test on both. The EKS run is where the interesting failures were: nine bugs that a laptop cluster could not have surfaced, each one written up in [Running on Kubernetes](#running-on-kubernetes) rather than quietly fixed.
+
+**[The FDE headline features](#the-three-features-that-matter-for-an-fde) · [Data warehouse](#3-an-analytics-warehouse-duckdb--dbt-medallion) · [Kubernetes & EKS](#running-on-kubernetes) · [Demo credentials](#demo-mode) · [What's real vs. mocked](#whats-real-vs-mocked) · [Engineering notes](#engineering-notes) · [How this maps to an FDE role](#how-this-maps-to-an-fde-role)**
 
 ---
 
@@ -361,6 +363,28 @@ GET    /api/sire/findings/:vesselId
 │   ├── dashboard.py        Streamlit dashboard over the gold tables
 │   └── data/               data/raw/*.csv in, vesselmind.duckdb warehouse out
 ├── frontend-angular/       Angular ops dashboard over the same backend API
+├── k8s/                    Kubernetes manifests — one base, two clusters
+│   ├── base/               Namespace through ResourceQuota, heavily commented
+│   ├── overlays/dev/       k3d: local registry, laptop-sized quotas
+│   ├── overlays/prod/      EKS: ALB ingress, gp3 storage, GHCR digests, re-sealed secrets
+│   ├── overlays/prod-monitoring/  EKS-only Grafana ingress
+│   ├── aws/                Vendored controllers with no managed addon (LB controller,
+│   │                       cluster autoscaler, sealed secrets) — pinned, not fetched
+│   ├── argocd/             Argo CD config: least-privilege RBAC, AppProject, Applications
+│   ├── jobs/               Break-glass restore Job
+│   ├── loadtest/           k6 script + in-cluster Job
+│   └── scripts/            Pre-apply checks (quota headroom, image refs), EKS re-seal
+├── terraform/              EKS from an empty AWS account
+│   ├── vpc.tf              Subnets with the discovery tags the ALB controller needs
+│   ├── eks.tf              Control plane + the OIDC provider IRSA depends on
+│   ├── nodes.tf            Node group sized from measured demand, not guessed
+│   ├── addons.tf           EBS CSI (IRSA), VPC CNI (NetworkPolicy + prefix delegation)
+│   ├── external-dns.tf     Route 53 writes scoped to one hosted zone
+│   ├── github-oidc.tf      CI pushes to ECR with no stored AWS keys
+│   ├── kms.tf              Envelope encryption for Secrets; EBS encrypted by default
+│   ├── policies/           Vendored upstream IAM policy, with an honest README
+│   └── Makefile            `make destroy` in the order that actually works
+├── docs/EKS.md             Bootstrap runbook — each step says what breaks if run early
 ├── docker-compose.yml      + docker-compose.prod.yml
 └── .env.example
 ```
@@ -394,9 +418,24 @@ cd frontend && npx vercel deploy
 
 ## Running on Kubernetes
 
-The whole stack runs on a local k3d cluster (k3s v1.35.5, one server + two
-agents), deployed by Argo CD from this repository. Manifests live in `k8s/`;
-every non-obvious decision is commented in the file it applies to.
+The whole stack runs on **two** clusters from the same manifests: a local k3d
+cluster for development, and a real **AWS EKS** cluster provisioned by Terraform
+from an empty account. Both are deployed by Argo CD from this repository.
+Manifests live in `k8s/` (base + Kustomize overlays), infrastructure in
+`terraform/`; every non-obvious decision is commented in the file it applies to.
+
+| | k3d (local) | EKS (AWS) |
+|---|---|---|
+| Cluster | k3s v1.35.5, 1 server + 2 agents | EKS 1.36, 3× t3.medium |
+| Ingress | Traefik (bundled) | AWS Load Balancer Controller → one shared ALB |
+| TLS | Traefik self-signed | ACM wildcard, browser-trusted |
+| Storage | local-path | gp3 via EBS CSI, encrypted |
+| DNS | `localhost` | external-dns → Route 53 |
+| Secrets | Sealed Secrets | Sealed Secrets + KMS envelope encryption |
+| Cost | free | ~$0.28/hr, torn down after each session |
+
+The EKS side is a **burst** cluster: built, exercised, destroyed. Full procedure
+and the reasoning behind each step is in [`docs/EKS.md`](docs/EKS.md).
 
 ```bash
 k3d cluster create vesselmind --agents 2 \
@@ -539,6 +578,125 @@ duration is the correct procedure, and restoring it afterwards left the app
 drift without correcting it. Both behaviours are Phase 8 working exactly as
 configured, observed rather than assumed.
 
+### The EKS build — Terraform, IRSA, and what broke
+
+`terraform/` builds the cluster from an empty AWS account in ~20 minutes and
+`make destroy` removes it. 64 resources: VPC with public/private subnets across
+two AZs and one NAT gateway, six ECR repositories, EKS 1.36, a managed node
+group, five IAM roles, an ACM wildcard certificate, and a KMS key.
+
+```bash
+aws login --profile vesselmind
+export AWS_PROFILE=vesselmind-tf          # see docs/EKS.md for why the -tf wrapper exists
+terraform -chdir=terraform apply
+make -C terraform destroy                  # when finished
+```
+
+#### IRSA, which is the point of the phase
+
+Four workloads assume AWS roles through the cluster's OIDC provider rather than
+sharing the node's identity:
+
+| Workload | Role | What it does with it |
+|---|---|---|
+| EBS CSI driver | `vesselmind-ebs-csi` | Creates the gp3 volumes behind every PVC |
+| AWS Load Balancer Controller | `vesselmind-lb-controller` | Turns Ingress objects into one shared ALB |
+| Cluster Autoscaler | `vesselmind-cluster-autoscaler` | Resizes the node group's ASG |
+| external-dns | `vesselmind-external-dns` | Writes Route 53 records from Ingress hosts |
+
+The chain is: cluster publishes an OIDC issuer → `aws_iam_openid_connect_provider`
+registers it in IAM → a role's trust policy pins `sub` to
+`system:serviceaccount:<ns>:<name>` → the ServiceAccount is annotated → a webhook
+injects `AWS_ROLE_ARN` and a projected token → the SDK calls
+`AssumeRoleWithWebIdentity`.
+
+**The `sub` condition is the part that matters.** Omit it and the role still
+works — it is simply assumable by every pod in the cluster. Two of the four roles
+are hand-written least-privilege (external-dns writes are scoped to one hosted
+zone; the autoscaler can *see* every ASG but only *resize* ones tagged for this
+cluster). The load balancer controller's is vendored upstream verbatim — 80
+actions, 10 on `Resource: "*"` — and
+[`terraform/policies/README.md`](terraform/policies/README.md) says plainly that
+this is not least privilege, names the 13 actions that are dead weight here, and
+explains why they are still present.
+
+**A separate OIDC trust lets GitHub Actions push to ECR** with no stored AWS
+keys — same mechanism, different issuer, `sub` pinned to
+`repo:owner/name:ref:refs/heads/main` so a fork's pull request cannot obtain it.
+
+#### At rest
+
+Kubernetes Secrets are envelope-encrypted under a customer KMS key, and EBS
+encryption is on by default account-wide. Both were **missing** on the first
+build and found by reviewing the applied cluster rather than the code —
+`encryptionConfig` was `null` and `get-ebs-encryption-by-default` returned
+`False`, which meant the Postgres volume would have been plaintext with nothing
+in `kubectl get pvc` making that visible. Sealing secrets in git while leaving
+the in-cluster copy outside your own key boundary protects the repository and
+stops there.
+
+#### Nine bugs a laptop cluster could not surface
+
+Six existed because Phases 1–6 built resources by hand *before* Argo CD arrived,
+so nothing ever had to create its own preconditions. **The repo could not deploy
+itself from an empty cluster**, and only rebuilding from nothing showed it.
+
+| What broke | Why k3d hid it |
+|---|---|
+| `db-init` PreSync hook deadlocked — needs a ServiceAccount, Secret and database that are all Sync-phase | They already existed when Argo arrived |
+| StorageClass blocked by **three** separate allow-lists, each failing differently | Dev overlay has no StorageClass |
+| Argo could not create the `prometheus` ClusterRole (privilege escalation), which then **panicked the controller** | The role pre-existed, so Argo only *adopted* it |
+| HPA synced before the Deployment it targets | Same wave ordering on both, but nothing forced the issue |
+| A CronJob-only PVC blocked the sync forever under `WaitForFirstConsumer` | local-path binds immediately |
+| Grafana's SealedSecret was never re-sealed for the new cluster | Same key on the same cluster |
+| Pinned image digests **predated `/api/ready`**, so pods could never pass readiness | Images and manifests moved together locally |
+| NetworkPolicy blocked the ALB | k3s CNI, and Traefik is an in-cluster pod |
+| `/` is not a shared health endpoint — the API 404s on it | Traefik health-checks differently |
+
+Two more were introduced by the EKS work itself: external-dns had a duplicate
+`--txt-owner-id` flag *and* the wrong namespace in its trust policy — the crash
+was hiding the subtler bug underneath it.
+
+**The rule that falls out of four of these:** a resource must not sync earlier
+than whatever its *health* depends on. Sync waves order the apply, and Argo gates
+each wave on health, so a wave-0 resource whose health depends on wave 2 blocks
+the sync permanently rather than transiently.
+
+#### NetworkPolicy, finally proven
+
+The best of the nine. The site returned **504 over a valid TLS endpoint while
+every pod was `1/1 Ready`** — api and web target groups at `Target.Timeout`,
+Grafana healthy in the one namespace with no NetworkPolicy.
+
+The VPC CNI ignores NetworkPolicy unless `enableNetworkPolicy` is set, which
+`terraform/addons.tf` does. With `target-type: ip` the ALB connects from its own
+ENIs in the public subnets — not from a pod — so no `podSelector` or
+`namespaceSelector` could match it and default-deny dropped the traffic, health
+checks included.
+
+This README previously listed enforcement as *configured but unproven*, drawing
+the distinction that a policy configured to be enforced and one observed denying
+traffic are different things. **This is the observation.** The fix is an
+`ipBlock` scoped to the two public subnets — not the VPC, which would let every
+node and pod reach the API directly.
+
+#### Cost, and the teardown that actually works
+
+~$0.28/hour: EKS control plane $0.10, three t3.medium $0.125, NAT gateway
+$0.045, ALB and EBS the remainder. A full session costs $1–2.
+
+`make destroy` deletes the Argo Applications, then the namespaces, and only then
+runs `terraform destroy`. The order is not cosmetic: the ALB is created by a
+controller in response to an Ingress, and the PVC volumes by the CSI driver in
+response to a PVC — **neither is in Terraform state**. Destroying infrastructure
+first strands a billing load balancer and hangs the VPC delete on its ENIs.
+`make check-orphans` verifies afterwards rather than assuming.
+
+One residual charge is expected and cannot be avoided: a KMS key enters a 7-day
+pending-deletion window and bills ~$1/month until it goes, about $0.23. Seven
+days is the AWS minimum.
+
+
 ### Observability
 
 Prometheus and Grafana run in a `monitoring` namespace from hand-written
@@ -679,18 +837,31 @@ Running under Kubernetes surfaced real defects that Docker Compose never would:
 
 ### What is still missing
 
-- **The EKS layer is built but the app has never run on it.** `terraform/`
-  provisions a real cluster from an empty AWS account — VPC, ECR, EKS 1.36,
-  a managed node group, IRSA for the EBS CSI driver / load balancer controller /
-  cluster autoscaler, an ACM wildcard certificate, KMS envelope encryption for
-  Secrets. It has been applied and verified against live AWS, then destroyed.
-  What has *not* happened is the in-cluster half: the load balancer controller
-  manifest, secrets re-sealed against the new cluster's key, Argo CD, and the
-  workloads themselves. So "runs on EKS" is not yet a claim this repo can make.
-- **NetworkPolicy is unproven on EKS.** The VPC CNI ignores NetworkPolicy unless
-  `enableNetworkPolicy` is set, which `terraform/addons.tf` now does — but a
-  policy that is *configured* to be enforced and one that has been *observed*
-  denying traffic are different things, and only the second is worth claiming.
+- **The EKS cluster is not running right now, by design.** It is a burst
+  cluster: built from an empty account, exercised, destroyed. The app has served
+  real traffic on it over a browser-trusted certificate at
+  `vesselmind.ahmadhadi.org`, with Argo CD reconciling from this repository — but
+  there is no permanently running cloud deployment to point a reviewer at, and
+  standing one up costs ~$0.28/hour. What exists is the ability to recreate it in
+  about 20 minutes with one command.
+- **Image digests are still bumped by hand.** CI publishes
+  `ghcr.io/amdhd/vesselai-*:<sha>` and pushes to ECR on every merge, but nothing
+  writes the resulting digest back into the prod overlay. That gap bit for real:
+  the pinned images predated `/api/ready`, so every API pod deployed and then
+  failed readiness with a 404 on an endpoint the running image had never had.
+  Argo CD Image Updater, or a CI step that commits the digest, closes it.
+- **No alerting**, on either cluster — dashboards only, which is the largest
+  observability gap.
+- **Argo CD is not exposed publicly on EKS**, deliberately. It is the deployment
+  control plane, protected by a generated default password; reached by
+  `kubectl port-forward`. Publishing it needs the password rotated and SSO in
+  front, not just an Ingress.
+- **Cluster controllers are not under GitOps.** The load balancer controller,
+  autoscaler and Sealed Secrets are applied at bootstrap. Adopting them would
+  need Argo granted `kube-system` plus the ability to manage admission webhooks
+  cluster-wide — a real walk-back of the least-privilege RBAC. On a permanent
+  cluster the answer flips, under a separate AppProject; the reasoning is in
+  [`docs/EKS.md`](docs/EKS.md).
 - **Postgres storage is pinned to one availability zone, inherently.** An EBS
   volume cannot cross an AZ. The gp3 StorageClass uses
   `volumeBindingMode: WaitForFirstConsumer`, so the volume is created wherever
@@ -725,12 +896,14 @@ The Forward Deployed Engineer JD asks for specific things. Here's where each one
 | *Defend trust boundaries* | Fleet-scoped tenant isolation (`lib/tenant.ts`), IDOR fixes, prompt-injection guardrails on every AI surface, per-user AI rate limiting |
 | *Move a POC toward production* | Prisma migrations, Docker Compose, graceful DB/AI fallbacks, `X-AI-Fallback` observability, seeded demo scenarios |
 | *Communicate* | This README, honest "real vs. mocked" accounting, and commit messages that explain *why* |
+| *Run it where the customer runs it* | The same manifests deploy to k3d and to EKS built from an empty AWS account by Terraform — IRSA for per-pod IAM, an ALB with an ACM certificate, KMS-encrypted Secrets, GitOps reconciliation, and a teardown that removes what Terraform does not own ([Running on Kubernetes](#running-on-kubernetes)) |
+| *Debug what you deployed* | Nine bugs the EKS rebuild surfaced that a laptop cluster could not — including a GitOps deadlock that meant the repo could not deploy itself from empty, and a NetworkPolicy that was only *proven* enforced when it returned 504 with every pod healthy |
 
 ## Roadmap (honest gaps)
 
 Scoped, understood, and not yet built — I'd rather name these than imply they're done:
 
-- **Cloud infrastructure as code — written and verified, not yet carrying the app.** `terraform/` builds the cluster from an empty AWS account and `make destroy` tears it down in the order that actually works (namespaces first, so the controller-created ALB and PVC volumes are really deleted rather than orphaned and billing). Applied against live AWS and checked: IRSA proven end to end, prefix delegation verified at 110 pods per node, Secrets envelope-encrypted under a customer KMS key. The remaining work is deploying the workloads onto it — see [What is still missing](#what-is-still-missing).
+- **Cloud infrastructure as code — done, and it carried the app.** `terraform/` builds the cluster from an empty AWS account; `make destroy` tears it down in the order that actually works (namespaces first, so the controller-created ALB and PVC volumes are really deleted rather than orphaned and billing). The full stack ran on it behind an ACM certificate with Argo CD reconciling from git, and the nine bugs that surfaced are written up in [Running on Kubernetes](#running-on-kubernetes). What remains is closing the manual digest bump and adding alerting.
 - **Pipeline orchestration.** The medallion build is run on demand (`load_bronze.py` → `dbt build`). Production would want a scheduler (Dagster or Airflow), incremental models instead of full refreshes, and freshness alerting on the gold tables.
 - **Onboarding playbook.** A one-pager on how a new customer fleet gets connected, configured, and scoped for success — the deployment-motion half of the FDE job, not the code half.
 - **Remaining fixtures.** Equipment telemetry, SIRE findings, port congestion, and voyage history are still generated data. Swapping them for a customer's SCADA feed or class-society exports is the same ingestion pattern the three live pipelines already prove.
