@@ -14,6 +14,76 @@ resources:
   - storageclass-gp3.yaml
 
 patches:
+  # ---------------------------------------------------------------------------
+  # LET THE ALB REACH THE PODS.
+  #
+  # This is Phase 7's NetworkPolicy proving it is actually enforced — by
+  # breaking traffic. The base policies allow ingress from the kube-system
+  # namespace (where Traefik runs on k3d), from monitoring, and from pods in
+  # this namespace. None of those match an ALB.
+  #
+  # With alb.ingress.kubernetes.io/target-type: ip the load balancer connects
+  # from its OWN ENIs in the public subnets, straight to the pod IP. The source
+  # is not a pod, so no podSelector or namespaceSelector can ever match it, and
+  # a default-deny namespace drops the traffic — including the health checks.
+  # The symptom was a 504 from a valid TLS endpoint with every pod 1/1 Ready,
+  # and target groups reporting Target.Timeout while Grafana, in a namespace
+  # with no NetworkPolicy, stayed healthy. That contrast is the proof.
+  #
+  # ipBlock scoped to the two PUBLIC subnets (10.0.0.0/24, 10.0.1.0/24), which
+  # is where vpc.tf places the ALB — not the whole VPC. Allowing 10.0.0.0/16
+  # would also permit every node and every pod in the private subnets to reach
+  # the API directly, which is most of what the default-deny is for.
+  #
+  # k3d has no ALB and no such subnets, so this lives in the overlay. The dev
+  # cluster keeps the tighter policy.
+  # ---------------------------------------------------------------------------
+  - target:
+      kind: NetworkPolicy
+      name: allow-api-ingress
+    patch: |-
+      - op: add
+        path: /spec/ingress/0/from/-
+        value:
+          ipBlock:
+            cidr: 10.0.0.0/24
+      - op: add
+        path: /spec/ingress/0/from/-
+        value:
+          ipBlock:
+            cidr: 10.0.1.0/24
+
+  - target:
+      kind: NetworkPolicy
+      name: allow-web-ingress
+    patch: |-
+      - op: add
+        path: /spec/ingress/0/from/-
+        value:
+          ipBlock:
+            cidr: 10.0.0.0/24
+      - op: add
+        path: /spec/ingress/0/from/-
+        value:
+          ipBlock:
+            cidr: 10.0.1.0/24
+
+  # analytics is reached through the ALB too (path /api/analytics).
+  - target:
+      kind: NetworkPolicy
+      name: allow-analytics-ingress
+    patch: |-
+      - op: add
+        path: /spec/ingress/0/from/-
+        value:
+          ipBlock:
+            cidr: 10.0.0.0/24
+      - op: add
+        path: /spec/ingress/0/from/-
+        value:
+          ipBlock:
+            cidr: 10.0.1.0/24
+
   # SEALED SECRETS, re-sealed against the EKS cluster's key.
   #
   # k8s/base/02-sealedsecret.yaml is encrypted to the k3d controller's keypair
