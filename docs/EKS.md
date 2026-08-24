@@ -260,8 +260,31 @@ none of that applies.
 kubectl apply -f k8s/argocd/eks/
 ```
 
-Three Applications: the app (`k8s/overlays/prod`), monitoring
-(`k8s/overlays/prod-monitoring`), and the cluster components Argo now adopts.
+Two Applications: the app (`k8s/overlays/prod`) and monitoring
+(`k8s/overlays/prod-monitoring`).
+
+**The cluster controllers are deliberately NOT under Argo CD.** They stay
+applied by hand from step 3, and that is a decision rather than an omission.
+
+Adopting them would require granting Argo `kube-system` in its managed
+namespaces and allowing it to manage `CustomResourceDefinition`,
+`Validating`/`MutatingWebhookConfiguration` and `IngressClass`. Argo could then
+rewrite admission webhooks cluster-wide — a serious escalation path if it is
+ever compromised, and a walk-back of the least-privilege RBAC in #73, which
+replaced `cluster-admin` with hand-written Roles and scoped the controller's
+informers.
+
+For a burst cluster the trade is clearly bad: the benefit is drift detection on
+three controllers that change only when someone deliberately bumps a pinned
+version, and the cost is most of Phase 8's security posture.
+
+**On a permanent cluster the answer flips**, and the shape is worth knowing:
+manage platform components in GitOps under a *separate* AppProject from the
+application ones, scoped to `kube-system` with an explicit
+`clusterResourceWhitelist` — larger setups run a second Argo instance for
+platform entirely. Argo needing `kube-system` reach is inherent to managing
+anything there, not a flaw; what matters is that the *application* project never
+gains it.
 
 Note these point at `k8s/overlays/prod`, **not** `k8s/overlays/dev` —
 `k8s/argocd/01-application.yaml` targets dev and is what the k3d cluster

@@ -54,3 +54,32 @@ patches:
           # backends share one check and only `/` is common — this Ingress has a
           # single backend, so the check can be specific.
           alb.ingress.kubernetes.io/healthcheck-path: /api/health
+
+      # SERVE AT THE ROOT OF ITS OWN HOSTNAME.
+      #
+      # The base serves Grafana under /grafana because k3d routes everything
+      # through one localhost origin by path. Here it has a dedicated hostname,
+      # so the prefix is redundant — grafana.ahmadhadi.org/grafana/login works
+      # and grafana.ahmadhadi.org/ 404s, which is a confusing front door.
+      - op: replace
+        path: /spec/rules/0/http/paths/0/path
+        value: /
+
+  # Grafana must agree with the Ingress about where it lives. GF_SERVER_ROOT_URL
+  # and SERVE_FROM_SUB_PATH are set for the k3d /grafana prefix in the base;
+  # left unchanged, Grafana would keep generating /grafana/... links and
+  # redirecting to a path the ALB no longer routes.
+  - target:
+      kind: Deployment
+      name: grafana
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0
+        value:
+          name: GF_SERVER_ROOT_URL
+          value: https://grafana.ahmadhadi.org
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1
+        value:
+          name: GF_SERVER_SERVE_FROM_SUB_PATH
+          value: 'false'
