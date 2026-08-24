@@ -25,3 +25,16 @@ variable "az_count" {
   type        = number
   default     = 2
 }
+
+# The five images CI builds today — see .github/workflows/ci.yml.
+variable "ecr_repositories" {
+  description = "Image names to create ECR repositories for."
+  type        = list(string)
+  default = [
+    "vesselai-api",
+    "vesselai-web",
+    "vesselai-analytics",
+    "vesselai-migrate",
+    "vesselai-warehouse-builder",
+  ]
+}

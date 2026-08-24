@@ -12,3 +12,13 @@ output "private_subnet_ids" {
   value       = aws_subnet.private[*].id
   description = "Where the nodes live."
 }
+
+output "ecr_repository_urls" {
+  value       = { for k, v in aws_ecr_repository.app : k => v.repository_url }
+  description = "Push targets for CI, and the newName values the prod overlay needs."
+}
+
+output "ecr_postgres_mirror_url" {
+  value       = aws_ecr_repository.postgres_mirror.repository_url
+  description = "Mirror target for postgres:16-alpine."
+}
