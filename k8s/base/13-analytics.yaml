@@ -37,6 +37,9 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  annotations:
+    # Wave 2: after db-init in wave 1.
+    argocd.argoproj.io/sync-wave: '2'
   name: analytics
   namespace: vesselmind
 spec:

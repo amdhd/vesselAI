@@ -53,3 +53,24 @@ data:
     - apiGroups: ["bitnami.com"]
       kinds: ["SealedSecret"]
       clusters: ["*"]
+
+    # StorageClass, cluster-scoped, and needed only on EKS.
+    #
+    # k8s/overlays/prod ships a gp3 StorageClass because EKS's default gp2 uses
+    # the in-tree provisioner and cannot expand volumes. Without this entry Argo
+    # refuses to manage it:
+    #
+    #   ExcludedResourceWarning: Resource storage.k8s.io/StorageClass gp3 is
+    #   excluded in the settings
+    #
+    # The Application then reports Healthy while every PVC stays Pending,
+    # because the class they name does not exist. Healthy-but-not-working is the
+    # worst shape a status can take, and it is what an allow-list produces when
+    # it falls behind the manifests it is meant to bound.
+    #
+    # The dev overlay has no StorageClass, so this widens what Argo may touch on
+    # k3d for no benefit there — the honest cost of one shared inclusion list
+    # across two clusters.
+    - apiGroups: ["storage.k8s.io"]
+      kinds: ["StorageClass"]
+      clusters: ["*"]

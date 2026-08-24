@@ -9,6 +9,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  annotations:
+    # Wave 2: after the db-init Job in wave 1. Starting before migrations have
+    # run is the exact failure the Job exists to prevent.
+    argocd.argoproj.io/sync-wave: '2'
   name: api
   namespace: vesselmind
 spec:
