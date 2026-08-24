@@ -1,0 +1,64 @@
+# Cluster Autoscaler, pinned to 1.36 to match the control plane.
+#
+# WHAT IT DOES HERE: the HPA scales pods; without this nothing scales nodes.
+# Three t3.medium give ~5.79 CPU allocatable and the API HPA alone is allowed
+# 20 replicas x 250m = 5.0 CPU, so at peak the last replicas have nowhere to
+# go. terraform/autoscaler.tf sets node_max_size = 5 and the ASG discovery
+# tags; this is the process that acts on them.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - cluster-autoscaler-autodiscover.yaml
+
+patches:
+  # IRSA. Same story as the load balancer controller: unannotated, it falls
+  # back to the node role, which has no autoscaling permissions, and every
+  # attempt to raise desired capacity fails with AccessDenied while pods stay
+  # Pending — which reads as a broken autoscaler rather than a missing
+  # credential.
+  #
+  # terraform output cluster_autoscaler_role_arn.
+  - target:
+      kind: ServiceAccount
+      name: cluster-autoscaler
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          eks.amazonaws.com/role-arn: arn:aws:iam::149751500899:role/vesselmind-cluster-autoscaler
+
+  - target:
+      kind: Deployment
+      name: cluster-autoscaler
+    patch: |-
+      # *** VERSION SKEW — the one upstream default that is actively wrong ***
+      #
+      # Cluster Autoscaler is versioned in lockstep with Kubernetes and must
+      # match the control plane's MINOR version. Upstream's example pins
+      # v1.32.1; this cluster runs 1.36. Skew does not fail cleanly — it
+      # surfaces as the autoscaler misreading scheduling predicates, so it
+      # declines to scale up when it should, or removes nodes it should not.
+      # Bump this whenever cluster_version in terraform/variables.tf moves.
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: registry.k8s.io/autoscaling/cluster-autoscaler:v1.36.1
+
+      # ASG auto-discovery by tag. Upstream's placeholder is literally
+      # "<YOUR CLUSTER NAME>". These two tags are set on the ASG by
+      # terraform/autoscaler.tf — and the second one is also the IAM condition
+      # key that authorises SetDesiredCapacity, so discovery and permission are
+      # deliberately the same fact.
+      - op: replace
+        path: /spec/template/spec/containers/0/command/6
+        value: --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/vesselmind
+
+      # Spread scale-up across AZs rather than piling onto whichever group the
+      # expander happened to pick. With one node group per AZ this keeps the
+      # zone topology spread constraint in 05-api-deployment.yaml satisfiable —
+      # a soft constraint the scheduler cannot honour is a constraint that
+      # quietly does nothing.
+      - op: add
+        path: /spec/template/spec/containers/0/command/-
+        value: --balance-similar-node-groups
+
