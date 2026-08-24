@@ -616,9 +616,29 @@ Running under Kubernetes surfaced real defects that Docker Compose never would:
 
 ### What is still missing
 
-- **No cloud deployment yet.** This is a local cluster; EKS with IRSA and
-  Terraform is the next phase, and NetworkPolicy will need re-proving there since
-  the default VPC CNI does not enforce it.
+- **The EKS layer is built but the app has never run on it.** `terraform/`
+  provisions a real cluster from an empty AWS account — VPC, ECR, EKS 1.36,
+  a managed node group, IRSA for the EBS CSI driver / load balancer controller /
+  cluster autoscaler, an ACM wildcard certificate, KMS envelope encryption for
+  Secrets. It has been applied and verified against live AWS, then destroyed.
+  What has *not* happened is the in-cluster half: the load balancer controller
+  manifest, secrets re-sealed against the new cluster's key, Argo CD, and the
+  workloads themselves. So "runs on EKS" is not yet a claim this repo can make.
+- **NetworkPolicy is unproven on EKS.** The VPC CNI ignores NetworkPolicy unless
+  `enableNetworkPolicy` is set, which `terraform/addons.tf` now does — but a
+  policy that is *configured* to be enforced and one that has been *observed*
+  denying traffic are different things, and only the second is worth claiming.
+- **Postgres storage is pinned to one availability zone, inherently.** An EBS
+  volume cannot cross an AZ. The gp3 StorageClass uses
+  `volumeBindingMode: WaitForFirstConsumer`, so the volume is created wherever
+  the pod is first scheduled rather than in an arbitrary zone — that removes the
+  "volume node affinity conflict" failure at *first* start. It does not survive
+  a node loss: once the volume exists, the pod can only ever reschedule onto a
+  node in that same AZ, so an AZ outage takes the database down until the AZ
+  returns. This is the same shape as the local-path limitation on k3d, with a
+  different mechanism. Real answers are RDS Multi-AZ (managed failover) or
+  in-cluster replication via CloudNativePG; a StatefulSet plus an EBS volume is
+  neither, and is not made into one by adding replicas.
 - **No alerting**, only dashboards.
 - **Image tags are pinned by hand**, so a deploy still means editing a manifest.
   Closing that loop needs Argo CD Image Updater or a CI step that commits the tag.
@@ -647,7 +667,7 @@ The Forward Deployed Engineer JD asks for specific things. Here's where each one
 
 Scoped, understood, and not yet built — I'd rather name these than imply they're done:
 
-- **Cloud infrastructure as code.** The *workloads* are now fully declarative — Kubernetes manifests with Kustomize overlays, reconciled by Argo CD ([Running on Kubernetes](#running-on-kubernetes)). What is still missing is the layer underneath: the cluster itself is created by a `k3d` command on a laptop. Terraform for EKS, with IRSA for pod-level IAM, is the next piece — and the one that makes this reproducible from an empty AWS account.
+- **Cloud infrastructure as code — written and verified, not yet carrying the app.** `terraform/` builds the cluster from an empty AWS account and `make destroy` tears it down in the order that actually works (namespaces first, so the controller-created ALB and PVC volumes are really deleted rather than orphaned and billing). Applied against live AWS and checked: IRSA proven end to end, prefix delegation verified at 110 pods per node, Secrets envelope-encrypted under a customer KMS key. The remaining work is deploying the workloads onto it — see [What is still missing](#what-is-still-missing).
 - **Pipeline orchestration.** The medallion build is run on demand (`load_bronze.py` → `dbt build`). Production would want a scheduler (Dagster or Airflow), incremental models instead of full refreshes, and freshness alerting on the gold tables.
 - **Onboarding playbook.** A one-pager on how a new customer fleet gets connected, configured, and scoped for success — the deployment-motion half of the FDE job, not the code half.
 - **Remaining fixtures.** Equipment telemetry, SIRE findings, port congestion, and voyage history are still generated data. Swapping them for a customer's SCADA feed or class-society exports is the same ingestion pattern the three live pipelines already prove.

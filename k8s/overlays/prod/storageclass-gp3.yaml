@@ -1,0 +1,68 @@
+# gp3 storage for EKS. Lives in the prod overlay, not the base, because
+# ebs.csi.aws.com does not exist on k3d — the base deliberately omits
+# storageClassName so local development gets k3d's local-path provisioner.
+#
+# WHAT WAS WRONG WITH THE DEFAULT: EKS ships a StorageClass named `gp2` that
+# uses the IN-TREE provisioner (kubernetes.io/aws-ebs) with
+# allowVolumeExpansion: false. A PVC that names no class lands there, which
+# means the Postgres volume would have been legacy-provisioned, unexpandable,
+# and — before EBS encryption-by-default was turned on — unencrypted, with
+# nothing in `kubectl get pvc` making any of that visible.
+#
+# THREE FIELDS BELOW ARE LOAD-BEARING:
+#
+#   volumeBindingMode: WaitForFirstConsumer
+#     The most important line in this file. With Immediate, the volume is
+#     provisioned as soon as the PVC exists — in whatever AZ the controller
+#     picks — and if the scheduler later puts the pod in the OTHER AZ, the pod
+#     can never start: an EBS volume cannot cross an availability zone. The
+#     symptom is a Pending pod with "volume node affinity conflict", which
+#     names the cause but only if you know to read it that way.
+#     WaitForFirstConsumer defers provisioning until the pod is scheduled, so
+#     the volume is created where the pod actually is.
+#
+#     This narrows the AZ problem but does NOT remove it. Once the volume
+#     exists it is pinned to that AZ forever, so if the node hosting Postgres
+#     dies, the pod can only reschedule onto a node in the same AZ. That is
+#     inherent to EBS, not a misconfiguration — see the README's production
+#     section.
+#
+#   encrypted: "true"
+#     Redundant with the account-wide EBS default set in terraform/kms.tf, and
+#     deliberately so. The account setting is ambient configuration a reader of
+#     this repo cannot see; stating it here keeps the manifest honest about what
+#     it REQUIRES rather than what it happens to get. If these manifests are
+#     ever applied to an account without that default, this line is what stops
+#     the database landing on plaintext storage.
+#
+#   reclaimPolicy: Delete
+#     Deleting the PVC deletes the EBS volume. Retain would keep it — safer for
+#     a production database, and wrong here: an unattached volume bills forever
+#     and is invisible to `terraform destroy`, which is precisely the orphan
+#     class `make check-orphans` exists to catch. For a three-day burst cluster,
+#     leaking storage is the likelier accident than losing data.
+#
+# NOT MARKED AS THE CLUSTER DEFAULT. EKS's gp2 class already claims that
+# annotation, and two defaults is a state Kubernetes handles badly — a PVC that
+# names no class becomes ambiguous. Rather than fight over it, both PVCs below
+# name gp3 explicitly, which is better practice anyway: storage class is a
+# deployment decision worth stating out loud. To make gp3 the default as well,
+# strip the annotation from gp2 first:
+#   kubectl patch storageclass gp2 -p \
+#     '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  encrypted: "true"
+  # gp3 includes 3000 IOPS and 125 MB/s at no extra cost, independent of volume
+  # size — which is the main reason it beats gp2, where throughput scales with
+  # capacity and a small volume is therefore a slow one. Left at the included
+  # baseline; raising either is a per-GB charge.
+  fsType: ext4
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete

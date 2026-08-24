@@ -72,3 +72,8 @@ output "hostnames" {
   value       = local.hostnames
   description = "Hostnames the ingress will serve, all covered by the wildcard certificate."
 }
+
+output "cluster_autoscaler_role_arn" {
+  value       = aws_iam_role.cluster_autoscaler.arn
+  description = "IRSA role for cluster-autoscaler. Annotate the kube-system/cluster-autoscaler service account with it."
+}
