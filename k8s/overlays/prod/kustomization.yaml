@@ -14,6 +14,38 @@ resources:
   - storageclass-gp3.yaml
 
 patches:
+  # PER-BACKEND ALB HEALTH CHECKS.
+  #
+  # The Ingress-level healthcheck-path applies to every target group. These two
+  # backends do not answer it: the API 404s on / (verified from inside the pod —
+  # / is 404, /api/ready is 200), and analytics serves /health. Without these
+  # overrides their target groups sit at Target.Timeout and the ALB returns 504
+  # while every pod is 1/1 Ready, which is a genuinely confusing failure.
+  #
+  # Set on the SERVICE, not the Ingress: the load balancer controller merges
+  # Service annotations into the target group it builds for that backend, which
+  # is the only way to differ per backend from one Ingress.
+  - target:
+      kind: Service
+      name: api
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          # Same endpoint the kubelet readiness probe uses (PR #74) — it tests
+          # the database, so an api pod that cannot reach Postgres is pulled
+          # from the ALB as well as from the Service.
+          alb.ingress.kubernetes.io/healthcheck-path: /api/ready
+
+  - target:
+      kind: Service
+      name: analytics
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          alb.ingress.kubernetes.io/healthcheck-path: /health
+
   # ---------------------------------------------------------------------------
   # LET THE ALB REACH THE PODS.
   #
@@ -317,14 +349,20 @@ patches:
           # cluster is rebuilt, and wrong in a way that fails at ALB creation
           # rather than at render. Discovery is stable across rebuilds.
 
-          # Health checks are ALB-wide for this Ingress and cannot differ per
-          # backend from here. `/` is the only path all four backends answer;
-          # the API's real readiness endpoint is /api/ready (PR #74), which is
-          # what the kubelet probe uses. VERIFY IN-CLUSTER whether per-service
-          # health-check overrides via Service annotations are honoured by
-          # v3.5.0 before assuming the API target group is checking the right
-          # thing — the kubelet probe already gates Service membership, so this
-          # is defence in depth rather than the primary signal.
+          # DEFAULT health check path, overridden per backend below.
+          #
+          # An Ingress-level health check applies to EVERY target group it
+          # creates, and the four backends do not share a health endpoint:
+          # web serves /, the API answers /api/ready and 404s on /, analytics
+          # answers /health. With a single `/` the web target group went healthy
+          # while api and analytics reported Target.Timeout — a 504 from a
+          # perfectly healthy set of pods.
+          #
+          # `/` stays here as the default because web is the catch-all backend;
+          # the two that differ carry Service-level overrides. That per-Service
+          # override is honoured by v3.5.0 — verified against the running
+          # controller by annotating the api Service and watching the target
+          # group's HealthCheckPath change to /api/ready, not assumed from docs.
           alb.ingress.kubernetes.io/healthcheck-path: /
 
 # ---------------------------------------------------------------------------
