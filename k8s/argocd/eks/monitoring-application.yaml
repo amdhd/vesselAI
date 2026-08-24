@@ -1,0 +1,24 @@
+# Monitoring, pointed at the EKS-specific overlay so Grafana gets an ALB
+# Ingress instead of a Traefik one.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vesselmind-monitoring
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: vesselmind
+  source:
+    repoURL: https://github.com/amdhd/vesselAI.git
+    targetRevision: main
+    path: k8s/overlays/prod-monitoring
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=true
