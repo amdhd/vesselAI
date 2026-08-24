@@ -476,6 +476,69 @@ deployment held at 8 replicas rather than flapping.
 - The rate limit was raised for the test, in the dev overlay, and labelled as a
   load-testing setting rather than passed off as a production default.
 
+
+#### The same test on EKS
+
+Re-run against the EKS cluster (3x t3.medium, EKS 1.36), k6 running **inside**
+the cluster as a Job against the `api` Service. In-cluster rather than from a
+laptop for two reasons: driving us-east-1 over the internet puts 200ms+ of WAN
+round trip into every sample and measures the internet rather than the
+application, and the Phase 7 NetworkPolicy only admits in-namespace pods anyway.
+
+| Metric | k3d (laptop) | EKS |
+|---|---|---|
+| Requests | 85,534 | 41,310 |
+| Throughput | 473.6 req/s | **227.1 req/s** |
+| Latency p95 | 11.04 ms | **287.5 ms** |
+| Latency median | 3.87 ms | 102.7 ms |
+| Failed requests | 0 | **0** |
+| Rate-limited (429) | 0 | **0** |
+| Replicas | 3 → 8 | **3 → 10** |
+| CPU at steady state | — | **~60%** (target is 60%) |
+
+**EKS is roughly half the throughput and 25x the p95, and that is the honest
+result rather than a disappointing one.** Three things account for it, and none
+is a misconfiguration:
+
+- **t3.medium is burstable.** Baseline is 20% of 2 vCPU; a sustained run drains
+  CPU credits and throttles to that baseline. A laptop core has no such ceiling.
+  For numbers that measure the application rather than the credit balance, run
+  this on `c5.large` — non-burstable, and about the same hourly price.
+- **Real network.** Pod-to-pod and pod-to-Postgres hops cross an AZ boundary
+  rather than a loopback interface.
+- **Postgres on EBS**, not the laptop's NVMe.
+
+What the run does demonstrate cleanly is the autoscaler. Sampled every 10s:
+
+```
+t+030s  cpu=14%   desired=3   ready=3
+t+040s  cpu=14%   desired=7   ready=3     <- HPA reacts
+t+050s  cpu=153%  desired=7   ready=3
+t+060s  cpu=192%  desired=10  ready=7
+t+070s  cpu=188%  desired=10  ready=10    <- ~30s decision to Ready
+t+090s  cpu=65%   desired=10  ready=10
+t+150s  cpu=60%   desired=10  ready=10    <- converged on the 60% target
+t+180s  cpu=3%    desired=10  ready=10    <- load gone, replicas held
+```
+
+The last two lines are the interesting ones. CPU converged to 60% — the HPA's
+own target — and then, once load stopped, replicas stayed at 10 rather than
+collapsing. That is the 300s scale-down stabilisation window, and seeing it hold
+is the point of measuring rather than assuming.
+
+The cluster autoscaler had nothing to do: 10 replicas fit on the existing three
+nodes, so no node was added. `node_max_size = 5` bounds what it could have done.
+
+**One operational note worth recording.** The first attempt failed its
+thresholds with 100% 429s. The prod rate limit is 200 requests per 15 minutes
+per IP, and a load generator is one IP. Raising it by hand did not survive —
+Argo CD reverted the ConfigMap mid-test, because a merge had just landed and
+auto-sync applied git over the drift. Pausing `syncPolicy.automated` for the
+duration is the correct procedure, and restoring it afterwards left the app
+`OutOfSync` until an explicit sync, since `selfHeal: false` means Argo *detects*
+drift without correcting it. Both behaviours are Phase 8 working exactly as
+configured, observed rather than assumed.
+
 ### Observability
 
 Prometheus and Grafana run in a `monitoring` namespace from hand-written
