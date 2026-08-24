@@ -211,8 +211,21 @@ destroy-apps: ## Step 1-2: remove Argo apps + namespaces so the ALB and EBS volu
 	kubectl delete namespace $(ARGOCD_NS) --ignore-not-found --timeout=$(WAIT); \
 	echo "==> Namespaces gone. Safe to destroy the infrastructure."
 
-destroy-infra: guard-tf ## Step 3: terraform destroy (only safe AFTER destroy-apps)
-	terraform destroy -var="cluster_name=$(CLUSTER_NAME)" -var="region=$(REGION)"
+# AUTO_APPROVE=1 skips terraform's interactive confirmation.
+#
+# Not the default, because `destroy` should make you look at the plan once. But
+# WITHOUT this escape hatch the target is unusable from any non-interactive
+# context — a script, CI, or an agent — and fails with
+#
+#   Error: error asking for approval: EOF
+#
+# AFTER destroy-apps has already deleted every namespace. That is the worst
+# possible stopping point: the application is gone and the infrastructure is
+# still billing, which is precisely the state `make destroy` exists to avoid.
+APPROVE := $(if $(AUTO_APPROVE),-auto-approve,)
+
+destroy-infra: guard-tf ## Step 3: terraform destroy (only safe AFTER destroy-apps). AUTO_APPROVE=1 to skip the prompt.
+	terraform destroy $(APPROVE) -var="cluster_name=$(CLUSTER_NAME)" -var="region=$(REGION)"
 
 # ---------------------------------------------------------------------------
 # Verification
