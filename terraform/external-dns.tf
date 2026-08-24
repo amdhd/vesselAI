@@ -65,7 +65,16 @@ data "aws_iam_policy_document" "external_dns_assume_role" {
     condition {
       test     = "StringEquals"
       variable = "${local.oidc_host}:sub"
-      values   = ["system:serviceaccount:kube-system:external-dns"]
+      # NAMESPACE IS external-dns, NOT kube-system. Unlike the EBS CSI driver
+      # and the load balancer controller, this addon creates and deploys into
+      # its OWN namespace. Getting this wrong produces a trust policy that
+      # never matches: the ServiceAccount carries the role annotation, the pod
+      # gets a projected token, and every AssumeRoleWithWebIdentity is denied
+      # with an error that does not mention the namespace. Verified against the
+      # running addon rather than assumed:
+      #   kubectl get sa -A -o custom-columns=NS:.metadata.namespace,\
+      #     NAME:.metadata.name,ROLE:.metadata.annotations.'eks\.amazonaws\.com/role-arn'
+      values = ["system:serviceaccount:external-dns:external-dns"]
     }
 
     condition {
@@ -112,10 +121,18 @@ resource "aws_eks_addon" "external_dns" {
     # A record recording that it owns it, and refuses to modify records without
     # one. Without this it cannot distinguish a record it created from one a
     # human added, and "sync" would happily delete hand-made records that
-    # happened to match. The owner id must be unique per cluster — two clusters
-    # sharing an id will fight over the same records.
-    registry  = "txt"
-    extraArgs = ["--txt-owner-id=${var.cluster_name}"]
+    # happened to match.
+    #
+    # NO --txt-owner-id IN extraArgs. The addon sets that flag itself, and
+    # adding a second copy is fatal, not merely redundant:
+    #
+    #   level=fatal msg="flag parsing error: flag 'txt-owner-id' cannot be repeated"
+    #
+    # The pod CrashLoopBackOffs and the addon sits in CREATING until it times
+    # out — so the failure surfaces as a stuck `terraform apply` rather than as
+    # anything mentioning a duplicate flag. Anything the addon configures
+    # through its own schema must not be repeated through extraArgs.
+    registry = "txt"
   })
 
   depends_on = [aws_eks_node_group.main]
