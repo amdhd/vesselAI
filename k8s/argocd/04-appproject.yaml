@@ -44,6 +44,29 @@ spec:
       kind: ClusterRole
     - group: rbac.authorization.k8s.io
       kind: ClusterRoleBinding
+    # Needed by the EKS overlay's gp3 class (k8s/overlays/prod). EKS's default
+    # gp2 uses the in-tree provisioner and cannot expand volumes.
+    #
+    # THIS IS THE THIRD OF THREE INDEPENDENT GATES, and adding a cluster-scoped
+    # kind means updating all of them. Each fails differently and none mentions
+    # the others:
+    #
+    #   1. resource.inclusions in argocd-cm (05-resource-inclusions.yaml)
+    #      -> "Resource storage.k8s.io/StorageClass gp3 is excluded in the
+    #         settings", reported as a WARNING while the Application claims
+    #         Healthy — the most misleading of the three.
+    #   2. the controller's ClusterRole (03-controller-rbac.yaml)
+    #      -> forbidden at sync time.
+    #   3. this whitelist
+    #      -> "resource storage.k8s.io:StorageClass is not permitted in project
+    #         vesselmind".
+    #
+    # Defence in depth working as designed, and worth knowing the shape of:
+    # inclusions bound what Argo WATCHES, RBAC bounds what it CAN DO, and the
+    # project bounds what this APPLICATION may deploy. They are deliberately not
+    # derived from one another.
+    - group: storage.k8s.io
+      kind: StorageClass
 
   # NAMESPACED RESOURCES ARE LEFT UNRESTRICTED, deliberately.
   #

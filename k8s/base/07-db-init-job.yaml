@@ -77,7 +77,33 @@ metadata:
   # Outside Argo (plain `kubectl apply -k`) the annotations are inert and the
   # delete-then-apply dance in the runbook still applies.
   annotations:
-    argocd.argoproj.io/hook: PreSync
+    # SYNC, NOT PreSync — and this was a real bug, not a preference.
+    #
+    # As a PreSync hook this Job deadlocked on any cluster where the app did not
+    # already exist. It needs three things that are all Sync-phase resources:
+    # the `batch` ServiceAccount, the vesselmind-secrets Secret for DATABASE_URL,
+    # and a Postgres to connect to. PreSync runs to completion BEFORE the Sync
+    # phase starts, so none of them could exist yet:
+    #
+    #   pods "db-init-" is forbidden: serviceaccount "batch" not found
+    #
+    # and had that been fixed, wait-for-db would have spun forever against a
+    # StatefulSet that the blocked Sync phase could never create.
+    #
+    # It worked on k3d only because Phases 1-6 built all of that before Phase 8
+    # introduced Argo CD — the Job never had to create its own preconditions.
+    # Rebuilding from an empty AWS account is what exposed it.
+    #
+    # Sync phase + sync-wave 1 keeps the property Phase 3 actually wanted — the
+    # API never starts against an unmigrated database — while letting wave 0
+    # (ServiceAccounts, Secrets, Postgres) exist first. Argo waits for each wave
+    # to be Healthy before starting the next, so the ordering guarantee is the
+    # same one an initContainer would give, at the right granularity.
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: '1'
+    # Still BeforeHookCreation: a Job's pod template is immutable, so re-applying
+    # a changed Job over a completed one fails. Deleting first is what makes a
+    # migration image bump deployable.
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   # How many times the whole Job may fail before Kubernetes gives up. Low on

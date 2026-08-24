@@ -51,6 +51,41 @@ rules:
   - apiGroups: ['rbac.authorization.k8s.io']
     resources: ['clusterroles', 'clusterrolebindings']
     verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  # StorageClass is cluster-scoped, so permission cannot live in the namespaced
+  # Roles below. Needed by the EKS overlay's gp3 class.
+  #
+  # This is one half of a pair: 05-resource-inclusions.yaml must ALSO list the
+  # kind. Argo needs both, and missing either fails differently — a missing
+  # inclusion says "excluded in the settings", a missing RBAC rule fails at sync
+  # with forbidden. Neither error mentions the other half.
+  - apiGroups: ['storage.k8s.io']
+    resources: ['storageclasses']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  # Cluster-wide READ on pods, held only so the controller may CREATE the
+  # `prometheus` ClusterRole, which grants exactly this.
+  #
+  # Kubernetes forbids granting a permission you do not hold. Without this the
+  # monitoring sync fails:
+  #
+  #   clusterroles "prometheus" is forbidden: user
+  #   "system:serviceaccount:argocd:argocd-application-controller" is attempting
+  #   to grant RBAC permissions not currently held:
+  #   {APIGroups:[""], Resources:["pods"], Verbs:["get" "list" "watch"]}
+  #
+  # WHY THIS ONLY SURFACED ON A FRESH CLUSTER: on k3d the prometheus ClusterRole
+  # already existed, applied by hand before #69 brought monitoring under GitOps,
+  # so Argo only ever had to ADOPT it — and adopting an identical role escalates
+  # nothing. Creating it from scratch is the first time the check fires. A
+  # config that works because of history rather than because it is correct is
+  # exactly what a rebuild from empty is for.
+  #
+  # The alternative is the `escalate` verb, which is deliberately absent (see
+  # the note above) because it would let the controller grant ANY permission,
+  # not just this one. Mirroring the specific grant is the narrower answer:
+  # read-only, and it widens only as far as the manifest it has to create.
+  - apiGroups: ['']
+    resources: ['pods']
+    verbs: ['get', 'list', 'watch']
 ---
 # Namespaced permissions, granted only where Argo actually deploys. Paired with
 # the `namespaces: vesselmind,monitoring` field on the in-cluster Secret, which
