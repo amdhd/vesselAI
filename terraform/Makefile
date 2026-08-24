@@ -95,6 +95,19 @@ SHELL := /bin/bash
 # failure the ordering exists to prevent.
 .NOTPARALLEL:
 
+# Terraform cannot read `aws login`'s credential cache, and exporting a snapshot
+# with `aws configure export-credentials --format env` expires mid-apply — which
+# killed two applies during Phase 9. This profile wraps the login session in a
+# credential_process the AWS SDK re-invokes on demand:
+#
+#   aws configure set credential_process \
+#     "aws configure export-credentials --profile vesselmind --format process" \
+#     --profile vesselmind-tf
+#
+# Override with AWS_PROFILE=... if your profile is named differently.
+AWS_PROFILE ?= vesselmind-tf
+export AWS_PROFILE
+
 CLUSTER_NAME ?= vesselmind
 REGION       ?= us-east-1
 NAMESPACE    ?= vesselmind

@@ -30,13 +30,45 @@ The order is load-bearing. Each step explains what breaks if it runs early.
 
 ```bash
 aws login --profile vesselmind
-export AWS_PROFILE=vesselmind
-eval "$(aws configure export-credentials --profile vesselmind --format env)"
+export AWS_PROFILE=vesselmind-tf
 ```
 
-The `eval` is not optional. `aws login` caches credentials where only the AWS
-CLI looks; Terraform uses the AWS Go SDK and fails with "No valid credential
-sources found" despite a perfectly valid session.
+Note the **`-tf` suffix** — that is a second profile that exists solely so
+Terraform can read the session:
+
+```ini
+[profile vesselmind-tf]
+credential_process = aws configure export-credentials --profile vesselmind --format process
+region = us-east-1
+```
+
+**Why a wrapper profile rather than the obvious `eval`.** `aws login` caches
+credentials in a location only the AWS CLI reads. Terraform uses the AWS Go SDK,
+which does not know about that cache, so pointing it at `vesselmind` directly
+fails with "No valid credential sources found" despite a perfectly valid
+session. The documented workaround is:
+
+```bash
+eval "$(aws configure export-credentials --profile vesselmind --format env)"   # don't
+```
+
+That works and is a trap. It exports a **frozen snapshot** with a fixed expiry,
+and a full apply takes 15–20 minutes. Both apply attempts during this phase died
+partway through when the snapshot expired:
+
+```
+Error: waiting for EKS Node Group create: ExpiredTokenException
+Error: waiting for EKS Add-On (aws-ebs-csi-driver) create: ExpiredTokenException
+```
+
+Neither was an infrastructure failure — AWS created the resources fine, and
+Terraform lost the ability to poll them, leaving a tainted node group and four
+addons missing from state. Recovering meant `terraform untaint` and a reconcile
+apply, twice.
+
+`credential_process` is a mechanism the **SDK** understands: instead of holding a
+snapshot, it re-invokes the CLI whenever it needs a credential, so a long apply
+refreshes itself. Set the profile once and no `eval` is ever needed again.
 
 ### 2. Infrastructure
 
