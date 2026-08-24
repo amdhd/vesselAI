@@ -10,6 +10,8 @@ namespace: vesselmind
 
 resources:
   - ../../base
+  # AWS-only. The base has no StorageClass at all, because k3d supplies one.
+  - storageclass-gp3.yaml
 
 patches:
   - target:
@@ -105,6 +107,47 @@ patches:
       - op: replace
         path: /spec/hard/pods
         value: '60'
+
+  # STORAGE CLASS, named explicitly on both claims.
+  #
+  # The base omits storageClassName so k3d falls through to local-path. On EKS
+  # that fall-through lands on the gp2 class EKS ships — in-tree provisioner,
+  # no volume expansion — so both claims have to say what they want. See
+  # storageclass-gp3.yaml for why gp3 is not simply made the default instead.
+  #
+  # `add` rather than `replace`: the field does not exist in the base, and
+  # replace on a missing path fails the render rather than creating it.
+  - target:
+      kind: StatefulSet
+      name: postgres
+    patch: |-
+      - op: add
+        path: /spec/volumeClaimTemplates/0/spec/storageClassName
+        value: gp3
+
+  # The pg_dump backup volume. Easy to forget precisely because it is not the
+  # database — but a backup on unexpandable legacy storage is a backup that
+  # fails at the least convenient moment.
+  - target:
+      kind: PersistentVolumeClaim
+      name: postgres-backups
+    patch: |-
+      - op: add
+        path: /spec/storageClassName
+        value: gp3
+
+  # The DuckDB warehouse volume (k8s/base/13-analytics.yaml). Third of three,
+  # and the one that was missed on the first pass — found by rendering the
+  # overlay and listing every claim rather than by reading the files, which is
+  # the only reliable way to catch a PVC that lives inside a service manifest
+  # rather than in an obviously storage-shaped file.
+  - target:
+      kind: PersistentVolumeClaim
+      name: warehouse
+    patch: |-
+      - op: add
+        path: /spec/storageClassName
+        value: gp3
 
 # ---------------------------------------------------------------------------
 # IMAGES — this is what makes the overlay deployable to EKS at all.
