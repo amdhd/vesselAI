@@ -150,9 +150,14 @@ patches:
       kind: PersistentVolumeClaim
       name: postgres-backups
     patch: |-
+      # gp3-IMMEDIATE, not gp3. This claim's only consumer is the pg_dump
+      # CronJob, so with WaitForFirstConsumer nothing claims it between runs and
+      # it sits Pending — which Argo reads as unhealthy and refuses to advance
+      # past, blocking the sync permanently. Immediate binding costs AZ-aware
+      # placement, which a nightly backup does not need.
       - op: add
         path: /spec/storageClassName
-        value: gp3
+        value: gp3-immediate
 
   # The DuckDB warehouse volume (k8s/base/13-analytics.yaml). Third of three,
   # and the one that was missed on the first pass — found by rendering the
@@ -163,9 +168,17 @@ patches:
       kind: PersistentVolumeClaim
       name: warehouse
     patch: |-
+      # Stays on gp3 (WaitForFirstConsumer) because Deployment/analytics is an
+      # always-running consumer — the volume binds where that pod is scheduled,
+      # which is the AZ-aware behaviour worth keeping. Moved to wave 2 so it is
+      # applied alongside analytics rather than waiting, unclaimed, in wave 0.
       - op: add
         path: /spec/storageClassName
         value: gp3
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-wave: '2'
 
   # ---------------------------------------------------------------------------
   # INGRESS: Traefik -> AWS Application Load Balancer.
