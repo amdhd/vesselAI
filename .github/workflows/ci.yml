@@ -1,6 +1,13 @@
 name: CI
 
 on:
+  # Manual trigger. Added because the ECR publish steps are gated on the
+  # AWS_ECR_ROLE_ARN repo variable (set only while the burst cluster exists),
+  # and that condition is evaluated when the job STARTS. Setting the variable
+  # after a run has begun silently skips the push — the run goes green having
+  # published nothing to ECR, which is worse than failing. Without a manual
+  # trigger the only way to re-run with the variable set is an unrelated commit.
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
