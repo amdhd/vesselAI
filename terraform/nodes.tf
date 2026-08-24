@@ -90,7 +90,24 @@ resource "aws_eks_node_group" "main" {
   # to something larger would make prefix delegation optional again, and
   # dropping prefix delegation while keeping t3.medium reintroduces the limit.
 
-  depends_on = [aws_iam_role_policy_attachment.node]
+  # ORDERING IS LOAD-BEARING HERE, not just tidiness.
+  #
+  # The kubelet's --max-pods is computed at BOOTSTRAP. If these nodes come up
+  # while vpc-cni still has its default settings, they are pinned to 17 pods
+  # each regardless of the prefix-delegation config landing moments later, and
+  # only a node recycle fixes it. The symptom is the one prefix delegation
+  # exists to prevent — pods Pending on IP exhaustion with CPU and memory free —
+  # while `kubectl describe addon` shows the setting correctly applied, which is
+  # a maddening combination to debug.
+  #
+  # VERIFY AFTER APPLY, do not assume:
+  #   kubectl get nodes -o jsonpath='{.items[*].status.allocatable.pods}'
+  # Expect 110. If it reports 17, the ordering did not take and the node group
+  # needs recycling.
+  depends_on = [
+    aws_iam_role_policy_attachment.node,
+    aws_eks_addon.vpc_cni,
+  ]
 
   tags = { Name = "${var.cluster_name}-nodes" }
 
