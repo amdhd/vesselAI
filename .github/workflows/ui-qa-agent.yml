@@ -60,13 +60,7 @@ concurrency:
 
 env:
   AWS_REGION: ap-southeast-1
-  # PINNED TO THE CANDIDATE, NOT main, FOR THIS MEASUREMENT ONLY.
-  # This branch is a DO-NOT-MERGE test corpus. The harness fix it needs
-  # (read_timeout + retries disabled on InvokeAgentRuntime) is on that branch
-  # and not yet merged, and without it a paced run outlives the default read
-  # timeout and gets RETRIED -- starting a second and third agent session
-  # concurrently, which then throttle each other. Revert to main once merged.
-  PIPELINEGUARD_REF: fix/rubric-read-the-values
+  PIPELINEGUARD_REF: main
 
 jobs:
   qa:
