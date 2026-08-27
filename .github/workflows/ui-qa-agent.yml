@@ -241,14 +241,34 @@ jobs:
             --json-out findings.json \
             --comment-out comment.md
 
+      # The harness writes comment.md for every outcome INCLUDING failures, so a
+      # missing file means the harness itself died. Reporting that is more useful
+      # than failing on `cat: No such file` -- which is what the first real run
+      # did, three steps and one misleading error away from the actual cause
+      # (Bedrock throttling).
+      - name: Ensure there is something to report
+        if: always()
+        run: |
+          if [ ! -s comment.md ]; then
+            {
+              echo "<!-- pipelineguard-qa-agent -->"
+              echo "## 🚫 QA agent — harness did not produce a report"
+              echo
+              echo "The harness exited without writing \`comment.md\`, which means it"
+              echo "failed before it could render one. The cause is in this job's"
+              echo "**Run the QA agent** step, and — if the runtime was reached at all —"
+              echo "in its CloudWatch log group."
+            } > comment.md
+          fi
+
       - name: Post findings
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh pr comment "${{ github.event.pull_request.number }}" --body-file comment.md
 
       - name: Report outside a PR
-        if: github.event_name != 'pull_request'
+        if: always() && github.event_name != 'pull_request'
         run: cat comment.md >> "$GITHUB_STEP_SUMMARY"
 
       # Hygiene, not a guarantee. On a GitHub-hosted runner the machine is
