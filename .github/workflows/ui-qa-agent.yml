@@ -294,16 +294,35 @@ jobs:
       # (Bedrock throttling).
       - name: Ensure there is something to report
         if: always()
+        # Two very different reasons for a missing report, and the message has to
+        # tell them apart. When the health gate stops the job the agent step is
+        # SKIPPED -- pointing the reader at "the Run the QA agent step and its
+        # CloudWatch logs" then sends them to a step that never executed and a
+        # log group with nothing in it. Confirmed on the criterion-3 negative
+        # test, where the gate correctly refused and the comment blamed the agent.
+        env:
+          QA_OUTCOME: ${{ steps.qa.outcome }}
         run: |
           if [ ! -s comment.md ]; then
             {
               echo "<!-- pipelineguard-qa-agent -->"
-              echo "## 🚫 QA agent — harness did not produce a report"
-              echo
-              echo "The harness exited without writing \`comment.md\`, which means it"
-              echo "failed before it could render one. The cause is in this job's"
-              echo "**Run the QA agent** step, and — if the runtime was reached at all —"
-              echo "in its CloudWatch log group."
+              if [ "$QA_OUTCOME" = "skipped" ]; then
+                echo "## 🚫 QA agent — not invoked"
+                echo
+                echo "The job stopped before the agent ran, so there are no findings"
+                echo "and **no agent session was paid for** — which is the health"
+                echo "gate working as intended, not a failure of the agent."
+                echo
+                echo "The cause is in an earlier step of this job; **Health gate** is"
+                echo "the usual one, and its annotation says which assertion failed."
+              else
+                echo "## 🚫 QA agent — harness did not produce a report"
+                echo
+                echo "The harness exited without writing \`comment.md\`, which means it"
+                echo "failed before it could render one. The cause is in this job's"
+                echo "**Run the QA agent** step, and — if the runtime was reached at all —"
+                echo "in its CloudWatch log group."
+              fi
             } > comment.md
           fi
 
