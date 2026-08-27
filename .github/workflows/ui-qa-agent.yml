@@ -38,6 +38,17 @@ on:
   # paths: keeps the agent off docs-only PRs. data-platform, k8s, terraform and
   # frontend-angular cannot affect the React UI under test.
   pull_request:
+    # types MUST be declared. The default is opened/synchronize/reopened, which
+    # does NOT include `labeled` -- so adding agent-qa to an existing PR did
+    # nothing, and the label 1d calls the single most effective cost control
+    # could not actually start a run. Confirmed the hard way: PR #95 was opened
+    # WITH the label and the job was SKIPPED, because the label lands a moment
+    # after the `opened` payload is built. A skipped job is green, so it reads
+    # as "the agent found nothing" rather than "the agent never ran".
+    #
+    # `labeled` fires on ANY label; the contains(...'agent-qa') guard on the job
+    # is what keeps an unrelated label from starting a paid run.
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - "frontend/**"
       - "backend/**"
@@ -61,6 +72,13 @@ concurrency:
 env:
   AWS_REGION: ap-southeast-1
   PIPELINEGUARD_REF: main
+  # Pinned, and checksummed. This file SHA-pins every action on the argument
+  # that a mutable tag "runs inside a job holding id-token: write" -- which
+  # applies with more force to a 40 MB binary we chmod +x and execute. Cloudflare
+  # publishes no checksum asset, so this digest was computed from the pinned
+  # release and must be updated with the version.
+  CLOUDFLARED_VERSION: "2026.8.2"
+  CLOUDFLARED_SHA256: "fcfb02b575a52ca1af2e3267af4e1517bcdeb30ac48c834c69abaed3c0576ad2"
 
 jobs:
   qa:
@@ -118,6 +136,11 @@ jobs:
       - name: Install harness deps
         run: pip install --quiet boto3
 
+      # Runner minutes are the one cost figure the agent cannot know about
+      # itself, and Phase 1's exit criteria require them in the comment.
+      - name: Mark start
+        run: echo "JOB_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+
       # POSTGRES_PASSWORD and JWT_SECRET are required-with-no-default in the
       # compose file. Both are ephemeral -- the stack lives minutes and dies with
       # the runner -- so they are GENERATED rather than stored. A stored secret
@@ -152,7 +175,8 @@ jobs:
       - name: Open tunnel
         run: |
           curl -fsSL -o cloudflared \
-            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+            "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64"
+          echo "${CLOUDFLARED_SHA256}  cloudflared" | sha256sum -c -
           chmod +x cloudflared
           ./cloudflared tunnel --no-autoupdate --url http://localhost:8080 \
             > tunnel.log 2>&1 &
@@ -166,7 +190,11 @@ jobs:
             echo "::error::tunnel did not produce a URL"; cat tunnel.log; exit 1
           fi
           echo "TARGET_URL=$URL" >> "$GITHUB_ENV"
-          echo "::notice::target $URL"
+          # The URL itself is deliberately NOT logged. PLAN.md 1e: a quick tunnel
+          # is an unauthenticated public URL with no reason to be written
+          # anywhere durable -- "not into the PR comment, not into the findings
+          # JSON, not into logs". A ::notice:: on a public repo is all three.
+          echo "::notice::tunnel is up"
 
       # THE HEALTH GATE. Prime directive 5: assert the deploy before invoking any
       # agent. Every assertion runs against the TUNNEL, not localhost, because
@@ -178,6 +206,19 @@ jobs:
         run: |
           set -euo pipefail
           fail() { echo "::error::health gate: $1"; exit 1; }
+
+          # From Secrets Manager, not hardcoded. These credentials are public in
+          # the README, so this is not about exposure -- it is about DRIFT: a
+          # gate asserting its own literals would keep passing after the secret
+          # rotated, while every agent run failed to log in and reported it as
+          # "never authenticated", pointing the reader at the login page instead
+          # of at the secret. It is also what makes the CI role's
+          # GetSecretValue statement true to its stated justification.
+          creds=$(aws secretsmanager get-secret-value \
+            --secret-id "${{ vars.QA_SECRET_ARN }}" \
+            --query SecretString --output text)
+          QA_EMAIL=$(printf '%s' "$creds" | python3 -c 'import json,sys; print(json.load(sys.stdin)["QA_TARGET_EMAIL"])')
+          QA_PASSWORD=$(printf '%s' "$creds" | python3 -c 'import json,sys; print(json.load(sys.stdin)["QA_TARGET_PASSWORD"])')
 
           for _ in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$TARGET_URL/" || true)
@@ -221,22 +262,27 @@ jobs:
             && fail "served HTML contains 'undefined' — the frontend build is missing config" || true
 
           echo "::notice::health gate passed — SPA, analytics JSON, seeded login, fleet read"
-        env:
-          QA_EMAIL: demo@petronas.com
-          QA_PASSWORD: demo123
 
       - name: Run the QA agent
         id: qa
         continue-on-error: true
+        # ${{ }} is substituted BEFORE the shell sees this script, so a
+        # workflow_dispatch input interpolated into the command is not an
+        # argument -- it is source code, in a job holding id-token: write. Both
+        # inputs therefore arrive through env and are quoted by the shell.
+        env:
+          QA_MODEL: ${{ inputs.model }}
+          QA_MAX_ROUTES: ${{ inputs.max_routes || 8 }}
         run: |
           python .pipelineguard/agents/qa/harness/main.py \
             --runtime-arn "${{ vars.QA_RUNTIME_ARN }}" \
             --target-url "$TARGET_URL" \
             --region "$AWS_REGION" \
             --secret-arn "${{ vars.QA_SECRET_ARN }}" \
-            --session-label "gh-${{ github.run_id }}" \
-            --max-routes "${{ inputs.max_routes || 8 }}" \
-            ${{ inputs.model && format('--model {0}', inputs.model) || '' }} \
+            --session-label "gh-${{ github.run_id }}-${{ github.run_attempt }}" \
+            --max-routes "$QA_MAX_ROUTES" \
+            --runner-minutes "$(( ( $(date +%s) - JOB_STARTED + 59 ) / 60 ))" \
+            ${QA_MODEL:+--model "$QA_MODEL"} \
             $( [ "$LIVE_AI" = "1" ] && echo --live-ai ) \
             --json-out findings.json \
             --comment-out comment.md
@@ -248,16 +294,35 @@ jobs:
       # (Bedrock throttling).
       - name: Ensure there is something to report
         if: always()
+        # Two very different reasons for a missing report, and the message has to
+        # tell them apart. When the health gate stops the job the agent step is
+        # SKIPPED -- pointing the reader at "the Run the QA agent step and its
+        # CloudWatch logs" then sends them to a step that never executed and a
+        # log group with nothing in it. Confirmed on the criterion-3 negative
+        # test, where the gate correctly refused and the comment blamed the agent.
+        env:
+          QA_OUTCOME: ${{ steps.qa.outcome }}
         run: |
           if [ ! -s comment.md ]; then
             {
               echo "<!-- pipelineguard-qa-agent -->"
-              echo "## 🚫 QA agent — harness did not produce a report"
-              echo
-              echo "The harness exited without writing \`comment.md\`, which means it"
-              echo "failed before it could render one. The cause is in this job's"
-              echo "**Run the QA agent** step, and — if the runtime was reached at all —"
-              echo "in its CloudWatch log group."
+              if [ "$QA_OUTCOME" = "skipped" ]; then
+                echo "## 🚫 QA agent — not invoked"
+                echo
+                echo "The job stopped before the agent ran, so there are no findings"
+                echo "and **no agent session was paid for** — which is the health"
+                echo "gate working as intended, not a failure of the agent."
+                echo
+                echo "The cause is in an earlier step of this job; **Health gate** is"
+                echo "the usual one, and its annotation says which assertion failed."
+              else
+                echo "## 🚫 QA agent — harness did not produce a report"
+                echo
+                echo "The harness exited without writing \`comment.md\`, which means it"
+                echo "failed before it could render one. The cause is in this job's"
+                echo "**Run the QA agent** step, and — if the runtime was reached at all —"
+                echo "in its CloudWatch log group."
+              fi
             } > comment.md
           fi
 
