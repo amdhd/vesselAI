@@ -379,7 +379,7 @@ router.get('/findings/:vesselId', authenticate, (req: AuthenticatedRequest, res:
     })),
     summary: {
       total: findings.length,
-      open: findings.filter(f => f.status === 'open').length,
+      open: findings.filter(f => f.status === 'OPEN').length,
       closed: findings.filter(f => f.status === 'closed').length,
       nonConformances: findings.filter(f => f.severity === 'non-conformance').length,
       observations: findings.filter(f => f.severity === 'observation').length,

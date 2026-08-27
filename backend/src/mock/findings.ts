@@ -7,7 +7,7 @@ export interface MockSireFinding {
   finding: string;
   severity: 'observation' | 'non-conformance';
   correctiveAction: string | null;
-  status: 'open' | 'closed';
+  status: 'OPEN' | 'closed';
   dueDate: string | null;
   closedAt: string | null;
   createdAt: string;
@@ -156,7 +156,7 @@ export const MOCK_SIRE_INSPECTIONS: MockSireInspection[] = [
         finding: 'CRITICAL: Oil Record Book Part I had 12 consecutive days with no entries despite vessel being underway. Chief Engineer could not explain the gap. Bilge overboard valve seals showed evidence of tampering. Inspector unable to verify compliance with MARPOL Annex I during this period.',
         severity: 'non-conformance',
         correctiveAction: null,
-        status: 'open',
+        status: 'OPEN',
         dueDate: daysFromNow(25),
         closedAt: null,
         createdAt: daysAgo(65),
@@ -170,7 +170,7 @@ export const MOCK_SIRE_INSPECTIONS: MockSireInspection[] = [
         finding: 'Main engine cylinder unit overhauls are overdue by 2,100 running hours beyond manufacturer recommended interval. No approved deviation from class surveyor on file. Engine running hours log showed 22,400 hours since last overhaul against recommended 20,000 hour interval.',
         severity: 'non-conformance',
         correctiveAction: null,
-        status: 'open',
+        status: 'OPEN',
         dueDate: daysFromNow(15),
         closedAt: null,
         createdAt: daysAgo(65),
@@ -198,7 +198,7 @@ export const MOCK_SIRE_INSPECTIONS: MockSireInspection[] = [
         finding: 'Three smoke detectors in engine room (ER-SD-007, ER-SD-012, ER-SD-018) showed fault condition on main fire panel. Chief Engineer stated they have been in fault for 6 weeks pending spare parts order.',
         severity: 'observation',
         correctiveAction: 'Emergency work order raised. Spare detectors being sourced from Singapore agent. Chief Engineer monitoring manually until parts arrive.',
-        status: 'open',
+        status: 'OPEN',
         dueDate: daysFromNow(10),
         closedAt: null,
         createdAt: daysAgo(65),
@@ -281,7 +281,7 @@ export const MOCK_SIRE_INSPECTIONS: MockSireInspection[] = [
         finding: 'Sewage treatment plant effluent quality test log showed no entries for the past 14 days. Chief Engineer stated the plant was operating normally but tests were not being recorded.',
         severity: 'observation',
         correctiveAction: 'Daily testing resumed with proper logging. Weekly testing frequency confirmed compliant with MARPOL Annex IV requirements.',
-        status: 'open',
+        status: 'OPEN',
         dueDate: daysFromNow(20),
         closedAt: null,
         createdAt: daysAgo(90),
@@ -303,5 +303,5 @@ export const getInspectionsByVesselId = (vesselId: string): MockSireInspection[]
 };
 
 export const getOpenFindings = (vesselId: string): MockSireFinding[] => {
-  return MOCK_SIRE_FINDINGS.filter((f) => f.vesselId === vesselId && f.status === 'open');
+  return MOCK_SIRE_FINDINGS.filter((f) => f.vesselId === vesselId && f.status === 'OPEN');
 };
