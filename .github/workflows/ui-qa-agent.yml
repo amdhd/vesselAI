@@ -1,0 +1,271 @@
+name: UI QA agent
+
+# Drives a browser over this app and reports what it OBSERVES, as findings JSON
+# rendered into a PR comment. The agent itself lives in AgentCore Runtime in
+# PipelineGuard's account (149751500899 / ap-southeast-1); this workflow stands
+# the app up, proves it is healthy, and invokes the agent.
+#
+# THE TARGET IS THIS COMPOSE STACK, NOT EKS. Chromium cannot tell what is behind
+# a URL, and the bug class being hunted -- contract drift, NaN renders, blank
+# charts, unguarded React crashes -- reproduces identically here. EKS costs
+# ~$0.37/hr and 20-30 minutes to reach a testable URL; compose costs runner
+# minutes and ~3. EKS QA stays a deliberate manual exercise.
+
+on:
+  # Manual: the only path that may point at a REAL AI key.
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Bedrock inference profile (blank = cheap rung)
+        required: false
+        type: string
+      max_routes:
+        description: Cap on routes explored
+        required: false
+        default: "8"
+        type: string
+      live_ai:
+        description: Use a real ANTHROPIC_API_KEY (costs money, see below)
+        required: false
+        default: false
+        type: boolean
+
+  # A cron carries no label, so it is the one trigger that can bill unattended.
+  # Gated on the QA_SCHEDULE_ENABLED repo variable, default off.
+  schedule:
+    - cron: "0 3 * * 1"
+
+  # paths: keeps the agent off docs-only PRs. data-platform, k8s, terraform and
+  # frontend-angular cannot affect the React UI under test.
+  pull_request:
+    paths:
+      - "frontend/**"
+      - "backend/**"
+      - ".github/workflows/ui-qa-agent.yml"
+
+# Least privilege at the GitHub layer. pull-requests: write is for the findings
+# comment and is the only write scope; note it does NOT grant push.
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+# event_name is in the key deliberately: schedule and workflow_dispatch both
+# present refs/heads/main, so keying on ref alone would let a manual run cancel
+# a regression sweep mid-session. With cancel-in-progress that kills a paid
+# AgentCore session for nothing.
+concurrency:
+  group: ui-qa-agent-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: ap-southeast-1
+  PIPELINEGUARD_REF: main
+
+jobs:
+  qa:
+    name: QA agent
+    runs-on: ubuntu-latest
+    # Sized for a ~3 min stack build plus the agent's own wall-clock cap, and no
+    # more. Affordable precisely because the target is not a 20-minute cluster.
+    timeout-minutes: 25
+
+    # THE FORK GUARD. This is the control that keeps a fork PR away from AWS
+    # credentials, and it is not optional.
+    #
+    # The IAM trust policy CANNOT do it: GitHub mints the token with
+    # sub = repo:amdhd/vesselAI:pull_request for fork and same-repo PRs alike,
+    # so the enumerated subject list cannot tell them apart. GitHub currently
+    # caps fork-PR permissions at read on a public repo, so id-token: write is
+    # never granted -- but that is a platform default, not our control, and the
+    # admin setting that lifts it applies to private repos.
+    #
+    # The label gate below helps (a fork author cannot self-label) but collapses
+    # the moment a maintainer labels a fork PR to review it, which is the normal
+    # thing to do. So: an explicit guard.
+    if: >-
+      (github.event_name != 'pull_request' ||
+        (github.event.pull_request.head.repo.fork == false &&
+         contains(github.event.pull_request.labels.*.name, 'agent-qa'))) &&
+      (github.event_name != 'schedule' || vars.QA_SCHEDULE_ENABLED == 'true')
+
+    steps:
+      - name: Checkout the app
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      # The harness lives in PipelineGuard, next to the agent it invokes and the
+      # schema both halves validate against. Checked out rather than vendored so
+      # the two cannot drift -- a copied schema that falls behind would accept
+      # findings the agent can no longer produce.
+      - name: Checkout the QA harness
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: amdhd/pipelineguard
+          ref: ${{ env.PIPELINEGUARD_REF }}
+          path: .pipelineguard
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@cabfdba3510de1431bac9dba27511d97497fc100 # v5
+        with:
+          role-to-assume: ${{ vars.QA_AGENT_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install harness deps
+        run: pip install --quiet boto3
+
+      # POSTGRES_PASSWORD and JWT_SECRET are required-with-no-default in the
+      # compose file. Both are ephemeral -- the stack lives minutes and dies with
+      # the runner -- so they are GENERATED rather than stored. A stored secret
+      # is one to rotate; a generated one cannot leak from anywhere.
+      #
+      # ANTHROPIC_API_KEY defaults to a DUMMY. vesselAI's AI paths all fall back
+      # deterministically and flag it, so the app runs fine and the rubric is
+      # told it is in fallback mode. A live billable key behind a public tunnel
+      # is a spend liability in two directions: outward (trycloudflare hostnames
+      # are scanned) and inward (the agent itself exercises chat surfaces every
+      # run). Real key only on an attended workflow_dispatch.
+      - name: Compose environment
+        run: |
+          {
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)"
+            echo "JWT_SECRET=$(openssl rand -hex 32)"
+          } >> "$GITHUB_ENV"
+          if [ "${{ inputs.live_ai }}" = "true" ]; then
+            echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> "$GITHUB_ENV"
+            echo "LIVE_AI=1" >> "$GITHUB_ENV"
+          else
+            echo "ANTHROPIC_API_KEY=dummy-fallback-mode-not-a-real-key" >> "$GITHUB_ENV"
+            echo "LIVE_AI=0" >> "$GITHUB_ENV"
+          fi
+
+      # --wait blocks on the healthchecks the compose file already declares, so
+      # postgres is healthy and migrate + seed have COMPLETED before anything
+      # downstream runs. No hand-rolled polling needed.
+      - name: Start the stack
+        run: docker compose -f docker-compose.prod.yml up -d --build --wait
+
+      - name: Open tunnel
+        run: |
+          curl -fsSL -o cloudflared \
+            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x cloudflared
+          ./cloudflared tunnel --no-autoupdate --url http://localhost:8080 \
+            > tunnel.log 2>&1 &
+          echo $! > tunnel.pid
+          for _ in $(seq 1 30); do
+            URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' tunnel.log | head -1 || true)
+            [ -n "$URL" ] && break
+            sleep 2
+          done
+          if [ -z "${URL:-}" ]; then
+            echo "::error::tunnel did not produce a URL"; cat tunnel.log; exit 1
+          fi
+          echo "TARGET_URL=$URL" >> "$GITHUB_ENV"
+          echo "::notice::target $URL"
+
+      # THE HEALTH GATE. Prime directive 5: assert the deploy before invoking any
+      # agent. Every assertion runs against the TUNNEL, not localhost, because
+      # the tunnel is the path the agent will actually use.
+      #
+      # If this fails we stop WITHOUT invoking the agent -- the point is to never
+      # spend a browser session reporting the pipeline's own bug.
+      - name: Health gate
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::health gate: $1"; exit 1; }
+
+          for _ in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$TARGET_URL/" || true)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          [ "${code:-}" = "200" ] || fail "SPA did not return 200 (got ${code:-none})"
+
+          # JSON, not HTML. Also proves nginx's longest-prefix match reaches the
+          # FastAPI service rather than falling through to the SPA -- a
+          # misconfigured prefix returns index.html with a 200 and looks fine.
+          ct=$(curl -s -o /dev/null -w '%{content_type}' --max-time 10 "$TARGET_URL/api/analytics/health" || true)
+          case "$ct" in
+            application/json*) ;;
+            *) fail "/api/analytics/health returned '$ct', expected JSON — nginx routing or analytics service is wrong" ;;
+          esac
+
+          # A real login. This is the assertion that proves `seed` ran, and it
+          # only proves it because the backend runs with NODE_ENV=production:
+          # DEMO_LOGIN_ENABLED is `NODE_ENV !== 'production'` (backend/src/lib/
+          # jwtConfig.ts), so the demo-credential fallback is OFF and the
+          # credentials must come from the seeded database.
+          #
+          # If anyone sets NODE_ENV=development in the compose file, this
+          # assertion silently stops proving anything.
+          token=$(curl -s --max-time 15 -X POST "$TARGET_URL/api/auth/login" \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\":\"$QA_EMAIL\",\"password\":\"$QA_PASSWORD\"}" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token",""))' 2>/dev/null || true)
+          [ -n "$token" ] || fail "login returned no token — the database is probably not seeded"
+
+          # An authenticated, Postgres-backed read. Proves the whole chain, not
+          # just that a token was minted.
+          fleet=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+            -H "Authorization: Bearer $token" "$TARGET_URL/api/fleet" || true)
+          [ "$fleet" = "200" ] || fail "/api/fleet returned $fleet with a valid token"
+
+          # A bundle that shipped without its API config renders a broken app and
+          # the agent would faithfully report it as one.
+          curl -s --max-time 15 "$TARGET_URL/" | grep -q 'undefined' \
+            && fail "served HTML contains 'undefined' — the frontend build is missing config" || true
+
+          echo "::notice::health gate passed — SPA, analytics JSON, seeded login, fleet read"
+        env:
+          QA_EMAIL: demo@petronas.com
+          QA_PASSWORD: demo123
+
+      - name: Run the QA agent
+        id: qa
+        continue-on-error: true
+        run: |
+          python .pipelineguard/agents/qa/harness/main.py \
+            --runtime-arn "${{ vars.QA_RUNTIME_ARN }}" \
+            --target-url "$TARGET_URL" \
+            --region "$AWS_REGION" \
+            --secret-arn "${{ vars.QA_SECRET_ARN }}" \
+            --session-label "gh-${{ github.run_id }}" \
+            --max-routes "${{ inputs.max_routes || 8 }}" \
+            ${{ inputs.model && format('--model {0}', inputs.model) || '' }} \
+            $( [ "$LIVE_AI" = "1" ] && echo --live-ai ) \
+            --json-out findings.json \
+            --comment-out comment.md
+
+      - name: Post findings
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment "${{ github.event.pull_request.number }}" --body-file comment.md
+
+      - name: Report outside a PR
+        if: github.event_name != 'pull_request'
+        run: cat comment.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Hygiene, not a guarantee. On a GitHub-hosted runner the machine is
+      # destroyed regardless -- which is the whole reason this design has no
+      # reaper, no TTL tags and no orphan sweep. Written anyway so moving to a
+      # self-hosted runner is not a landmine.
+      - name: Tear down
+        if: always()
+        run: |
+          [ -f tunnel.pid ] && kill "$(cat tunnel.pid)" 2>/dev/null || true
+          docker compose -f docker-compose.prod.yml down -v || true
+
+      # The harness exits 1 for blocking findings and 2 for a failed run. Both
+      # fail the job, but the distinction survives in the log: a broken harness
+      # must not read as a clean application.
+      - name: Apply the agent's verdict
+        if: steps.qa.outcome == 'failure'
+        run: |
+          echo "::error::QA agent reported blocking findings or failed to complete"
+          exit 1

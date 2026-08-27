@@ -32,6 +32,11 @@ RUN npm run build
 # rescan on every CI run that is the right trade; for a pinned artifact it would
 # not be.
 FROM nginxinc/nginx-unprivileged:1.29-alpine AS runtime
+# This stage already ran `apk upgrade` and STILL shipped CVE-2026-14456. The
+# upgrade was never the problem -- Docker restored the layer from the GHA cache
+# and never re-executed it. APK_REFRESH busts that layer; see the longer note in
+# backend/Dockerfile.prod.
+ARG APK_REFRESH=0
 USER root
 RUN apk upgrade --no-cache
 USER 101
