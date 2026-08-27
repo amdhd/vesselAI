@@ -53,6 +53,10 @@ RUN npm run build
 # docker-compose.prod.yml targets `build` for its migrate/seed one-offs, which
 # call npx and genuinely need npm.
 FROM build AS migrate
+# Same OS-package patching as the runtime stage; this stage is scanned and
+# published in its own right (matrix target: migrate), so it needs it too.
+ARG APK_REFRESH=0
+RUN apk upgrade --no-cache
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # ---- prune (production node_modules only; generated client is preserved) ----
@@ -68,7 +72,20 @@ WORKDIR /app
 # so the orchestrator can shut the app down cleanly.
 # openssl: the Prisma *query* engine needs it at runtime too, not just for
 # migrations. dumb-init gives us a real PID 1 (see below).
-RUN apk add --no-cache dumb-init openssl
+# Patch OS packages that the base image has fallen behind on.
+#
+# APK_REFRESH exists ONLY to bust Docker's layer cache. `--no-cache` is an APK
+# flag -- it stops apk caching its package index -- and does NOTHING about the
+# Docker layer, which is what actually gets reused. With cache-from/cache-to
+# type=gha in CI, an `apk upgrade` layer is restored from cache and never
+# re-executes, so it stays frozen at whatever package versions existed when it
+# was first built. That is how CVE-2026-14456 (libcrypto3 3.5.7-r0, fixed in
+# 3.5.8-r0) survived an image that already ran `apk upgrade`.
+#
+# CI passes the run id, so this layer re-runs every build. Everything below it
+# is cheap to rebuild, which is why it sits here rather than earlier.
+ARG APK_REFRESH=0
+RUN apk add --no-cache dumb-init openssl && apk upgrade --no-cache
 
 # Remove npm and npx from the runtime image. The container's command is
 # `node dist/server.js` — npm is never invoked, but node:20-alpine ships it
