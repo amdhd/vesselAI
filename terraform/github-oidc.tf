@@ -24,16 +24,29 @@
 # else, because the token is bound to this repository and branch.
 # ---------------------------------------------------------------------------
 
-data "tls_certificate" "github" {
+# LOOKED UP, NOT CREATED -- and this is not a style preference.
+#
+# IAM permits exactly ONE OIDC provider per issuer URL per ACCOUNT, and this
+# account has two stacks that both want one: this one, and PipelineGuard
+# (149751500899, ap-southeast-1), whose QA workflow assumes a role here.
+# Whichever applied second failed with EntityAlreadyExists, and whichever
+# destroyed first silently broke the other's role trust.
+#
+# It is now an account-level singleton created out-of-band by PipelineGuard's
+# scripts/bootstrap.sh, alongside the Terraform state bucket -- the same
+# reasoning, and it deliberately outlives every `terraform destroy`. That
+# matters here in particular: this cluster is a burst resource that is torn down
+# most of the time, so a provider owned by this stack would vanish with it.
+#
+# NOTE the contrast with aws_iam_openid_connect_provider.oidc in eks.tf. That
+# one is the CLUSTER's IRSA issuer -- unique per cluster, created and destroyed
+# with it, and correctly still a resource. Only the GitHub Actions issuer is
+# account-wide.
+#
+# The thumbprint is no longer computed here; bootstrap.sh derives it from the
+# live certificate chain for the same reason the comment below gives.
+data "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
-}
-
-resource "aws_iam_openid_connect_provider" "github" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.github.certificates[0].sha1_fingerprint]
-
-  tags = { Name = "${var.cluster_name}-github-actions" }
 }
 
 data "aws_iam_policy_document" "github_ecr_assume_role" {
@@ -43,7 +56,7 @@ data "aws_iam_policy_document" "github_ecr_assume_role" {
 
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github.arn]
+      identifiers = [data.aws_iam_openid_connect_provider.github.arn]
     }
 
     # *** PINNED TO ONE REPO AND ONE BRANCH ***
