@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Waves, Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 
+
 export default function LoginPage() {
   const navigate = useNavigate()
   const { login, loginDemo } = useAuth()
