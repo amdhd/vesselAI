@@ -23,9 +23,19 @@ on:
         required: true
         default: .pipelineguard/agents/fix/fixtures/findings-33140664097.json
       severities:
-        description: "Severities to attempt, comma-separated. Blank means all."
+        # Spelled out rather than left blank. Blank still works -- it falls
+        # through to the harness default, which is these same two -- but a run
+        # form that shows nothing tells the person dispatching it nothing, and
+        # the previous description ("blank means all") became untrue the moment
+        # the harness gained a default of its own.
+        #
+        # CRITICAL and HIGH are the QA schema's BLOCKING severities: the ones
+        # that fail a run and gate a PR. Add MEDIUM,LOW to attempt everything,
+        # remembering each finding costs a model call (~$0.11) and one of five
+        # budget slots.
+        description: "Severities to attempt, comma-separated. Add MEDIUM,LOW to widen."
         required: false
-        default: ""
+        default: "CRITICAL,HIGH"
       dry_run:
         description: "Select files and run every guardrail, but make no model call and open no PR"
         type: boolean
@@ -60,7 +70,7 @@ env:
   # branches, so its worst failure is a bad commit, and an unpinned ref would
   # promote every push to PipelineGuard main straight into this repo's write
   # path with no review of the promotion.
-  PIPELINEGUARD_REF: 12a3ae83ddaaf83f389304bf7a03b5aa0bcd73a9
+  PIPELINEGUARD_REF: 5f52f8b8f539c45426a933e5723dfb42db73e0c6
 
 jobs:
   fix:
