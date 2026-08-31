@@ -173,7 +173,7 @@ export default function DashboardPage() {
   const { user } = useAuth()
   const { vessels } = useFleet()
   const greeting = getGreeting()
-  const firstName = user?.name?.split(' ')[0] ?? 'Captain'
+  const firstName = user?.name ?? 'Captain'
   const today = formatDate(new Date())
   const activeAlerts = MOCK_NOTIFICATIONS.filter((n) => !n.read && (n.severity === 'critical' || n.severity === 'warning')).length
   const recentAlerts = MOCK_NOTIFICATIONS.slice(0, 3)
@@ -198,7 +198,7 @@ export default function DashboardPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-[23px] font-semibold text-[#f0f1f3] tracking-[-0.01em]">
-            {greeting}, Captain {firstName}
+            {greeting}, {firstName}
           </h1>
           <p className="text-[#767d88] text-[13px] mt-[5px]">{today} — Fleet Overview</p>
         </div>
