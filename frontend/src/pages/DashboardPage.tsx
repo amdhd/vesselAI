@@ -173,7 +173,7 @@ export default function DashboardPage() {
   const { user } = useAuth()
   const { vessels } = useFleet()
   const greeting = getGreeting()
-  const firstName = user?.name ?? 'Captain'
+  const firstName = user?.name ?? ''
   const today = formatDate(new Date())
   const activeAlerts = MOCK_NOTIFICATIONS.filter((n) => !n.read && (n.severity === 'critical' || n.severity === 'warning')).length
   const recentAlerts = MOCK_NOTIFICATIONS.slice(0, 3)

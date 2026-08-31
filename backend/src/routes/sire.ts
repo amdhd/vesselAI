@@ -53,7 +53,7 @@ const SIRE_READINESS: {
     nextInspectionDue: new Date(Date.now() + 300 * 24 * 3600 * 1000).toISOString(),
     chapters: [
       { id: 'ch1', name: 'Chapter 1 - Compliance with VIQ', score: 65, status: 'attention', openFindings: 1 },
-      { id: 'ch2', name: 'Chapter 2 - Crew Management', score: 70, status: 'attention', openFindings: 0 },
+      { id: 'ch2', name: 'Chapter 2 - Crew Management', score: 70, status: 'good', openFindings: 0 },
       { id: 'ch3', name: 'Chapter 3 - Navigation', score: 68, status: 'attention', openFindings: 1 },
       { id: 'ch4', name: 'Chapter 4 - Pollution Prevention', score: 45, status: 'critical', openFindings: 2 },
       { id: 'ch5', name: 'Chapter 5 - Fire Safety', score: 60, status: 'attention', openFindings: 1 },
@@ -61,7 +61,7 @@ const SIRE_READINESS: {
       { id: 'ch7', name: 'Chapter 7 - Safety Management', score: 68, status: 'attention', openFindings: 0 },
       { id: 'ch8', name: 'Chapter 8 - Machinery', score: 52, status: 'critical', openFindings: 2 },
       { id: 'ch9', name: 'Chapter 9 - Electrical Systems', score: 66, status: 'attention', openFindings: 0 },
-      { id: 'ch10', name: 'Chapter 10 - Mooring Operations', score: 72, status: 'attention', openFindings: 0 },
+      { id: 'ch10', name: 'Chapter 10 - Mooring Operations', score: 72, status: 'good', openFindings: 0 },
     ],
   },
   'vessel-003': {
