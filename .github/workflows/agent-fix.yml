@@ -1,0 +1,256 @@
+name: agent-fix
+
+# Phase 2 of the AgentCore loop: take a QA findings JSON, propose patches with a
+# Bedrock model, prove they compile and pass tests, and open a PR.
+#
+# workflow_dispatch ONLY, and that is a decision rather than an omission
+# (PLAN.md Phase 2, "What triggers it"). A dispatch IS the deliberate act, in
+# the same way the agent-qa label is for PR runs. Three things follow from it:
+# a fork can never reach this workflow, the findings are an input so a run is
+# reproducible, and nothing here fires on its own and spends money while nobody
+# is looking.
+#
+# THE KILL SWITCH IS NOT IN THIS FILE. It is `fix_agent_enabled` in
+# PipelineGuard's Terraform: false destroys the role this workflow assumes, so
+# the fix agent stops being able to authenticate at all, with no change here.
+# A control in the account beats a control in the repo that spends the money.
+
+on:
+  workflow_dispatch:
+    inputs:
+      findings:
+        description: "Findings JSON path (relative to the workspace)"
+        required: true
+        default: .pipelineguard/agents/fix/fixtures/findings-33140664097.json
+      severities:
+        description: "Severities to attempt, comma-separated. Blank means all."
+        required: false
+        default: ""
+      dry_run:
+        description: "Select files and run every guardrail, but make no model call and open no PR"
+        type: boolean
+        default: false
+
+# The App token does every write. GITHUB_TOKEN therefore needs nothing beyond
+# checkout, and `pull-requests: write` is deliberately NOT granted: a PR opened
+# by GITHUB_TOKEN arrives with zero checks and is permanently unmergeable, so
+# the safest way to guarantee that never happens by accident is to make it
+# impossible rather than to rely on getting the `token:` argument right below.
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: agent-fix-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-1
+  # PINNED, unlike ui-qa-agent.yml which tracks main on purpose.
+  # WORKFLOW-REVIEW.md rules the mutable ref "not a defect, and the right call"
+  # for the QA harness -- a reporter whose worst failure is a wrong PR comment,
+  # sharing schema.py with a deployed agent that a stale pin would disagree
+  # with. This harness breaks both halves of that: it writes source and pushes
+  # branches, so its worst failure is a bad commit, and an unpinned ref would
+  # promote every push to PipelineGuard main straight into this repo's write
+  # path with no review of the promotion.
+  PIPELINEGUARD_REF: 05c0c2c81f49ac84b91ad2bcc300e5e166281d4c
+
+jobs:
+  fix:
+    name: Bug-fix agent — propose, gate, open PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Carried for the backend gate below. Started unconditionally even when only
+    # the frontend was patched: services boot in parallel with the job, so the
+    # cost is nil, and branching the service block on a value that is not known
+    # until step 6 is not expressible in Actions.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vesselmind
+          POSTGRES_PASSWORD: vesselmind_secret
+          POSTGRES_DB: vesselmind_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vesselmind"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      # --- Identity -------------------------------------------------------
+      #
+      # A GitHub App installation token, minted per run and expiring in an hour.
+      # NOT GITHUB_TOKEN: events it generates deliberately do not trigger further
+      # workflow runs, so a PR opened with it arrives with zero checks and can
+      # never satisfy branch protection. That failure is silent -- the PR looks
+      # fine -- which is why it is designed out here rather than watched for.
+      - name: Mint a GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ secrets.FIX_APP_ID }}
+          private-key: ${{ secrets.FIX_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      # `token:` here is the line the whole design rests on. actions/checkout
+      # persists credentials into .git/config, and the push below uses whatever
+      # it finds there -- so omitting this would push as GITHUB_TOKEN and undo
+      # the step above with nothing in the log to say so.
+      - name: Check out the target
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Check out the fix harness
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: amdhd/pipelineguard
+          ref: ${{ env.PIPELINEGUARD_REF }}
+          path: .pipelineguard
+          persist-credentials: false
+
+      # --- Propose --------------------------------------------------------
+      - name: Configure AWS credentials (OIDC, no stored keys)
+        uses: aws-actions/configure-aws-credentials@cabfdba3510de1431bac9dba27511d97497fc100 # v5
+        with:
+          role-to-assume: ${{ vars.FIX_AGENT_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install harness dependencies
+        run: pip install --quiet boto3
+
+      # Inputs go through env, never interpolated into the shell line. Only a
+      # maintainer can dispatch this, which makes injection here unlikely rather
+      # than impossible, and "unlikely" is not the standard for a job holding
+      # both a write token and model-invoke credentials.
+      - name: Propose patches
+        id: propose
+        env:
+          FINDINGS: ${{ inputs.findings }}
+          SEVERITIES: ${{ inputs.severities }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          args=(--findings "$FINDINGS" --repo . \
+                --summary-out agent-fix-summary.md \
+                --json-out agent-fix-result.json)
+          # `if`, not `[ x ] && y`. Under `set -e` a false test in an && list
+          # exits the script, so the shorthand would abort this step silently
+          # whenever severities was left blank -- the DEFAULT case.
+          if [ -n "$SEVERITIES" ]; then
+            args+=(--severities "$SEVERITIES")
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          python .pipelineguard/agents/fix/harness.py "${args[@]}"
+
+      # A run that changed nothing must not open a PR. The harness treats "every
+      # finding honestly skipped" as success, and an empty PR would turn that
+      # good outcome into review noise.
+      - name: Detect what changed
+        id: changed
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain -- frontend backend)" ]; then
+            echo "any=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "any=true" >> "$GITHUB_OUTPUT"
+            git diff --name-only -- frontend/src | grep -q . \
+              && echo "frontend=true" >> "$GITHUB_OUTPUT" || true
+            git diff --name-only -- backend/src  | grep -q . \
+              && echo "backend=true"  >> "$GITHUB_OUTPUT" || true
+          fi
+          git diff --stat || true
+
+      # --- Gate -----------------------------------------------------------
+      #
+      # BEFORE the commit, not after. The reference implementation shipped an
+      # auto-fix that read a field never added to the TypeScript interface -- a
+      # latent build break that surfaced rounds later. This is the step that
+      # makes that impossible, so nothing below it runs unless it passes.
+      - name: Set up Node
+        if: steps.changed.outputs.any == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Gate — frontend typecheck, test, build
+        if: steps.changed.outputs.frontend == 'true'
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Gate — backend typecheck and test
+        if: steps.changed.outputs.backend == 'true'
+        working-directory: backend
+        run: |
+          npm ci
+          npx prisma generate
+          # DATABASE_URL is scoped to THIS COMMAND ONLY, and that is load-bearing.
+          # ci.yml spells out why: the integration suite exercises the
+          # DB-unreachable graceful-degradation paths (503, demo-cred fallback),
+          # which require Prisma to have NO reachable database. Exporting it for
+          # the whole step would flip those assertions and fail the gate for a
+          # reason that has nothing to do with the agent's patch.
+          DATABASE_URL=postgresql://vesselmind:vesselmind_secret@localhost:5432/vesselmind_test \
+            npx prisma migrate deploy
+          npx tsc --noEmit
+          npm test
+
+      # --- Publish --------------------------------------------------------
+      - name: Commit and open the PR
+        if: steps.changed.outputs.any == 'true' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BRANCH: agent-fix/run-${{ github.run_id }}
+          # Through env for the same reason as the propose step: a dispatch
+          # input must never reach a shell line by interpolation, however
+          # trusted the dispatcher.
+          FINDINGS: ${{ inputs.findings }}
+        run: |
+          set -euo pipefail
+          git config user.name  "${{ steps.app-token.outputs.app-slug }}[bot]"
+          git config user.email "${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add -- frontend backend
+          git commit -m "fix(agent): patches proposed from QA findings" \
+                     -m "Opened by the bug-fix agent. Every patch compiled and passed the
+          suite before this branch was pushed. See the PR body for what was
+          skipped and why -- that half is not visible in the diff."
+          git push -u origin "$BRANCH"
+          gh pr create \
+            --title "fix(agent): patches from QA run $(basename "$FINDINGS" .json)" \
+            --body-file agent-fix-summary.md \
+            --base main
+
+      - name: Report when nothing was patched
+        if: steps.changed.outputs.any != 'true'
+        run: |
+          echo "### Bug-fix agent — no changes" >> "$GITHUB_STEP_SUMMARY"
+          cat agent-fix-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the run's artefacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: agent-fix-${{ github.run_id }}
+          path: |
+            agent-fix-summary.md
+            agent-fix-result.json
+          if-no-files-found: ignore
