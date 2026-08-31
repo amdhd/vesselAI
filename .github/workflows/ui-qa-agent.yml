@@ -285,7 +285,8 @@ jobs:
             ${QA_MODEL:+--model "$QA_MODEL"} \
             $( [ "$LIVE_AI" = "1" ] && echo --live-ai ) \
             --json-out findings.json \
-            --comment-out comment.md
+            --comment-out comment.md \
+            --target-commit "${{ github.event.pull_request.head.sha || github.sha }}"
 
       # The harness writes comment.md for every outcome INCLUDING failures, so a
       # missing file means the harness itself died. Reporting that is more useful
