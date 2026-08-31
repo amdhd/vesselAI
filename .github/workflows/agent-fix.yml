@@ -46,6 +46,12 @@ concurrency:
 
 env:
   AWS_REGION: ap-southeast-1
+  # A MAIN SHA, and it must stay one. Earlier revisions of this PR pinned a
+  # feature-branch commit twice; both became unreachable when the branch was
+  # rebased and then squash-merged, which fails at checkout with "could not
+  # find the ref" -- a long way from its cause. amdhd/pipelineguard#30 is
+  # merged, so this SHA is durable.
+  #
   # PINNED, unlike ui-qa-agent.yml which tracks main on purpose.
   # WORKFLOW-REVIEW.md rules the mutable ref "not a defect, and the right call"
   # for the QA harness -- a reporter whose worst failure is a wrong PR comment,
@@ -54,7 +60,7 @@ env:
   # branches, so its worst failure is a bad commit, and an unpinned ref would
   # promote every push to PipelineGuard main straight into this repo's write
   # path with no review of the promotion.
-  PIPELINEGUARD_REF: 57b20b412ef655ed2b5bad06e8b2658cb1e4319f
+  PIPELINEGUARD_REF: 547e6432007f9c04ae0199707569ad97b1f3bf33
 
 jobs:
   fix:
