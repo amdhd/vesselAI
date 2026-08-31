@@ -60,7 +60,7 @@ env:
   # branches, so its worst failure is a bad commit, and an unpinned ref would
   # promote every push to PipelineGuard main straight into this repo's write
   # path with no review of the promotion.
-  PIPELINEGUARD_REF: ac8c356b74837618d2aea6938e70469f756d2e76
+  PIPELINEGUARD_REF: 12a3ae83ddaaf83f389304bf7a03b5aa0bcd73a9
 
 jobs:
   fix:
