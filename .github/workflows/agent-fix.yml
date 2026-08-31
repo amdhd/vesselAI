@@ -193,6 +193,15 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          # BOTH lockfiles, and the paths are required. This is a monorepo with
+          # no root lockfile, so a bare `cache: npm` fails the step outright --
+          # "Dependencies lock file is not found" -- rather than just skipping
+          # the cache. ci.yml names the path in every one of its Node jobs for
+          # the same reason. Listing both means one Node setup serves whichever
+          # gate the patch turns out to need.
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
 
       - name: Gate — frontend typecheck, test, build
         if: steps.changed.outputs.frontend == 'true'
