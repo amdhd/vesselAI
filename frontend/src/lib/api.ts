@@ -18,7 +18,7 @@ import type {
   DefectReport,
   HandoverReport,
   SireDocument,
-  SireFinding,
+  SireFindingsResponse,
   Notification,
   MaintenanceAlert,
   VoyageHistoryRecord,
@@ -380,10 +380,14 @@ export const sireApi = {
     const { data } = await api.get<{ documents: SireDocument[] }>(`/sire/documents/${vesselId}`)
     return data.documents
   },
-  getFindings: async (vesselId: string): Promise<SireFinding[]> => {
+  getFindings: async (vesselId: string): Promise<SireFindingsResponse> => {
     // Backend wraps the list in { vesselId, vessel, findings, inspections, summary }, not a bare array.
-    const { data } = await api.get<{ findings: SireFinding[] }>(`/sire/findings/${vesselId}`)
-    return data.findings
+    // The summary is KEPT. It used to be dropped here, which forced the page to
+    // recompute `open` itself -- a second implementation of a number the server
+    // already knows, and the kind of duplication whose first divergence is a
+    // count that quietly reads zero.
+    const { data } = await api.get<SireFindingsResponse>(`/sire/findings/${vesselId}`)
+    return data
   },
   inspectorChatStream: (params: { vesselId: string; message: string; conversationHistory: { role: string; content: string }[] }) => {
     const token = localStorage.getItem('vm_token')

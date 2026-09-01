@@ -357,6 +357,27 @@ export interface SireDocument {
   uploadedAt: string
 }
 
+/**
+ * The /sire/findings response, summary included.
+ *
+ * The summary is part of the contract and was previously discarded by the API
+ * layer, which left the page recomputing `open` for itself. Two independent
+ * computations of the same number drift, and the first drift is a count that
+ * silently reads zero.
+ */
+export interface SireFindingsSummary {
+  total: number
+  open: number
+  closed: number
+  nonConformances: number
+  observations: number
+}
+
+export interface SireFindingsResponse {
+  findings: SireFinding[]
+  summary: SireFindingsSummary
+}
+
 export interface SireFinding {
   id: string
   vesselId: string
