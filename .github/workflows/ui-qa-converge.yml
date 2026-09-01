@@ -1,0 +1,595 @@
+name: UI QA convergence loop
+
+# Phase 3: run QA, fix what it found, run QA again, and stop when the finding
+# set stops shrinking. Up to three rounds, on one branch, with one PR and one
+# reconciliation table at the end.
+#
+# THE STOPPING RULE IS NOT IN THIS FILE. It lives in PipelineGuard's
+# `agents/converge/`, which is a tested program: given every round so far, does
+# the loop run another one? This workflow's job is to stand the target up, run
+# the two halves, and do what that program says. The one piece of judgement
+# expressed in YAML -- "is the loop finished" -- is a single `break` on an output
+# the program wrote.
+#
+# WHY workflow_dispatch ONLY, when PLAN.md Phase 3 says "gate it behind an
+# explicit label separate from Phase 1's".
+#
+# This is STRICTER than a label, not looser, and the reasoning is agent-fix.yml's
+# rather than new: a dispatch IS the deliberate act, a fork can never reach it,
+# and nothing here fires on its own and spends money while nobody is looking. The
+# plan asks for a separate gate because Phase 1's label must not start a Phase 3
+# loop by accident; a trigger Phase 1 does not have satisfies that completely.
+#
+# It also matters more here than it does for the fix agent. This workflow writes
+# source N times where agent-fix.yml writes once, and the plan calls this phase
+# the one that multiplies spend by the round count. A label lands on a PR, and a
+# PR is exactly where an unattended write path should not be.
+#
+# THE KILL SWITCH IS STILL NOT IN THIS FILE. It is `fix_agent_enabled` in
+# PipelineGuard's Terraform: false destroys the role the fix half assumes, and
+# this workflow stops being able to patch anything, with no change here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        # A SHA runs fine, but `gh pr create --base` needs a branch, so a SHA
+        # only makes sense with dry_run. Named here rather than discovered at
+        # the last step of a paid loop.
+        description: "Branch to test and fix (a SHA works only with dry_run)"
+        required: false
+        default: main
+        type: string
+      max_rounds:
+        description: "Hard round cap. PLAN.md Phase 3 says 3; raising it multiplies spend."
+        required: false
+        default: "3"
+        type: string
+      severities:
+        description: "Severities the fix half attempts. Add MEDIUM,LOW to widen."
+        required: false
+        default: "CRITICAL,HIGH"
+        type: string
+      token_budget:
+        description: "Cumulative model tokens across ALL rounds, both halves"
+        required: false
+        default: "2000000"
+        type: string
+      model:
+        description: "Bedrock inference profile for the QA agent (blank = the quality rung)"
+        required: false
+        type: string
+      dry_run:
+        # Genuinely useful rather than a courtesy: it exercises the stack, the
+        # tunnel, the health gate, the QA agent and the whole loop mechanism
+        # without a single fix-model token. The expected outcome is a STALL at
+        # round 2 -- nothing was patched, so the finding set is identical -- and
+        # a run that stalls for that reason has proved the loop works.
+        description: "Run QA rounds but propose no patches, commit nothing, open no PR"
+        required: false
+        default: false
+        type: boolean
+
+# The App token does every write. `pull-requests: write` is deliberately NOT
+# granted to GITHUB_TOKEN, for agent-fix.yml's reason: a PR opened by
+# GITHUB_TOKEN arrives with zero checks and is permanently unmergeable, and the
+# safest way to guarantee that never happens by accident is to make it
+# impossible rather than to rely on getting the `token:` argument right.
+permissions:
+  id-token: write
+  contents: read
+
+# cancel-in-progress is FALSE and must stay false. Cancelling this loop mid-round
+# kills a paid AgentCore session, a fix model call, and a branch that has commits
+# on it but has not been pushed -- the work is lost and the money is spent.
+concurrency:
+  group: ui-qa-converge-${{ inputs.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-1
+
+  # A MAIN SHA, and it must stay one -- agent-fix.yml's rule, for the same
+  # reason: this workflow writes source and pushes branches, so its worst
+  # failure is a bad commit rather than a wrong PR comment. An unpinned ref would
+  # promote every push to PipelineGuard main straight into this repo's write path
+  # with no review of the promotion.
+  #
+  # amdhd/pipelineguard#41 is merged, so this SHA is durable. It is the commit
+  # that added agents/converge/ AND the fix harness's token block -- the loop
+  # refuses to run without the latter, so an earlier pin cannot work.
+  PIPELINEGUARD_REF: e4b47f21bc4f5c2e0793b978a9625d9139546f24
+
+  # Pinned and checksummed, as in ui-qa-agent.yml. Cloudflare publishes no
+  # checksum asset, so this digest was computed from the pinned release and must
+  # be updated with the version.
+  CLOUDFLARED_VERSION: "2026.8.2"
+  CLOUDFLARED_SHA256: "fcfb02b575a52ca1af2e3267af4e1517bcdeb30ac48c834c69abaed3c0576ad2"
+
+jobs:
+  converge:
+    name: Convergence loop — QA, fix, QA again
+    runs-on: ubuntu-latest
+    # Three rounds of (rebuild ~3m + QA ~1m + fix ~2m + gate ~3m) plus setup.
+    # Generous rather than tight, because the per-round and cumulative caps are
+    # enforced by the convergence layer and reported; this is only the backstop
+    # behind those, for a job that has stopped making progress at all.
+    timeout-minutes: 60
+
+    # For the backend half of the compile-and-test gate. The compose stack runs
+    # its own postgres with no published port, so these two do not collide --
+    # and they must not, because the gate has to run against a database the
+    # application under test is not using.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vesselmind
+          POSTGRES_PASSWORD: vesselmind_secret
+          POSTGRES_DB: vesselmind_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vesselmind"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      # --- Identity -------------------------------------------------------
+      - name: Mint a GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ secrets.FIX_APP_ID }}
+          private-key: ${{ secrets.FIX_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      # `token:` is load-bearing: actions/checkout persists credentials into
+      # .git/config and the push below uses whatever it finds there, so omitting
+      # it would push as GITHUB_TOKEN and silently undo the step above.
+      - name: Check out the target
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.ref }}
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Check out the PipelineGuard agents
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: amdhd/pipelineguard
+          ref: ${{ env.PIPELINEGUARD_REF }}
+          path: .pipelineguard
+          persist-credentials: false
+
+      # --- Two roles, one job ---------------------------------------------
+      #
+      # The two halves hold deliberately different permissions: the QA half may
+      # invoke one runtime and read one secret, the fix half may invoke a model
+      # and nothing else. Phase 2 split them on purpose, and a loop that runs
+      # both must not collapse them back into one role that can do everything.
+      #
+      # So the fix credentials are captured as step OUTPUTS and never exported
+      # to the environment. The ambient credentials for the whole job are the QA
+      # role's; the fix harness is the only thing that sees the other set, passed
+      # to that one command. `output-env-credentials: false` is what keeps this
+      # step from overwriting the environment before the QA step has set it.
+      - name: Fix-agent credentials (captured, not exported)
+        id: fix-creds
+        uses: aws-actions/configure-aws-credentials@cabfdba3510de1431bac9dba27511d97497fc100 # v5
+        with:
+          role-to-assume: ${{ vars.FIX_AGENT_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          output-credentials: true
+          output-env-credentials: false
+
+      - name: QA-agent credentials (the job's ambient identity)
+        uses: aws-actions/configure-aws-credentials@cabfdba3510de1431bac9dba27511d97497fc100 # v5
+        with:
+          role-to-assume: ${{ vars.QA_AGENT_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install harness deps
+        run: pip install --quiet boto3
+
+      # Both lockfiles, both paths. This is a monorepo with no root lockfile, so
+      # a bare `cache: npm` fails the step outright rather than skipping the
+      # cache -- the same reason agent-fix.yml and ci.yml name them explicitly.
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+
+      # POSTGRES_PASSWORD and JWT_SECRET are GENERATED, not stored: the stack
+      # lives minutes and dies with the runner, so a stored secret would be one
+      # to rotate while a generated one cannot leak from anywhere.
+      #
+      # ANTHROPIC_API_KEY is the DUMMY, with no option to make it real. A live
+      # billable key behind a public tunnel is a spend liability in two
+      # directions, and unlike ui-qa-agent.yml this workflow runs the target
+      # three times unattended -- so the attended-dispatch argument that earns
+      # `live_ai` there does not survive here.
+      - name: Compose environment
+        run: |
+          {
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)"
+            echo "JWT_SECRET=$(openssl rand -hex 32)"
+            echo "ANTHROPIC_API_KEY=dummy-fallback-mode-not-a-real-key"
+          } >> "$GITHUB_ENV"
+
+      - name: Create the working branch
+        env:
+          BRANCH: agent-converge/run-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          git config user.name  "${{ steps.app-token.outputs.app-slug }}[bot]"
+          git config user.email "${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          echo "BRANCH=$BRANCH" >> "$GITHUB_ENV"
+          # What the loop is measured against. Comparing to `origin/<ref>` would
+          # have worked only for branch names, and would have put a dispatch
+          # input on a shell line -- which this file does nowhere else.
+          echo "START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      # Opened ONCE, outside the loop. A quick tunnel proxies per request and
+      # retries its origin, so it survives the stack being torn down and rebuilt
+      # underneath it -- and the health gate re-asserts the whole path every
+      # round anyway, which is what would catch it if that were ever untrue.
+      - name: Open tunnel
+        run: |
+          set -euo pipefail
+          curl -fsSL -o cloudflared \
+            "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64"
+          echo "${CLOUDFLARED_SHA256}  cloudflared" | sha256sum -c -
+          chmod +x cloudflared
+          ./cloudflared tunnel --no-autoupdate --url http://localhost:8080 \
+            > tunnel.log 2>&1 &
+          echo $! > tunnel.pid
+          for _ in $(seq 1 30); do
+            URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' tunnel.log | head -1 || true)
+            [ -n "$URL" ] && break
+            sleep 2
+          done
+          if [ -z "${URL:-}" ]; then
+            echo "::error::tunnel did not produce a URL"; cat tunnel.log; exit 1
+          fi
+          echo "TARGET_URL=$URL" >> "$GITHUB_ENV"
+          # Deliberately not logged. PLAN.md 1e: an unauthenticated public URL
+          # has no reason to be written anywhere durable, and a ::notice:: on a
+          # public repo is exactly that.
+          echo "::notice::tunnel is up"
+
+      # --- The loop -------------------------------------------------------
+      #
+      # One step, because Actions cannot express a while-loop over jobs and three
+      # copied step blocks would be three places for the rounds to drift apart.
+      # Everything that could be a judgement call has been moved out of here: the
+      # loop runs two harnesses, runs the convergence layer, and breaks on what
+      # it says.
+      #
+      # NOTE `set -u -o pipefail` WITHOUT `-e`. Both harnesses use their exit
+      # codes to report findings -- the QA harness exits 1 for blocking findings
+      # and 2 for a failed run, the fix harness exits 1 when it applied nothing
+      # and something broke -- and under `-e` the first interesting round would
+      # abort the loop. Those outcomes are DATA here: they are in the artefacts,
+      # and the convergence layer is what reads them. The gate below is the one
+      # thing that hard-stops the run, and it does so explicitly.
+      - name: Run the convergence loop
+        id: loop
+        env:
+          MAX_ROUNDS: ${{ inputs.max_rounds || 3 }}
+          SEVERITIES: ${{ inputs.severities }}
+          TOKEN_BUDGET: ${{ inputs.token_budget || 2000000 }}
+          QA_MODEL: ${{ inputs.model }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          # The fix half's identity, and the only place it exists. Masked by the
+          # action that produced it.
+          FIX_AWS_ACCESS_KEY_ID: ${{ steps.fix-creds.outputs.aws-access-key-id }}
+          FIX_AWS_SECRET_ACCESS_KEY: ${{ steps.fix-creds.outputs.aws-secret-access-key }}
+          FIX_AWS_SESSION_TOKEN: ${{ steps.fix-creds.outputs.aws-session-token }}
+          RUNTIME_ARN: ${{ vars.QA_RUNTIME_ARN }}
+          SECRET_ARN: ${{ vars.QA_SECRET_ARN }}
+        run: |
+          set -uo pipefail
+
+          PG=.pipelineguard/agents
+          fail() { echo "::error::$1"; echo "LOOP_ERROR=$1" >> "$GITHUB_ENV"; exit 1; }
+
+          # Fetched once: the secret does not change between rounds, and paying
+          # for the read three times would be the only reason the CI role's
+          # GetSecretValue statement looked busier than it is.
+          creds=$(aws secretsmanager get-secret-value \
+            --secret-id "$SECRET_ARN" --query SecretString --output text) || fail "could not read the QA secret"
+          QA_EMAIL=$(printf '%s' "$creds" | python3 -c 'import json,sys; print(json.load(sys.stdin)["QA_TARGET_EMAIL"])')
+          QA_PASSWORD=$(printf '%s' "$creds" | python3 -c 'import json,sys; print(json.load(sys.stdin)["QA_TARGET_PASSWORD"])')
+
+          # THE HEALTH GATE, per round. Identical assertions to ui-qa-agent.yml
+          # and for the identical reason -- never spend a browser session
+          # reporting the pipeline's own bug -- but run once per round, because
+          # every round rebuilds the stack and a patch is perfectly capable of
+          # breaking the thing that serves it.
+          health_gate() {
+            local code ct token fleet
+            for _ in $(seq 1 45); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$TARGET_URL/" || true)
+              [ "$code" = "200" ] && break
+              sleep 2
+            done
+            [ "${code:-}" = "200" ] || { echo "SPA did not return 200 (got ${code:-none})"; return 1; }
+
+            ct=$(curl -s -o /dev/null -w '%{content_type}' --max-time 10 "$TARGET_URL/api/analytics/health" || true)
+            case "$ct" in
+              application/json*) ;;
+              *) echo "/api/analytics/health returned '$ct', expected JSON"; return 1 ;;
+            esac
+
+            token=$(curl -s --max-time 15 -X POST "$TARGET_URL/api/auth/login" \
+              -H 'Content-Type: application/json' \
+              -d "{\"email\":\"$QA_EMAIL\",\"password\":\"$QA_PASSWORD\"}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token",""))' 2>/dev/null || true)
+            [ -n "$token" ] || { echo "login returned no token — the database is probably not seeded"; return 1; }
+
+            fleet=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+              -H "Authorization: Bearer $token" "$TARGET_URL/api/fleet" || true)
+            [ "$fleet" = "200" ] || { echo "/api/fleet returned $fleet with a valid token"; return 1; }
+
+            curl -s --max-time 15 "$TARGET_URL/" | grep -q 'undefined' \
+              && { echo "served HTML contains 'undefined' — the frontend build is missing config"; return 1; } || true
+            return 0
+          }
+
+          # THE COMPILE-AND-TEST GATE, between the edit and the commit. PLAN.md
+          # Phase 2: the reference implementation shipped an auto-fix that read a
+          # field never added to the TypeScript interface, and it surfaced rounds
+          # later. In a loop that is worse than a bad commit -- an uncompilable
+          # tree makes every subsequent round measure nothing.
+          node_gate() {
+            if git diff --cached --name-only -- frontend/src | grep -q .; then
+              ( cd frontend && npm ci && npm test && npm run build ) || return 1
+            fi
+            if git diff --cached --name-only -- backend/src | grep -q .; then
+              ( cd backend \
+                && npm ci \
+                && npx prisma generate \
+                && DATABASE_URL=postgresql://vesselmind:vesselmind_secret@localhost:5432/vesselmind_test \
+                     npx prisma migrate deploy \
+                && npx tsc --noEmit \
+                && npm test ) || return 1
+            fi
+            return 0
+          }
+
+          has_blocking() {
+            python3 -c '
+          import json, sys
+          sys.path.insert(0, ".pipelineguard/agents/qa/agent")
+          import schema
+          sys.exit(0 if schema.has_blocking(json.load(open(sys.argv[1]))) else 1)
+          ' "$1"
+          }
+
+          decision=""
+          rounds_run=0
+
+          for round in $(seq 1 "$MAX_ROUNDS"); do
+            echo "::group::round $round"
+            round_start=$(date +%s)
+            rounds_run=$round
+
+            # A FRESH STACK EVERY ROUND, volumes included. PLAN.md Phase 3 asked
+            # for this decision to be made explicitly: `down -v` drops the
+            # postgres volume, so `migrate` and `seed` re-run and the round tests
+            # a clean database. The rebuild is not the price of that -- a round
+            # exists to test PATCHED SOURCE and needs the rebuild regardless --
+            # so the fresh seed comes free with something already being paid for.
+            docker compose -f docker-compose.prod.yml down -v || true
+            docker compose -f docker-compose.prod.yml up -d --build --wait \
+              || fail "round $round: the stack did not come up"
+
+            health_gate || fail "round $round: health gate — see the message above"
+
+            # Stamped with THIS round's HEAD, not the workflow's starting SHA.
+            # The fix harness refuses findings observed at a different commit
+            # than the checkout, which is exactly right and would refuse every
+            # round after the first if the loop kept re-stating the original.
+            head_sha=$(git rev-parse HEAD)
+
+            python "$PG/qa/harness/main.py" \
+              --runtime-arn "$RUNTIME_ARN" \
+              --target-url "$TARGET_URL" \
+              --region "$AWS_REGION" \
+              --secret-arn "$SECRET_ARN" \
+              --session-label "gh-${{ github.run_id }}-r$round" \
+              --target-commit "$head_sha" \
+              ${QA_MODEL:+--model "$QA_MODEL"} \
+              --json-out "findings-$round.json" \
+              --comment-out "qa-comment-$round.md"
+            echo "QA harness exited $? (an exit code here is data, not a failure)"
+
+            [ -s "findings-$round.json" ] || fail "round $round: the QA harness wrote no findings JSON"
+
+            if has_blocking "findings-$round.json"; then
+              fix_flags=(--findings "findings-$round.json" --repo . \
+                         --severities "$SEVERITIES" \
+                         --summary-out "fix-summary-$round.md" \
+                         --json-out "fix-result-$round.json")
+              [ "$DRY_RUN" = "true" ] && fix_flags+=(--dry-run)
+
+              # The ONLY command in this job that runs as the fix role.
+              AWS_ACCESS_KEY_ID="$FIX_AWS_ACCESS_KEY_ID" \
+              AWS_SECRET_ACCESS_KEY="$FIX_AWS_SECRET_ACCESS_KEY" \
+              AWS_SESSION_TOKEN="$FIX_AWS_SESSION_TOKEN" \
+                python "$PG/fix/harness.py" "${fix_flags[@]}"
+              echo "fix harness exited $? (also data — per-finding failures are in the summary)"
+
+              if [ -n "$(git status --porcelain -- frontend backend)" ]; then
+                git add -- frontend backend
+                if node_gate; then
+                  git commit -q -m "fix(agent): round $round patches from QA findings" \
+                    -m "Proposed by the bug-fix agent and gated before this commit: every
+          patch compiled and passed the suite. What was skipped, and why, is in
+          this run's summary -- that half is not visible in the diff."
+                  echo "round $round: committed $(git diff --name-only HEAD~1 HEAD | wc -l | tr -d ' ') file(s)"
+                else
+                  # Reverted rather than left in the tree. A round that continued
+                  # on an uncompilable checkout would produce findings about the
+                  # harness rather than the application, and the convergence
+                  # check would read them as a regression.
+                  git reset -q && git checkout -- frontend backend
+                  fail "round $round: the compile-and-test gate rejected the agent's patch, so nothing was committed"
+                fi
+              fi
+            else
+              echo "round $round: no blocking findings — nothing for the fix half to do"
+            fi
+
+            # THE DECISION. Everything above produced artefacts; this is the only
+            # thing that gets to say what happens next.
+            # Built as ONE array that is never empty. An `if` that appended a
+            # possibly-empty second array and expanded it as "${arr[@]}" is the
+            # classic `set -u` trap -- it is an unbound variable in bash before
+            # 4.4, so the loop would die on the first round that patched nothing.
+            # That is round 3 of a converging run: the round that PASSES.
+            session_args=(--state converge-state.json --findings "findings-$round.json")
+            [ -s "fix-result-$round.json" ] && session_args+=(--fix-result "fix-result-$round.json")
+            session_args+=(
+              --round-seconds "$(( $(date +%s) - round_start ))"
+              --max-rounds "$MAX_ROUNDS"
+              --token-budget "$TOKEN_BUDGET"
+              --comment-out converge-comment.md
+              --github-output round.env
+            )
+
+            : > round.env
+            python "$PG/converge/session.py" "${session_args[@]}"
+            echo "convergence layer exited $?"
+
+            decision=$(sed -n 's/^decision=//p' round.env)
+            stop=$(sed -n 's/^stop=//p' round.env)
+            [ -n "$decision" ] || fail "round $round: the convergence layer wrote no decision"
+            echo "::endgroup::"
+            echo "::notice::round $round — $decision"
+
+            [ "$stop" = "true" ] && break
+          done
+
+          {
+            echo "decision=$decision"
+            echo "rounds=$rounds_run"
+            echo "committed=$( [ -n "$(git log --oneline "$START_SHA"..HEAD)" ] && echo true || echo false )"
+          } >> "$GITHUB_OUTPUT"
+
+      # The convergence layer writes converge-comment.md on every decision, so a
+      # missing file means the loop died before reaching one. Saying that is more
+      # useful than failing on `cat: No such file` three steps from the cause --
+      # the lesson ui-qa-agent.yml learned from a Bedrock throttle.
+      - name: Ensure there is something to report
+        if: always()
+        run: |
+          if [ ! -s converge-comment.md ]; then
+            {
+              echo "<!-- pipelineguard-qa-converge -->"
+              echo "## 🚫 Convergence loop — no decision was reached"
+              echo
+              echo "The loop stopped before the convergence layer could record a round,"
+              echo "so there is no finding set to compare and **no verdict to read into"
+              echo "this run**. The cause is in the **Run the convergence loop** step:"
+              echo "\`${LOOP_ERROR:-see the step log}\`."
+              echo
+              echo "A stack that would not come up or a health gate that refused are the"
+              echo "usual ones, and both mean no agent session was paid for."
+            } > converge-comment.md
+          fi
+
+      # --- Publish --------------------------------------------------------
+      - name: Push the branch and open the PR
+        if: steps.loop.outputs.committed == 'true' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BASE: ${{ inputs.ref }}
+          DECISION: ${{ steps.loop.outputs.decision }}
+          ROUNDS: ${{ steps.loop.outputs.rounds }}
+        run: |
+          set -euo pipefail
+          git push -u origin "$BRANCH"
+          {
+            cat converge-comment.md
+            echo
+            echo "---"
+            echo
+            echo "### What the fix half did each round"
+            echo
+            for f in fix-summary-*.md; do
+              [ -e "$f" ] || continue
+              echo "<details><summary><code>$f</code></summary>"
+              echo
+              cat "$f"
+              echo
+              echo "</details>"
+              echo
+            done
+            echo "_Opened by the convergence loop over $ROUNDS round(s), final state"
+            echo "**$DECISION**. Every commit on this branch compiled and passed the suite"
+            echo "before it was made; none of it has been reviewed by a human yet._"
+          } > pr-body.md
+          gh pr create \
+            --title "fix(agent): convergence loop over $ROUNDS round(s) — $DECISION" \
+            --body-file pr-body.md \
+            --base "$BASE"
+
+      - name: Report the loop
+        if: always()
+        run: cat converge-comment.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Every round's findings, the fix results, and the state file that ties
+      # them together. The state file is the one worth keeping: a decision that
+      # looks wrong is diffable and replayable against the same code that made
+      # it, offline and for free.
+      - name: Upload the loop's artefacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: converge-${{ github.run_id }}
+          path: |
+            converge-state.json
+            converge-comment.md
+            findings-*.json
+            fix-result-*.json
+            fix-summary-*.md
+            qa-comment-*.md
+          if-no-files-found: warn
+
+      # Hygiene, not a guarantee -- a GitHub-hosted runner is destroyed either
+      # way, which is why this design has no reaper. Written so that moving to a
+      # self-hosted runner is not a landmine.
+      - name: Tear down
+        if: always()
+        run: |
+          [ -f tunnel.pid ] && kill "$(cat tunnel.pid)" 2>/dev/null || true
+          docker compose -f docker-compose.prod.yml down -v || true
+
+      # PASS is the only successful stop. Everything else -- a stall, a
+      # regression, a breached cap, a round that proved nothing -- leaves work
+      # for a human and must not leave a green check behind.
+      - name: Apply the loop's verdict
+        if: always()
+        env:
+          DECISION: ${{ steps.loop.outputs.decision }}
+        run: |
+          if [ "$DECISION" = "PASS" ]; then
+            echo "::notice::convergence loop passed — no blocking findings remain"
+            exit 0
+          fi
+          echo "::error::convergence loop ended in ${DECISION:-no decision} — see the job summary"
+          exit 1
