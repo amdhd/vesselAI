@@ -203,7 +203,7 @@ router.get('/history/:vesselId', authenticate, (req: AuthenticatedRequest, res: 
         departureDate: v.departureDate,
         arrivalDate: v.arrivalDate,
         plannedFuel: v.plannedFuel,
-        actualFuel: v.actualFuel ?? v.plannedFuel,
+        actual_fuel: v.actualFuel ?? v.plannedFuel,
         savings: v.savings ?? 0,
         ciiImpact: v.ciiImpact ?? 0,
       }))

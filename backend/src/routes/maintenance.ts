@@ -107,6 +107,7 @@ router.get('/equipment/:vesselId', authenticate, (req: AuthenticatedRequest, res
     // the mock fixtures use `maker` and treat running hours as optional.
     manufacturer: e.maker,
     runningHours: e.runningHours ?? 0,
+    healthScore: undefined,
     sensors: buildSensorSummaries(e.id),
     activeAlerts: alerts.filter(a => a.equipmentId === e.id && a.status === 'open'),
   }));
