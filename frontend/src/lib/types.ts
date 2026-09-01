@@ -334,8 +334,18 @@ export interface HandoverReport {
 
 // ─── SIRE ───────────────────────────────────────────────────────────────────────
 
-export type FindingSeverity = 'observation' | 'deficiency' | 'major'
-export type FindingStatus = 'open' | 'in_progress' | 'closed' | 'verified'
+/**
+ * SIRE finding vocabulary, taken from the API's own interface
+ * (backend/src/mock/findings.ts).
+ *
+ * These used to read 'observation' | 'deficiency' | 'major' and
+ * 'open' | 'in_progress' | 'closed' | 'verified' -- a contract the server has
+ * never spoken. The frontend was built against an imagined API and the mock
+ * data below agreed with it, so the offline demo looked correct while every
+ * real non-conformance rendered as an observation.
+ */
+export type FindingSeverity = 'observation' | 'non-conformance'
+export type FindingStatus = 'open' | 'closed'
 
 export interface SireChapterScore {
   chapter: number
