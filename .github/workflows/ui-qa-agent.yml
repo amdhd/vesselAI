@@ -241,6 +241,19 @@ jobs:
             --json-out findings.json \
             --comment-out comment.md
 
+      # The raw findings JSON is the measurement artifact: pipelineguard's
+      # score.py matches it against the seeded corpus, and recall is measured
+      # from the JSON, never hand-typed from the rendered comment. The PR
+      # comment is a summary; this step is what makes the raw record survive
+      # the runner. Named by run_id so repeated dispatches do not collide.
+      - name: Upload raw findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: findings-${{ github.run_id }}
+          path: findings.json
+          if-no-files-found: ignore
+
       # The harness writes comment.md for every outcome INCLUDING failures, so a
       # missing file means the harness itself died. Reporting that is more useful
       # than failing on `cat: No such file` -- which is what the first real run
