@@ -4,7 +4,7 @@ import { Shield, FileText, AlertTriangle, MessageSquare, CheckCircle, XCircle, C
 import { useFleet } from '@/context/FleetContext'
 import { sireApi } from '@/lib/api'
 import { MOCK_SIRE_DOCS, MOCK_SIRE_FINDINGS, MOCK_SIRE_CHAPTERS } from '@/lib/mockData'
-import type { SireDocument, SireFinding, SireChapterScore } from '@/lib/types'
+import type { SireDocument, SireFinding, SireChapterScore, SireFindingsResponse } from '@/lib/types'
 import { formatDate, cn } from '@/lib/utils'
 import ChatMarkdown from '@/components/ui/ChatMarkdown'
 import Badge from '@/components/ui/Badge'
@@ -285,26 +285,46 @@ function DocumentsTab({ vesselId }: { vesselId: string }) {
 }
 
 function FindingsTab({ vesselId }: { vesselId: string }) {
-  const { data: findings, isLoading } = useQuery<SireFinding[]>({
+  const { data, isLoading } = useQuery<SireFindingsResponse>({
     queryKey: ['sire-findings', vesselId],
     queryFn: async () => {
       try {
         return await sireApi.getFindings(vesselId)
       } catch {
-        return MOCK_SIRE_FINDINGS.filter((f) => f.vesselId === vesselId)
+        const fallback = MOCK_SIRE_FINDINGS.filter((f) => f.vesselId === vesselId)
+        return {
+          findings: fallback,
+          summary: {
+            total: fallback.length,
+            open: fallback.filter((f) => f.status === 'open').length,
+            closed: fallback.filter((f) => f.status === 'closed').length,
+            // Always 0, and not a mistake in this fallback: the backend counts
+            // `severity === 'non-conformance'`, a value absent from
+            // FindingSeverity ('observation' | 'deficiency' | 'major'), so the
+            // server's own figure is structurally zero too. Mirrored rather
+            // than silently diverging; the mismatch is worth its own fix.
+            nonConformances: 0,
+            observations: fallback.filter((f) => f.severity === 'observation').length,
+          },
+        }
       }
     },
   })
 
   if (isLoading) return <div className="card animate-pulse h-48" />
 
-  const open = findings?.filter((f) => f.status === 'open').length ?? 0
+  const findings = data?.findings
+  // From the server, not recomputed. One source of truth for a number the
+  // backend already publishes.
+  const open = data?.summary.open ?? 0
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4 text-sm text-gray-400">
         <span>{findings?.length ?? 0} total findings</span>
-        {open > 0 && <span className="text-status-red font-medium">{open} open</span>}
+        <span className={open > 0 ? 'text-status-red font-medium' : 'text-gray-400'}>
+          {open} open
+        </span>
       </div>
       {!findings || findings.length === 0 ? (
         <div className="card flex flex-col items-center justify-center py-12 text-center">
