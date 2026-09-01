@@ -278,13 +278,31 @@ jobs:
       # loop runs two harnesses, runs the convergence layer, and breaks on what
       # it says.
       #
-      # NOTE `set -u -o pipefail` WITHOUT `-e`. Both harnesses use their exit
-      # codes to report findings -- the QA harness exits 1 for blocking findings
-      # and 2 for a failed run, the fix harness exits 1 when it applied nothing
-      # and something broke -- and under `-e` the first interesting round would
-      # abort the loop. Those outcomes are DATA here: they are in the artefacts,
-      # and the convergence layer is what reads them. The gate below is the one
-      # thing that hard-stops the run, and it does so explicitly.
+      # NOTE `set +e`, AND IT MUST BE `+e` RATHER THAN "no -e".
+      #
+      # Actions runs every `run:` step as `bash -e {0}`, so -e is ALREADY ON
+      # before the first line of this script executes. A `set -uo pipefail` here
+      # adds two flags and removes nothing, which is the trap: it reads like the
+      # script opted out of -e when it has not.
+      #
+      # Opting out is required, because three separate commands in this loop
+      # report their result through an exit code rather than a failure. The QA
+      # harness exits 1 for blocking findings and 2 for a failed run; the fix
+      # harness exits 1 when it applied nothing and something broke; the
+      # convergence layer exits 1 on any stop that is not a PASS. Under -e the
+      # first of those kills the step -- and kills it SILENTLY, because all three
+      # write their reports to files rather than to stdout.
+      #
+      # Confirmed the hard way on run 33501201001: the stack came up, the QA
+      # agent ran for three minutes against the seeded corpus, found blocking
+      # findings, exited 1, and the step ended with no output, no annotation and
+      # no decision. `[ "$stop" = "true" ] && break` is the same trap in
+      # miniature -- as the last command in the loop body it returns 1 on every
+      # round that continues.
+      #
+      # Those outcomes are DATA here: they are in the artefacts, and the
+      # convergence layer is what reads them. The gate below is the one thing
+      # that hard-stops the run, and it does so explicitly, through `fail`.
       - name: Run the convergence loop
         id: loop
         env:
@@ -301,7 +319,7 @@ jobs:
           RUNTIME_ARN: ${{ vars.QA_RUNTIME_ARN }}
           SECRET_ARN: ${{ vars.QA_SECRET_ARN }}
         run: |
-          set -uo pipefail
+          set +e -u -o pipefail
 
           PG=.pipelineguard/agents
           fail() { echo "::error::$1"; echo "LOOP_ERROR=$1" >> "$GITHUB_ENV"; exit 1; }
