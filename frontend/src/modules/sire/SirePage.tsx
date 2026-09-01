@@ -83,28 +83,32 @@ function FindingRow({ finding }: { finding: SireFinding }) {
   const [expanded, setExpanded] = useState(false)
   return (
     <div className={cn('card', {
-      'border-status-red': finding.severity === 'major',
-      'border-status-amber': finding.severity === 'deficiency',
+      // A non-conformance is the serious one. This used to key on 'major' and
+      // 'deficiency' -- values the API has never sent -- so every real
+      // non-conformance fell through to the observation styling and was shown
+      // as the mildest class of finding.
+      'border-status-red': finding.severity === 'non-conformance',
       'border-navy-700': finding.severity === 'observation',
     })}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <Badge
-              variant={
-                finding.severity === 'major' ? 'critical' : finding.severity === 'deficiency' ? 'warning' : 'info'
-              }
+              variant={finding.severity === 'non-conformance' ? 'critical' : 'info'}
               className="capitalize"
             >
               {finding.severity}
             </Badge>
             <span className="text-gray-500 text-xs">Ch.{finding.chapter}: {finding.chapterTitle}</span>
+            {/* The API sends 'open' | 'closed' and nothing else. The
+                'verified' and 'in_progress' branches this replaced were dead,
+                and the underscore replace below served a value that never
+                arrived -- same imagined contract as the severity map above. */}
             <span className={cn('text-xs capitalize', {
-              'text-status-green': finding.status === 'closed' || finding.status === 'verified',
-              'text-status-amber': finding.status === 'in_progress',
+              'text-status-green': finding.status === 'closed',
               'text-status-red': finding.status === 'open',
             })}>
-              {finding.status.replace('_', ' ')}
+              {finding.status}
             </span>
           </div>
           <p className="text-white text-sm mt-2">{finding.finding}</p>
@@ -298,12 +302,7 @@ function FindingsTab({ vesselId }: { vesselId: string }) {
             total: fallback.length,
             open: fallback.filter((f) => f.status === 'open').length,
             closed: fallback.filter((f) => f.status === 'closed').length,
-            // Always 0, and not a mistake in this fallback: the backend counts
-            // `severity === 'non-conformance'`, a value absent from
-            // FindingSeverity ('observation' | 'deficiency' | 'major'), so the
-            // server's own figure is structurally zero too. Mirrored rather
-            // than silently diverging; the mismatch is worth its own fix.
-            nonConformances: 0,
+            nonConformances: fallback.filter((f) => f.severity === 'non-conformance').length,
             observations: fallback.filter((f) => f.severity === 'observation').length,
           },
         }
