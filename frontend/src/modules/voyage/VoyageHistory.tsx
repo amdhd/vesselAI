@@ -20,20 +20,22 @@ function SkeletonRow() {
 }
 
 function SavingsCell({ savings }: { savings: number }) {
-  const isPositive = savings > 0
+  const value = savings ?? 0
+  const isPositive = value > 0
   return (
     <span className={cn('flex items-center gap-1 font-mono font-medium text-sm', isPositive ? 'text-status-green' : 'text-status-red')}>
       {isPositive ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-      {isPositive ? '+' : ''}${Math.abs(savings * 650).toLocaleString()}
+      {isPositive ? '+' : ''}${Math.abs(value * 650).toLocaleString()}
     </span>
   )
 }
 
 function CIIImpactCell({ impact }: { impact: number }) {
-  const isPositive = impact < 0
+  const value = impact ?? 0
+  const isPositive = value < 0
   return (
     <span className={cn('font-mono text-sm font-medium', isPositive ? 'text-status-green' : 'text-status-red')}>
-      {impact > 0 ? '+' : ''}{impact.toFixed(2)}
+      {value > 0 ? '+' : ''}{value.toFixed(2)}
     </span>
   )
 }
