@@ -100,10 +100,11 @@ env:
   # promote every push to PipelineGuard main straight into this repo's write path
   # with no review of the promotion.
   #
-  # amdhd/pipelineguard#55 is merged, so this SHA is durable. It is the commit
-  # that added agents/converge/aggregate.py and aggregate_findings(), which the
-  # repeats loop below depends on -- an earlier pin cannot run the aggregation.
-  PIPELINEGUARD_REF: 817852a451c59fbfb18554164440756c5771c103
+  # amdhd/pipelineguard#56 is merged, so this SHA is durable. It carries
+  # aggregate.py AND the prose-tolerant identity fix (run 33586824290 proved an
+  # exact-summary key dropped every finding -- an earlier pin would re-run that
+  # false PASS).
+  PIPELINEGUARD_REF: 01924da8f89d540dc8b14bdd38b14ed729c454fe
 
   # Pinned and checksummed, as in ui-qa-agent.yml. Cloudflare publishes no
   # checksum asset, so this digest was computed from the pinned release and must
