@@ -100,14 +100,18 @@ env:
   # promote every push to PipelineGuard main straight into this repo's write path
   # with no review of the promotion.
   #
-  # amdhd/pipelineguard#60 is merged, so this SHA is durable. On top of the
+  # amdhd/pipelineguard#60 is merged. NOTE: PipelineGuard's main was history-
+  # rewritten on 2026-09-02 (merge commits squashed one-per-PR), so #60's old
+  # merge SHA 630f3ea is no longer reachable and this pin was re-pointed at the
+  # squashed commit. A pinned SHA is durable only while the upstream history is.
+  # On top of the
   # verification round from #59, it fixes the ledger's twin overclaim: a
   # blocker patched in the FINAL round (run 33593197606's round-3 SAVINGS
   # patch) was never re-measured, yet reconcile() said "patch did not fix it".
   # A finding whose most recent patch is in the final round now reads "patch
   # unverified (run ended before a re-measure)"; PATCH_INEFFECTIVE requires a
   # later round to have measured it.
-  PIPELINEGUARD_REF: 630f3ea11544e0e22fc5018b3eb8a5d9df506671
+  PIPELINEGUARD_REF: 84f1a076f6ca320e71f2e683d79feb5c848ce338
 
   # Pinned and checksummed, as in ui-qa-agent.yml. Cloudflare publishes no
   # checksum asset, so this digest was computed from the pinned release and must
