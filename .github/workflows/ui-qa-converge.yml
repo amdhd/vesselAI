@@ -100,11 +100,11 @@ env:
   # promote every push to PipelineGuard main straight into this repo's write path
   # with no review of the promotion.
   #
-  # amdhd/pipelineguard#56 is merged, so this SHA is durable. It carries
-  # aggregate.py AND the prose-tolerant identity fix (run 33586824290 proved an
-  # exact-summary key dropped every finding -- an earlier pin would re-run that
-  # false PASS).
-  PIPELINEGUARD_REF: 01924da8f89d540dc8b14bdd38b14ed729c454fe
+  # amdhd/pipelineguard#57 is merged, so this SHA is durable. It carries
+  # aggregate.py, the within-round prose identity, AND the between-round
+  # comparison (run 33588304974 read a rephrased-but-persistent defect as a
+  # brand-new blocker and ended REGRESSED; an earlier pin would re-run that).
+  PIPELINEGUARD_REF: 1446cd35e46e4aaa6597d95f420977996e3f664d
 
   # Pinned and checksummed, as in ui-qa-agent.yml. Cloudflare publishes no
   # checksum asset, so this digest was computed from the pinned release and must
