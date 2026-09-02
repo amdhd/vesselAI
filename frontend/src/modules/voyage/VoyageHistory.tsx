@@ -30,10 +30,11 @@ function SavingsCell({ savings }: { savings: number }) {
 }
 
 function CIIImpactCell({ impact }: { impact: number }) {
-  const isPositive = impact < 0
+  const value = impact ?? 0
+  const isPositive = value < 0
   return (
     <span className={cn('font-mono text-sm font-medium', isPositive ? 'text-status-green' : 'text-status-red')}>
-      {impact > 0 ? '+' : ''}{impact.toFixed(2)}
+      {value > 0 ? '+' : ''}{value.toFixed(2)}
     </span>
   )
 }
