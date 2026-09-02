@@ -59,6 +59,11 @@ on:
         description: "Bedrock inference profile for the QA agent (blank = the quality rung)"
         required: false
         type: string
+      repeats:
+        description: "QA runs per round, majority-aggregated into one findings file. A finding counts only when more than half the runs report it."
+        required: false
+        default: "1"
+        type: string
       dry_run:
         # Genuinely useful rather than a courtesy: it exercises the stack, the
         # tunnel, the health gate, the QA agent and the whole loop mechanism
@@ -95,10 +100,10 @@ env:
   # promote every push to PipelineGuard main straight into this repo's write path
   # with no review of the promotion.
   #
-  # amdhd/pipelineguard#41 is merged, so this SHA is durable. It is the commit
-  # that added agents/converge/ AND the fix harness's token block -- the loop
-  # refuses to run without the latter, so an earlier pin cannot work.
-  PIPELINEGUARD_REF: e4b47f21bc4f5c2e0793b978a9625d9139546f24
+  # amdhd/pipelineguard#55 is merged, so this SHA is durable. It is the commit
+  # that added agents/converge/aggregate.py and aggregate_findings(), which the
+  # repeats loop below depends on -- an earlier pin cannot run the aggregation.
+  PIPELINEGUARD_REF: 817852a451c59fbfb18554164440756c5771c103
 
   # Pinned and checksummed, as in ui-qa-agent.yml. Cloudflare publishes no
   # checksum asset, so this digest was computed from the pinned release and must
@@ -310,6 +315,7 @@ jobs:
           SEVERITIES: ${{ inputs.severities }}
           TOKEN_BUDGET: ${{ inputs.token_budget || 2000000 }}
           QA_MODEL: ${{ inputs.model }}
+          REPEATS: ${{ inputs.repeats || 1 }}
           DRY_RUN: ${{ inputs.dry_run }}
           # The fix half's identity, and the only place it exists. Masked by the
           # action that produced it.
@@ -423,19 +429,36 @@ jobs:
             # round after the first if the loop kept re-stating the original.
             head_sha=$(git rev-parse HEAD)
 
-            python "$PG/qa/harness/main.py" \
-              --runtime-arn "$RUNTIME_ARN" \
-              --target-url "$TARGET_URL" \
-              --region "$AWS_REGION" \
-              --secret-arn "$SECRET_ARN" \
-              --session-label "gh-${{ github.run_id }}-r$round" \
-              --target-commit "$head_sha" \
-              ${QA_MODEL:+--model "$QA_MODEL"} \
-              --json-out "findings-$round.json" \
-              --comment-out "qa-comment-$round.md"
-            echo "QA harness exited $? (an exit code here is data, not a failure)"
+            # REPEATED RUNS PER ROUND (P1.3). One QA run is not a measurement --
+            # run-to-run variance flips findings on identical code (EVIDENCE.md),
+            # so the round runs QA $REPEATS times and aggregates them by strict
+            # majority. Each repeat gets its own session label: labels are S3
+            # evidence prefixes, so the -x$r suffix is mandatory, not decoration.
+            for r in $(seq 1 "$REPEATS"); do
+              python "$PG/qa/harness/main.py" \
+                --runtime-arn "$RUNTIME_ARN" \
+                --target-url "$TARGET_URL" \
+                --region "$AWS_REGION" \
+                --secret-arn "$SECRET_ARN" \
+                --session-label "gh-${{ github.run_id }}-r$round-x$r" \
+                --target-commit "$head_sha" \
+                ${QA_MODEL:+--model "$QA_MODEL"} \
+                --json-out "findings-$round-$r.json" \
+                --comment-out "qa-comment-$round-$r.md"
+              echo "QA harness exited $? (an exit code here is data, not a failure)"
 
-            [ -s "findings-$round.json" ] || fail "round $round: the QA harness wrote no findings JSON"
+              [ -s "findings-$round-$r.json" ] || fail "round $round repeat $r: the QA harness wrote no findings JSON"
+            done
+
+            # Fold the K runs into the ONE findings file the rest of the loop
+            # consumes. The glob matches only the per-repeat files (the trailing
+            # dash means findings-$round.json itself can never match). An
+            # aggregate writes even when the majority of runs failed, so the
+            # session records INCONCLUSIVE rather than the job dying on a file.
+            python "$PG/converge/aggregate.py" \
+              --findings "findings-$round-"*.json \
+              --json-out "findings-$round.json"
+            [ -s "findings-$round.json" ] || fail "round $round: aggregation wrote no findings JSON"
 
             if has_blocking "findings-$round.json"; then
               fix_flags=(--findings "findings-$round.json" --repo . \
