@@ -24,7 +24,7 @@ function SavingsCell({ savings }: { savings: number }) {
   return (
     <span className={cn('flex items-center gap-1 font-mono font-medium text-sm', isPositive ? 'text-status-green' : 'text-status-red')}>
       {isPositive ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-      {isPositive ? '+' : ''}${Math.abs(savings * 650).toLocaleString()}
+      {isPositive ? '+' : ''}${Math.abs(savings).toLocaleString()}
     </span>
   )
 }
@@ -55,7 +55,7 @@ export default function VoyageHistory() {
     enabled: true,
   })
 
-  const totalSavings = history?.reduce((sum, v) => sum + (v.savings > 0 ? v.savings * 650 : 0), 0) ?? 0
+  const totalSavings = history?.reduce((sum, v) => sum + (v.savings > 0 ? v.savings : 0), 0) ?? 0
 
   if (isError) {
     return (
