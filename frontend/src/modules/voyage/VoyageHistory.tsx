@@ -29,7 +29,8 @@ function SavingsCell({ savings }: { savings: number }) {
   )
 }
 
-function CIIImpactCell({ impact }: { impact: number }) {
+function CIIImpactCell({ impact }: { impact: number | undefined }) {
+  if (impact == null) return <span className="font-mono text-sm font-medium text-[#5c6470]">—</span>
   const isPositive = impact < 0
   return (
     <span className={cn('font-mono text-sm font-medium', isPositive ? 'text-status-green' : 'text-status-red')}>
