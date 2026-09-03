@@ -40,6 +40,19 @@ on:
         description: "Select files and run every guardrail, but make no model call and open no PR"
         type: boolean
         default: false
+      origin_pr:
+        description: "PR number the findings were reported on (D-4). Set to make this dispatch a FIX LEG: the harness writes the committed qa-fix-origin.json sidecar, so the fix PR's QA run reconciles the origin report and the origin's next clean run can close the board."
+        required: false
+        type: string
+      origin_repo:
+        description: "Owner/repo of the origin PR (D-4). Human-attribution only; defaults to this repo when blank."
+        required: false
+        type: string
+      fix_base:
+        description: "Base branch for the fix PR (default main). Point at a scratch branch for a non-destructive demo."
+        required: false
+        default: main
+        type: string
 
 # The App token does every write. GITHUB_TOKEN therefore needs nothing beyond
 # checkout, and `pull-requests: write` is deliberately NOT granted: a PR opened
@@ -62,6 +75,11 @@ env:
   # find the ref" -- a long way from its cause. amdhd/pipelineguard#30 is
   # merged, so this SHA is durable.
   #
+  # 7e968d75 is amdhd/pipelineguard#74 (D-4 fix-loop chaining), merged to main
+  # 2026-09-04: it carries the fix harness --origin-pr/--origin-repo flags and
+  # the qa-fix-origin.json sidecar writer this file feeds, so a dispatch that
+  # names an origin PR needs a ref at or past it.
+  #
   # PINNED, unlike ui-qa-agent.yml which tracks main on purpose.
   # WORKFLOW-REVIEW.md rules the mutable ref "not a defect, and the right call"
   # for the QA harness -- a reporter whose worst failure is a wrong PR comment,
@@ -70,7 +88,7 @@ env:
   # branches, so its worst failure is a bad commit, and an unpinned ref would
   # promote every push to PipelineGuard main straight into this repo's write
   # path with no review of the promotion.
-  PIPELINEGUARD_REF: 5f52f8b8f539c45426a933e5723dfb42db73e0c6
+  PIPELINEGUARD_REF: 7e968d75e0dde69eb52830d27c817b3e0aaaab65
 
 jobs:
   fix:
@@ -157,6 +175,15 @@ jobs:
           FINDINGS: ${{ inputs.findings }}
           SEVERITIES: ${{ inputs.severities }}
           DRY_RUN: ${{ inputs.dry_run }}
+          # D-4 fix leg: when a dispatch names an origin PR, the harness writes
+          # the committed qa-fix-origin.json sidecar (applied fingerprints), and
+          # the PR this run opens reconciles the origin report. origin_repo is
+          # human-attribution only -- the S3 namespace is pr-<n> with no repo
+          # component -- so blank falls back to this repo. The findings S3 key
+          # is derived by the harness (reports/pr-<origin>/latest/findings.json),
+          # so there is no input for it.
+          ORIGIN_PR: ${{ inputs.origin_pr }}
+          ORIGIN_REPO: ${{ inputs.origin_repo || github.repository }}
         run: |
           set -euo pipefail
           args=(--findings "$FINDINGS" --repo . \
@@ -170,6 +197,9 @@ jobs:
           fi
           if [ "$DRY_RUN" = "true" ]; then
             args+=(--dry-run)
+          fi
+          if [ -n "$ORIGIN_PR" ]; then
+            args+=(--origin-pr "$ORIGIN_PR" --origin-repo "$ORIGIN_REPO")
           fi
           python .pipelineguard/agents/fix/harness.py "${args[@]}"
 
@@ -240,6 +270,7 @@ jobs:
 
       # --- Publish --------------------------------------------------------
       - name: Commit and open the PR
+        id: publish
         if: steps.changed.outputs.any == 'true' && inputs.dry_run != true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -248,21 +279,49 @@ jobs:
           # input must never reach a shell line by interpolation, however
           # trusted the dispatcher.
           FINDINGS: ${{ inputs.findings }}
+          FIX_BASE: ${{ inputs.fix_base || 'main' }}
         run: |
           set -euo pipefail
           git config user.name  "${{ steps.app-token.outputs.app-slug }}[bot]"
           git config user.email "${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git add -- frontend backend
+          # D-4: a fix-leg run left the origin sidecar at the repo root. It must
+          # ride the fix branch -- the fix PR's QA run reads it to reconcile the
+          # ORIGIN report instead of this PR's own (empty) history. Guarded with
+          # `[ -f ]` so a plain dispatch (no sidecar) is unchanged.
+          if [ -f qa-fix-origin.json ]; then
+            git add qa-fix-origin.json
+          fi
           git commit -m "fix(agent): patches proposed from QA findings" \
                      -m "Opened by the bug-fix agent. Every patch compiled and passed the
           suite before this branch was pushed. See the PR body for what was
           skipped and why -- that half is not visible in the diff."
           git push -u origin "$BRANCH"
-          gh pr create \
+          PR_URL="$(gh pr create \
             --title "fix(agent): patches from QA run $(basename "$FINDINGS" .json)" \
             --body-file agent-fix-summary.md \
-            --base main
+            --base "$FIX_BASE")"
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+
+      # D-4: agent-qa is the label ui-qa-agent.yml fires on (`labeled` type), so
+      # this is the step that starts QA on the fix PR -- the harness must see the
+      # ORIGIN sidecar, which only exists on this PR's head. Uses the App token,
+      # never GITHUB_TOKEN: events it generates do not trigger workflows. Labels
+      # sit under the Issues REST API, so the App needs Issues: write as well as
+      # Pull requests: write -- a grant no workflow file can prove. If the App
+      # cannot label, say so and move on: the loop is human-gated anyway, and a
+      # maintainer labels the fix PR by hand to start its QA run.
+      - name: Label the fix PR for QA (D-4)
+        if: steps.changed.outputs.any == 'true' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_URL: ${{ steps.publish.outputs.pr_url }}
+        run: |
+          set -euo pipefail
+          if ! gh pr edit "$PR_URL" --add-label agent-qa; then
+            echo "::notice::could not add 'agent-qa' to $PR_URL — add it by hand to start the fix-PR QA run (the GitHub App needs Pull requests: write AND Issues: write)"
+          fi
 
       - name: Report when nothing was patched
         if: steps.changed.outputs.any != 'true'

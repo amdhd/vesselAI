@@ -263,6 +263,18 @@ jobs:
 
           echo "::notice::health gate passed — SPA, analytics JSON, seeded login, fleet read"
 
+      # D-4: a fix-leg run -- or the origin PR once the fix merged up into it --
+      # carries a committed qa-fix-origin.json at the workspace root. Read it into
+      # FIX_ORIGIN so the harness reconciles the ORIGIN report instead of this
+      # PR's own history. Absent on any ordinary PR, and the harness ignores
+      # FIX_ORIGIN unless this head is the agent-fix/ branch or the origin PR
+      # itself (anti-taint gate), so the env var is inert where no chain exists.
+      - name: Read the fix-origin sidecar (D-4)
+        run: |
+          if [ -f qa-fix-origin.json ]; then
+            { echo "FIX_ORIGIN<<_EOF_"; cat qa-fix-origin.json; echo "_EOF_"; } >> "$GITHUB_ENV"
+          fi
+
       - name: Run the QA agent
         id: qa
         continue-on-error: true
