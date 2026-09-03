@@ -270,6 +270,12 @@ jobs:
         # workflow_dispatch input interpolated into the command is not an
         # argument -- it is source code, in a job holding id-token: write. Both
         # inputs therefore arrive through env and are quoted by the shell.
+        #
+        # D-3 (re-verify): the harness fetches this PR's last archived report
+        # from vars.REPORTS_BUCKET under reports/pr-<n>/latest and re-verifies
+        # this run against it. The namespace expression is PR-only -- on
+        # schedule / dispatch there is no pull_request.number, so it resolves to
+        # "" and the run stays run-scoped, never archiving under a pr- alias.
         env:
           QA_MODEL: ${{ inputs.model }}
           QA_MAX_ROUTES: ${{ inputs.max_routes || 8 }}
@@ -286,7 +292,9 @@ jobs:
             $( [ "$LIVE_AI" = "1" ] && echo --live-ai ) \
             --json-out findings.json \
             --comment-out comment.md \
-            --target-commit "${{ github.event.pull_request.head.sha || github.sha }}"
+            --target-commit "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --reports-bucket "${{ vars.REPORTS_BUCKET }}" \
+            --report-namespace "${{ github.event.pull_request.number != '' && format('pr-{0}', github.event.pull_request.number) || '' }}"
 
       # The raw findings JSON is the measurement artifact: pipelineguard's
       # score.py matches it against the seeded corpus, and recall is measured
