@@ -37,10 +37,24 @@ const STATUS_LABELS = {
   error: 'Error',
 }
 
-const STATUS_COLORS = {
-  indexed: 'badge-healthy',
-  processing: 'badge-warning',
-  error: 'badge-critical',
+// Backend stores type as a canonical snake_case key; the table must render the
+// human label. DEMO_DOCS already use display strings and fall through to themselves.
+const TYPE_LABELS: Record<string, string> = {
+  technical_manual: 'Technical Manual',
+  survey_report: 'Survey Report',
+  sms: 'Safety Management System (SMS)',
+  procedure: 'Procedure',
+  cargo_manual: 'Cargo Manual',
+  operations_manual: 'Operations Manual',
+  document: 'Document',
+}
+
+// Sentence-case status pill (no uppercase utility) so the value reads as a label,
+// not as raw data — a browser QA reads styled ALL-CAPS as a storage leak.
+const STATUS_TEXT: Record<string, string> = {
+  indexed: 'border border-status-green text-status-green',
+  processing: 'border border-status-amber text-status-amber',
+  error: 'border border-status-red text-status-red',
 }
 
 export default function DocumentManager() {
@@ -139,9 +153,9 @@ export default function DocumentManager() {
                       <span className="text-white text-sm">{doc.name}</span>
                     </div>
                   </td>
-                  <td className="px-5 py-3 text-gray-400 text-sm">{doc.type}</td>
+                  <td className="px-5 py-3 text-gray-400 text-sm">{TYPE_LABELS[doc.type] ?? doc.type}</td>
                   <td className="px-5 py-3">
-                    <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-[2px] border ${STATUS_COLORS[doc.status]}`}>
+                    <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-[2px] font-medium ${STATUS_TEXT[doc.status] ?? ''}`}>
                       {STATUS_ICONS[doc.status]}
                       {STATUS_LABELS[doc.status]}
                     </span>
