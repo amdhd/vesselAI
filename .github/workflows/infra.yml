@@ -1,0 +1,110 @@
+# Infrastructure gate.
+#
+# WHY THIS IS A SEPARATE WORKFLOW from ci.yml: ci.yml builds images and pushes
+# them, and its jobs take minutes. Nothing here needs any of that, and a change
+# to vpc.tf has no reason to rebuild six containers. Splitting also means the
+# path filter below actually saves time rather than just skipping a step inside
+# a job that already booted.
+#
+# NO AWS CREDENTIALS ANYWHERE IN THIS FILE, and that is a design constraint, not
+# an omission. `terraform init -backend=false` downloads providers and nothing
+# else; `validate` is entirely offline after that. There is no `plan` job,
+# because a plan needs real credentials with broad read access, and a workflow
+# holding those is a much larger attack surface than a lint gate is worth.
+# `make plan` is a human's job, run locally against the SSO profile.
+
+name: infra
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/infra.yml'
+  pull_request:
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/infra.yml'
+
+# A second push to the same PR makes the first run's answer irrelevant.
+concurrency:
+  group: infra-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: terraform
+
+jobs:
+  validate:
+    name: fmt · validate · tflint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # terraform_wrapper: false — the wrapper script mangles exit codes and
+      # stdout, which matters the moment you pipe or check the output of a step.
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      # Runs before init so a formatting failure costs 5 seconds, not 40.
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff
+
+      # -backend=false is what makes this credential-free: it skips backend
+      # initialisation entirely and only resolves the provider dependencies.
+      #
+      # This step is ALSO the guard on the lock file. .terraform.lock.hcl is
+      # committed with checksums for four platforms; if someone regenerates it
+      # on a Mac only, this fails here on linux_amd64 with "provider does not
+      # have a package available" — which is exactly the point of gating it.
+      - name: terraform init
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate
+        run: terraform validate -no-color
+
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.53.0
+
+      # The AWS ruleset is a plugin download, so it is cached — otherwise every
+      # run re-fetches ~30MB from GitHub releases.
+      - name: Cache tflint plugins
+        uses: actions/cache@v4
+        with:
+          path: ~/.tflint.d/plugins
+          key: tflint-${{ hashFiles('terraform/.tflint.hcl') }}
+
+      - name: tflint
+        run: |
+          tflint --init
+          tflint --format compact --recursive
+
+  scan:
+    name: trivy misconfiguration scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # exit-code: 1 on HIGH/CRITICAL only. MEDIUM and below are reported in
+      # the log but do not fail the build: this config makes several deliberate
+      # trade-offs a scanner cannot know about (one NAT gateway, a public API
+      # endpoint, local state), and a gate that cries wolf on documented
+      # decisions is a gate people learn to click past.
+      #
+      # Anything genuinely accepted gets a #trivy:ignore comment in the .tf file
+      # naming the check — so the exception lives next to the code it excuses,
+      # not in a config file nobody opens.
+      - name: Trivy config scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: terraform
+          severity: HIGH,CRITICAL
+          exit-code: '1'

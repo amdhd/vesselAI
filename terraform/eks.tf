@@ -82,6 +82,22 @@ resource "aws_iam_role_policy_attachment" "cluster" {
 
 # --- The cluster -----------------------------------------------------------
 
+# Two accepted scanner findings, declared here rather than filtered out in the
+# workflow, so the exception is read by anyone reading the resource it excuses.
+#
+# AVD-AWS-0040 (public endpoint) and AVD-AWS-0041 (0.0.0.0/0) are both real.
+# The private endpoint is on too, so nodes never leave the VPC to reach the API
+# server; the public one exists so a laptop can run kubectl without a bastion or
+# a VPN, which for a three-day single-operator cluster is the whole access story.
+# Authentication is still required — this is not an unauthenticated API.
+#
+# BOTH CARRY AN EXPIRY, deliberately. An ignore with no expiry is a permanent
+# decision made once; these are "acceptable for a burst cluster", which stops
+# being true the moment this is anything else. When they re-fire, the fix is
+# `api_public_access_cidrs = ["<office CIDR>/32"]`, or endpoint_public_access =
+# false plus a bastion.
+#trivy:ignore:AVD-AWS-0040 exp:2027-01-01
+#trivy:ignore:AVD-AWS-0041 exp:2027-01-01
 resource "aws_eks_cluster" "main" {
   name     = var.cluster_name
   version  = var.cluster_version

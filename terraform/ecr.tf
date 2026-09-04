@@ -88,6 +88,14 @@ resource "aws_ecr_lifecycle_policy" "app" {
 # written once and would then reject every subsequent upstream patch release.
 # The prod overlay pins postgres by digest regardless, which is what actually
 # fixes the version — the mirror solves rate limiting, not mutability.
+#
+# No expiry on this ignore, unlike the two in eks.tf: those are "acceptable for
+# now", this one is correct permanently. A mirror of a moving upstream tag
+# cannot be immutable by construction, so the finding will never become
+# actionable and dating it would just schedule a re-litigation of a settled
+# question. The app repositories above are IMMUTABLE and are what the check is
+# actually protecting.
+#trivy:ignore:AVD-AWS-0031
 resource "aws_ecr_repository" "postgres_mirror" {
   name                 = "${var.cluster_name}/postgres"
   image_tag_mutability = "MUTABLE"

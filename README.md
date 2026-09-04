@@ -375,6 +375,7 @@ GET    /api/sire/findings/:vesselId
 │   ├── loadtest/           k6 script + in-cluster Job
 │   └── scripts/            Pre-apply checks (quota headroom, image refs), EKS re-seal
 ├── terraform/              EKS from an empty AWS account
+│   ├── README.md           Layout, usage, and the boundaries this config accepts
 │   ├── vpc.tf              Subnets with the discovery tags the ALB controller needs
 │   ├── eks.tf              Control plane + the OIDC provider IRSA depends on
 │   ├── nodes.tf            Node group sized from measured demand, not guessed
@@ -382,8 +383,13 @@ GET    /api/sire/findings/:vesselId
 │   ├── external-dns.tf     Route 53 writes scoped to one hosted zone
 │   ├── github-oidc.tf      CI pushes to ECR with no stored AWS keys
 │   ├── kms.tf              Envelope encryption for Secrets; EBS encrypted by default
+│   ├── backend.tf          Empty on purpose — the S3 migration, written out
+│   ├── .tflint.hcl         Lint rules the infra workflow enforces
 │   ├── policies/           Vendored upstream IAM policy, with an honest README
 │   └── Makefile            `make destroy` in the order that actually works
+├── .github/workflows/
+│   ├── ci.yml              App: build, test, push to GHCR + ECR
+│   └── infra.yml           IaC: fmt, validate, tflint, Trivy — no AWS creds
 ├── docs/EKS.md             Bootstrap runbook — each step says what breaks if run early
 ├── docker-compose.yml      + docker-compose.prod.yml
 └── .env.example
