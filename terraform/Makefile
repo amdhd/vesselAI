@@ -1,10 +1,15 @@
-# VesselMind — Phase 9 EKS lifecycle.
+# VesselMind — EKS lifecycle.
 #
-# STATUS: there are no .tf files in this directory yet. The terraform targets
-# below refuse to run until Phase 9 writes them. `make destroy` exists first, on
-# purpose: the plan's rule is "write a make destroy target on day one", and the
-# reason is that the entire cost risk of this phase is a cluster nobody
-# remembered to tear down. At ~$0.37/hr a forgotten cluster is $267/month.
+# `make help` lists the targets. `make destroy` is the one to read about before
+# you run anything, and the reason it was written on day one — before a single
+# .tf file existed — is that the entire cost risk of this cluster is nobody
+# remembering to tear it down. At ~$0.37/hr a forgotten cluster is $267/month.
+#
+# The guard-tf target below is a survivor of that ordering: it refuses the
+# terraform targets when the directory has no .tf files. That case no longer
+# occurs, but the guard is one `ls` and it is the difference between a clear
+# refusal and `terraform apply` cheerfully destroying everything because it
+# read an empty configuration as "the desired state is nothing".
 #
 # WHY THIS IS NOT JUST `terraform destroy`
 #
@@ -136,8 +141,9 @@ guard-tf:
 	@set -euo pipefail; \
 	if ! ls *.tf >/dev/null 2>&1; then \
 	  echo "ERROR: no .tf files in $$(pwd)."; \
-	  echo "Phase 9 has not written the Terraform yet. Only 'make destroy-apps'"; \
-	  echo "and 'make check-orphans' are meaningful until it does."; \
+	  echo "An empty configuration is a valid one meaning 'nothing should exist',"; \
+	  echo "so apply/destroy would run and be catastrophically wrong. Refusing."; \
+	  echo "Only 'make destroy-apps' and 'make check-orphans' work without them."; \
 	  exit 1; \
 	fi
 
