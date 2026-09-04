@@ -8,6 +8,10 @@ I built and hardened this solo as a demo-day portfolio piece for Forward Deploye
 
 **It also runs on Kubernetes, twice.** The same manifests deploy to a local k3d cluster and to a real **AWS EKS** cluster built from an empty account by Terraform — VPC, ECR, IRSA, an ALB with an ACM certificate, KMS-encrypted Secrets, GitOps reconciliation by Argo CD, and a measured load test on both. The EKS run is where the interesting failures were: nine bugs that a laptop cluster could not have surfaced, each one written up in [Running on Kubernetes](#running-on-kubernetes) rather than quietly fixed.
 
+[![VesselMind AWS architecture — EKS cluster built by Terraform: Route 53, ACM, an ALB in public subnets, a managed node group in private subnets, ECR, KMS and GitHub OIDC](docs/architecture/aws-architecture.png)](docs/architecture/aws-architecture.png)
+
+<sub>Drawn from the actual resources in [`terraform/`](terraform/) and [`k8s/`](k8s/) — so the ALB shows as controller-created rather than Terraform-created, which is the distinction the teardown ordering turns on. [Editable source + notes](docs/architecture/).</sub>
+
 **[The FDE headline features](#the-three-features-that-matter-for-an-fde) · [Data warehouse](#3-an-analytics-warehouse-duckdb--dbt-medallion) · [Kubernetes & EKS](#running-on-kubernetes) · [Demo credentials](#demo-mode) · [What's real vs. mocked](#whats-real-vs-mocked) · [Engineering notes](#engineering-notes) · [How this maps to an FDE role](#how-this-maps-to-an-fde-role)**
 
 ---
@@ -391,6 +395,7 @@ GET    /api/sire/findings/:vesselId
 │   ├── ci.yml              App: build, test, push to GHCR + ECR
 │   └── infra.yml           IaC: fmt, validate, tflint, Trivy — no AWS creds
 ├── docs/EKS.md             Bootstrap runbook — each step says what breaks if run early
+├── docs/architecture/      AWS architecture diagram (.drawio + .png) and its guide
 ├── docker-compose.yml      + docker-compose.prod.yml
 └── .env.example
 ```
@@ -585,6 +590,9 @@ drift without correcting it. Both behaviours are Phase 8 working exactly as
 configured, observed rather than assumed.
 
 ### The EKS build — Terraform, IRSA, and what broke
+
+The [diagram at the top of this README](docs/architecture/aws-architecture.png)
+is the map of everything below it.
 
 `terraform/` builds the cluster from an empty AWS account in ~20 minutes and
 `make destroy` removes it. 64 resources: VPC with public/private subnets across

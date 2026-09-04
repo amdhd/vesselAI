@@ -6,6 +6,10 @@ is not an afterthought — it is the most important section on this page.
 
 ## What Terraform owns, and what it cannot
 
+See [`architecture/aws-architecture.png`](architecture/aws-architecture.png) for
+the shape of what this builds, and [`architecture/aws-architecture.md`](architecture/aws-architecture.md)
+for the resource-by-resource notes.
+
 `terraform/` builds the cluster from an empty AWS account: VPC, ECR, EKS 1.36,
 a managed node group, five IRSA roles, an ACM wildcard certificate, and KMS
 envelope encryption for Secrets. It also installs every component available as

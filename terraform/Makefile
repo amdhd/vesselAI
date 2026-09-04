@@ -5,12 +5,6 @@
 # .tf file existed — is that the entire cost risk of this cluster is nobody
 # remembering to tear it down. At ~$0.37/hr a forgotten cluster is $267/month.
 #
-# The guard-tf target below is a survivor of that ordering: it refuses the
-# terraform targets when the directory has no .tf files. That case no longer
-# occurs, but the guard is one `ls` and it is the difference between a clear
-# refusal and `terraform apply` cheerfully destroying everything because it
-# read an empty configuration as "the desired state is nothing".
-#
 # WHY THIS IS NOT JUST `terraform destroy`
 #
 # Two of the most expensive objects in a running cluster are not in Terraform
@@ -123,9 +117,28 @@ ARGOCD_NS    ?= argocd
 # timeout looks identical to a stuck finalizer.
 WAIT ?= 10m
 
+# WHO CAN REACH THE KUBERNETES API SERVER.
+#
+# api_public_access_cidrs has no default in variables.tf — deliberately, so that
+# no apply can silently inherit "the whole internet". That makes supplying it
+# this Makefile's job, and the only answer that is both safe and unattended is
+# "the machine running the apply".
+#
+# Recursive `=`, not `:=`. With `:=` this curl would run on EVERY make
+# invocation including `make help`, which is a network call to print a help
+# screen. Deferred, it runs only inside the recipes that expand TF_VARS.
+#
+# checkip.amazonaws.com returns a bare IP and nothing else, which is why it is
+# preferred here over the various services that wrap it in JSON.
+OPERATOR_CIDR = $(shell curl -fsS --max-time 5 https://checkip.amazonaws.com 2>/dev/null)/32
+
+TF_VARS = -var="cluster_name=$(CLUSTER_NAME)" \
+          -var="region=$(REGION)" \
+          -var='api_public_access_cidrs=["$(OPERATOR_CIDR)"]'
+
 .DEFAULT_GOAL := help
 .PHONY: help init plan apply destroy destroy-apps destroy-infra \
-        check-orphans diagnose-stuck-namespace guard-context guard-tf
+        check-orphans diagnose-stuck-namespace guard-context guard-cidr
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -136,16 +149,6 @@ help: ## Show available targets
 # ---------------------------------------------------------------------------
 # Guards
 # ---------------------------------------------------------------------------
-
-guard-tf:
-	@set -euo pipefail; \
-	if ! ls *.tf >/dev/null 2>&1; then \
-	  echo "ERROR: no .tf files in $$(pwd)."; \
-	  echo "An empty configuration is a valid one meaning 'nothing should exist',"; \
-	  echo "so apply/destroy would run and be catastrophically wrong. Refusing."; \
-	  echo "Only 'make destroy-apps' and 'make check-orphans' work without them."; \
-	  exit 1; \
-	fi
 
 # The single most dangerous thing this Makefile could do is run against the
 # laptop. A k3d context and an EKS context both answer `kubectl delete namespace
@@ -164,19 +167,43 @@ guard-context:
 	fi; \
 	echo "==> context: $$ctx"
 
+# A failed IP lookup must not become an apply. Without this check, a curl that
+# times out on a flaky network expands OPERATOR_CIDR to the bare string "/32",
+# and terraform is handed api_public_access_cidrs=["/32"] — which fails, but
+# late, with an AWS-side CIDR parse error that reads like a bug in the config
+# rather than a network blip.
+#
+# The regex is deliberately loose about the octets: this is checking that the
+# lookup returned something IP-SHAPED, not validating the address. AWS rejects
+# a genuinely malformed CIDR itself, and duplicating that here would just be a
+# second thing to keep correct.
+guard-cidr:
+	@set -euo pipefail; \
+	cidr="$(OPERATOR_CIDR)"; \
+	if ! [[ "$$cidr" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}/32$$ ]]; then \
+	  echo "ERROR: could not determine this machine's public IP (got '$$cidr')."; \
+	  echo ""; \
+	  echo "The API server's public endpoint is restricted to a named CIDR and"; \
+	  echo "there is no default, so this cannot proceed on a guess. Set it:"; \
+	  echo ""; \
+	  echo "  make $(MAKECMDGOALS) OPERATOR_CIDR=\$$(curl -s https://checkip.amazonaws.com)/32"; \
+	  exit 1; \
+	fi; \
+	echo "==> API server public endpoint will allow: $$cidr"
+
 # ---------------------------------------------------------------------------
 # Build up
 # ---------------------------------------------------------------------------
 
-init: guard-tf ## terraform init
+init: ## terraform init
 	terraform init
 
-plan: guard-tf ## terraform plan
-	terraform plan -var="cluster_name=$(CLUSTER_NAME)" -var="region=$(REGION)"
+plan: guard-cidr ## terraform plan
+	terraform plan $(TF_VARS)
 
-apply: guard-tf ## terraform apply, then write the kubeconfig entry
+apply: guard-cidr ## terraform apply, then write the kubeconfig entry
 	@set -euo pipefail; \
-	terraform apply -var="cluster_name=$(CLUSTER_NAME)" -var="region=$(REGION)"; \
+	terraform apply $(TF_VARS); \
 	aws eks update-kubeconfig --name $(CLUSTER_NAME) --region $(REGION)
 
 # ---------------------------------------------------------------------------
@@ -230,8 +257,8 @@ destroy-apps: ## Step 1-2: remove Argo apps + namespaces so the ALB and EBS volu
 # still billing, which is precisely the state `make destroy` exists to avoid.
 APPROVE := $(if $(AUTO_APPROVE),-auto-approve,)
 
-destroy-infra: guard-tf ## Step 3: terraform destroy (only safe AFTER destroy-apps). AUTO_APPROVE=1 to skip the prompt.
-	terraform destroy $(APPROVE) -var="cluster_name=$(CLUSTER_NAME)" -var="region=$(REGION)"
+destroy-infra: guard-cidr ## Step 3: terraform destroy (only safe AFTER destroy-apps). AUTO_APPROVE=1 to skip the prompt.
+	terraform destroy $(APPROVE) $(TF_VARS)
 
 # ---------------------------------------------------------------------------
 # Verification
