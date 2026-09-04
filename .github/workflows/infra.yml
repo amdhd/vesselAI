@@ -73,14 +73,9 @@ jobs:
         with:
           tflint_version: v0.53.0
 
-      # The AWS ruleset is a plugin download, so it is cached — otherwise every
-      # run re-fetches ~30MB from GitHub releases.
-      - name: Cache tflint plugins
-        uses: actions/cache@v4
-        with:
-          path: ~/.tflint.d/plugins
-          key: tflint-${{ hashFiles('terraform/.tflint.hcl') }}
-
+      # Not cached on purpose: the whole job finishes in ~19s including the
+      # plugin download, so a cache step would add a moving part to save less
+      # time than restoring the cache costs.
       - name: tflint
         run: |
           tflint --init

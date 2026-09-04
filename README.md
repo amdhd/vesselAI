@@ -391,6 +391,7 @@ GET    /api/sire/findings/:vesselId
 │   ├── ci.yml              App: build, test, push to GHCR + ECR
 │   └── infra.yml           IaC: fmt, validate, tflint, Trivy — no AWS creds
 ├── docs/EKS.md             Bootstrap runbook — each step says what breaks if run early
+├── docs/architecture/      AWS architecture diagram (.drawio + .png) and its guide
 ├── docker-compose.yml      + docker-compose.prod.yml
 └── .env.example
 ```
@@ -585,6 +586,11 @@ drift without correcting it. Both behaviours are Phase 8 working exactly as
 configured, observed rather than assumed.
 
 ### The EKS build — Terraform, IRSA, and what broke
+
+[`docs/architecture/aws-architecture.png`](docs/architecture/aws-architecture.png)
+is the picture of what follows — drawn from the resources themselves, so it shows
+the ALB as controller-created rather than Terraform-created, which is the
+distinction the teardown ordering turns on.
 
 `terraform/` builds the cluster from an empty AWS account in ~20 minutes and
 `make destroy` removes it. 64 resources: VPC with public/private subnets across

@@ -34,7 +34,7 @@ GitHub Actions (`amdhd/vesselAI`) assumes an IAM role via the pre-existing GitHu
 
 - **Nodes in private subnets behind a NAT**, not public subnets with public IPs — costs ~$0.05/hr more but is the shape real clusters have, and the IRSA/SG work only makes sense against it.
 - **Single NAT gateway**, not one per AZ — a cost choice; it is an AZ-level SPOF for egress.
-- **`api_public_access_cidrs = ["0.0.0.0/0"]`** — the API server endpoint is publicly reachable (auth still required). Tighten for a real production account.
+- **The public API endpoint is IP-restricted.** `api_public_access_cidrs` has no default and a `validation` block rejects `0.0.0.0/0`, so every apply must name who gets in; `make plan`/`make apply` derive it from the operator's current public IP. The endpoint is not disabled outright because `make destroy` runs `kubectl` from the operator's machine — a private-only endpoint would break the teardown ordering that stops the ALB and EBS volumes being orphaned.
 - **Control-plane logging disabled by default** — the cheap default; enable `cluster_log_types` if you want CloudWatch audit trails.
 - **ECR immutable tags** for app images, mutable only for the postgres mirror.
 

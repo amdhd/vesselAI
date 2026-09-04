@@ -82,22 +82,32 @@ resource "aws_iam_role_policy_attachment" "cluster" {
 
 # --- The cluster -----------------------------------------------------------
 
-# Two accepted scanner findings, declared here rather than filtered out in the
+# One accepted scanner finding, declared here rather than filtered out in the
 # workflow, so the exception is read by anyone reading the resource it excuses.
 #
-# AVD-AWS-0040 (public endpoint) and AVD-AWS-0041 (0.0.0.0/0) are both real.
-# The private endpoint is on too, so nodes never leave the VPC to reach the API
-# server; the public one exists so a laptop can run kubectl without a bastion or
-# a VPN, which for a three-day single-operator cluster is the whole access story.
-# Authentication is still required — this is not an unauthenticated API.
+# AVD-AWS-0040 flags that the public endpoint exists at all. It does, and it is
+# reachable ONLY from the CIDRs in api_public_access_cidrs — which has no default
+# and rejects 0.0.0.0/0 (variables.tf), so it is whoever ran the apply and nobody
+# else. The private endpoint is on as well, so nodes and in-cluster controllers
+# never leave the VPC to reach the API server.
 #
-# BOTH CARRY AN EXPIRY, deliberately. An ignore with no expiry is a permanent
-# decision made once; these are "acceptable for a burst cluster", which stops
-# being true the moment this is anything else. When they re-fire, the fix is
-# `api_public_access_cidrs = ["<office CIDR>/32"]`, or endpoint_public_access =
-# false plus a bastion.
+# WHY NOT endpoint_public_access = false, which would clear this finding
+# outright: `make destroy` runs kubectl from the operator's machine, and it has
+# to, because deleting the namespaces is what makes the controllers delete the
+# ALB and the Postgres EBS volumes. A private-only endpoint means that step can
+# only run from inside the VPC, so a teardown needs a bastion the teardown
+# itself would then have to delete. A cluster that cannot be torn down is a
+# worse outcome — and a more expensive one — than a firewalled endpoint.
+#
+# A companion once sat here for AVD-AWS-0041 (open CIDR). It is gone because
+# the finding is gone: with no 0.0.0.0/0 default left in variables.tf there is
+# nothing for that check to fire on, and an ignore for a rule that no longer
+# triggers is dead config that reads like a live exception.
+#
+# The expiry stays. An ignore with no expiry is a permanent decision made once;
+# this one is "acceptable while a human tears the cluster down by hand", and
+# should be re-argued rather than inherited.
 #trivy:ignore:AVD-AWS-0040 exp:2027-01-01
-#trivy:ignore:AVD-AWS-0041 exp:2027-01-01
 resource "aws_eks_cluster" "main" {
   name     = var.cluster_name
   version  = var.cluster_version

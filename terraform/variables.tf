@@ -67,20 +67,45 @@ variable "cluster_log_types" {
 
 # WHO MAY REACH THE KUBERNETES API SERVER.
 #
-# 0.0.0.0/0 means the API endpoint is on the public internet. It is not
+# An open list means the API endpoint sits on the public internet. It is not
 # unauthenticated — every request still needs a valid IAM identity — but it is
 # reachable, and "reachable and authenticated" is a weaker position than "not
-# reachable". Narrowing this to a home IP is a one-line change and is what a
-# real deployment does.
+# reachable": it exposes the endpoint to credential stuffing, to any future
+# authentication CVE, and to having its existence catalogued by scanners.
 #
-# Left open by default on purpose: a laptop's IP changes when the network does,
-# and locking yourself out of your own cluster mid-phase costs more time than
-# the exposure costs risk for a cluster that lives three days. State the
-# tradeoff rather than pretending the default is the secure choice.
+# NO DEFAULT, deliberately. This previously defaulted to ["0.0.0.0/0"] with a
+# comment arguing that a laptop's changing IP made the open default the pragmatic
+# choice. That reasoning was wrong in one specific way: it treated "locked out of
+# my own cluster" and "API server reachable from the whole internet" as
+# comparable costs. They are not. The lockout is a two-minute re-apply; the
+# exposure is permanent for the life of the cluster and applies to everyone on
+# the internet, not just to whoever is inconvenienced.
+#
+# Removing the default rather than narrowing it is the part that matters. A
+# secure default is still a default — it can be silently inherited by an apply
+# that never thought about access. With no default, every apply must state who
+# gets in, and `make plan` derives that from the operator's current public IP.
+#
+# The validation below is the backstop: it rejects 0.0.0.0/0 explicitly, so
+# restoring the old behaviour requires deleting a rule that says why it exists
+# rather than changing one character.
+#
+# Endpoint access is a pair, and only the public half is restricted here:
+# endpoint_private_access stays on (eks.tf), so nodes and in-cluster controllers
+# reach the API server over the VPC and are unaffected by this list.
 variable "api_public_access_cidrs" {
-  description = "CIDRs allowed to reach the Kubernetes API server endpoint."
+  description = "CIDRs allowed to reach the PUBLIC Kubernetes API server endpoint. No default: an apply must name who gets in."
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+
+  validation {
+    condition     = !contains(var.api_public_access_cidrs, "0.0.0.0/0")
+    error_message = "0.0.0.0/0 exposes the Kubernetes API server to the entire internet. Pass a specific CIDR instead — `make plan` and `make apply` derive one from your current public IP, or set OPERATOR_CIDR=x.x.x.x/32 explicitly."
+  }
+
+  validation {
+    condition     = length(var.api_public_access_cidrs) > 0
+    error_message = "At least one CIDR is required while endpoint_public_access is true; AWS rejects an empty list."
+  }
 }
 
 # t3.medium x3, x86, ON_DEMAND — each part is a decision:
