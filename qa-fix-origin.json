@@ -1,0 +1,12 @@
+{
+  "schema": "pipelineguard/fix-origin/v1",
+  "origin": {
+    "repo": "amdhd/vesselAI",
+    "pr": "129"
+  },
+  "origin_findings_key": "reports/pr-129/latest/findings.json",
+  "applied_fingerprints": [
+    "/voyage::HIGH::voyage history tab crashes the view with a typeerror on 'tofixed'",
+    "/::HIGH::ets compliance status values for fleet vessels differ between dashboard and /compliance fleet matrix"
+  ]
+}
