@@ -204,7 +204,10 @@ router.get('/history/:vesselId', authenticate, (req: AuthenticatedRequest, res: 
         arrivalDate: v.arrivalDate,
         plannedFuel: v.plannedFuel,
         actualFuel: v.actualFuel ?? v.plannedFuel,
-        savings: v.savings ?? 0,
+        // Frontend multiplies savings by $650/MT and signs it, so the field must be
+        // fuel saved in tonnes (planned − actual), negative on overruns. The mock's
+        // stored savings literal is dollar-ish and wrong-signed; derive it instead.
+        savings: v.plannedFuel - (v.actualFuel ?? v.plannedFuel),
         ciiImpact: v.ciiImpact ?? 0,
       }))
   );
