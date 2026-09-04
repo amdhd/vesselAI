@@ -102,7 +102,7 @@ jobs:
       # naming the check — so the exception lives next to the code it excuses,
       # not in a config file nobody opens.
       - name: Trivy config scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: terraform
