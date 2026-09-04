@@ -53,6 +53,11 @@ on:
         required: false
         default: main
         type: string
+      allow_stale_findings:
+        description: "Act on findings whose observed commit differs from the checkout. Off by default (a report is only about the code it was written against). Used deliberately when the ONLY delta is the committed findings file itself -- e.g. a demo that commits a run's findings one commit after the run observed them."
+        required: false
+        type: boolean
+        default: false
 
 # The App token does every write. GITHUB_TOKEN therefore needs nothing beyond
 # checkout, and `pull-requests: write` is deliberately NOT granted: a PR opened
@@ -184,6 +189,7 @@ jobs:
           # so there is no input for it.
           ORIGIN_PR: ${{ inputs.origin_pr }}
           ORIGIN_REPO: ${{ inputs.origin_repo || github.repository }}
+          ALLOW_STALE: ${{ inputs.allow_stale_findings }}
         run: |
           set -euo pipefail
           args=(--findings "$FINDINGS" --repo . \
@@ -200,6 +206,9 @@ jobs:
           fi
           if [ -n "$ORIGIN_PR" ]; then
             args+=(--origin-pr "$ORIGIN_PR" --origin-repo "$ORIGIN_REPO")
+          fi
+          if [ "$ALLOW_STALE" = "true" ]; then
+            args+=(--allow-stale-findings)
           fi
           python .pipelineguard/agents/fix/harness.py "${args[@]}"
 
