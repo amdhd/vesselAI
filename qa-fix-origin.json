@@ -6,6 +6,6 @@
   },
   "origin_findings_key": "reports/pr-129/latest/findings.json",
   "applied_fingerprints": [
-    "/compliance::HIGH::osv tenaga satu ets and mrv status values differ between dashboard and compliance fleet matrix"
+    "/voyage::HIGH::voyage history savings ($) column shows large positive multi-million dollar values even for voyages where actual fuel exceeded planned fuel, and the total is implausibly large"
   ]
 }
