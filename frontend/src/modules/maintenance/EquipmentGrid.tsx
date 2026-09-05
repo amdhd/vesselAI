@@ -54,6 +54,17 @@ const statusLabel: Record<Equipment['status'], string> = {
   maintenance: 'In Maintenance',
 }
 
+// Roll-up shown above the grid: one coloured count per health state, so the
+// fleet's condition is readable without scanning every card.
+const HEALTH_SUMMARY = [
+  { key: 'healthy', label: 'Healthy', dotClass: 'bg-status-green' },
+  { key: 'watch', label: 'Watch', dotClass: 'bg-status-amber' },
+  { key: 'critical', label: 'Critical', dotClass: 'bg-status-red' },
+  { key: 'offline', label: 'Offline', dotClass: 'bg-gray-600' },
+] as const
+
+type SummaryKey = (typeof HEALTH_SUMMARY)[number]['key']
+
 function StatusBadge({ status }: { status: Equipment['status'] }) {
   return <Badge variant={statusVariant[status]}>{statusLabel[status]}</Badge>
 }
@@ -177,6 +188,13 @@ export default function EquipmentGrid() {
 
   const flaggedCount = sortedEquipment.filter((e) => e.status === 'warning' || e.status === 'critical').length
 
+  const statusCounts: Record<SummaryKey, number> = {
+    healthy: equipmentList.filter((e) => e.status === 'healthy').length,
+    watch: equipmentList.filter((e) => e.status === statusLabel.warning).length,
+    critical: equipmentList.filter((e) => e.status === 'critical').length,
+    offline: equipmentList.filter((e) => e.status === 'offline').length,
+  }
+
   return (
     <>
       <div className="space-y-4">
@@ -202,6 +220,17 @@ export default function EquipmentGrid() {
             )}
             Analyze All Flagged Equipment
           </button>
+        </div>
+
+        {/* Fleet status summary */}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-[#767d88]">
+          {HEALTH_SUMMARY.map(({ key, label, dotClass }) => (
+            <span key={key} className="flex items-center gap-1.5">
+              <span className={cn('w-2 h-2 rounded-full', dotClass)} />
+              <span className="font-mono font-semibold text-[#e2e4e7]">{statusCounts[key]}</span>
+              <span className="ml-0.5">{label}</span>
+            </span>
+          ))}
         </div>
 
         {/* Analysis result */}
