@@ -155,6 +155,23 @@ jobs:
           path: .pipelineguard
           persist-credentials: false
 
+      # --- Tripwire -------------------------------------------------------
+      #
+      # BEFORE the model call, and before AWS credentials are even configured.
+      # One cheap API read stands between this workflow and a repeat of #130,
+      # which needed BOTH an unverified fix and an unguarded base branch to
+      # merge. The reconcile gate handles the first; this handles the second.
+      #
+      # Runs on a dry run too. A dry run opens no PR, so it is harmless -- but it
+      # is also the free way to prove the tripwire itself works without spending
+      # anything, so it deliberately is not skipped.
+      - name: Refuse an unguarded base
+        uses: ./.github/actions/require-protected-base
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          repo: ${{ github.repository }}
+          base: ${{ inputs.fix_base || 'main' }}
+
       # --- Propose --------------------------------------------------------
       - name: Configure AWS credentials (OIDC, no stored keys)
         uses: aws-actions/configure-aws-credentials@cabfdba3510de1431bac9dba27511d97497fc100 # v5
