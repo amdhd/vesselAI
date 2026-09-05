@@ -73,10 +73,11 @@ Reading branch protection is an admin-scoped read: the GitHub App needs
 `Administration: read`, which no workflow file can assert for itself. A 403 from
 the tripwire means that grant is missing.
 
-> **Ordering interlock.** The tripwire refuses `main` until `Reconcile gate` is
-> actually required there. That is the safe direction — the agent is blocked, not
-> the humans — but it does mean `agent-fix.yml` cannot run in the window between
-> this landing and branch protection being updated.
+> **Ordering interlock, now satisfied.** The tripwire refuses any base that does
+> not require `Reconcile gate`, which included `main` itself until the protection
+> was applied. `main` passes as of 2026-09-05; `demo/*` and any other unprotected
+> branch still refuse, which is the point. If you create a new fix base, protect
+> it before pointing `fix_base` at it.
 
 ## The three verdicts
 
@@ -97,47 +98,41 @@ Collapsing these two was survivable while QA was advisory. It is not survivable
 for a required check, which is why the exit code is captured by hand rather than
 inferred from `steps.qa.outcome`.
 
-## Break-glass
+## Current protection, and what it does not do
 
-> **Status: armed once branch protection is applied.** Until `Reconcile gate` is
-> a required context on `main` and `enforce_admins` is `true`, an admin can still
-> merge past a red gate with GitHub's "merge without waiting for requirements"
-> override. Applying the protection removes that override, and the procedure
-> below becomes the only way through.
->
-> The protection change must be applied **after** this workflow is on `main`, not
-> before. A required check does not exist for PRs whose merge ref lacks the
-> workflow that reports it, so requiring the context early strands every open PR
-> at "Expected — waiting for status to be reported".
->
-> ```bash
-> gh api -X PUT /repos/amdhd/vesselAI/branches/main/protection --input - <<'JSON'
-> { "required_status_checks": { "strict": false, "checks": [
->     {"context": "Backend — typecheck + test", "app_id": 15368},
->     {"context": "Frontend — typecheck + test + build", "app_id": 15368},
->     {"context": "Angular — test + build", "app_id": 15368},
->     {"context": "Data platform — pipeline + dbt tests + API tests", "app_id": 15368},
->     {"context": "Docker — build images", "app_id": 15368},
->     {"context": "Kubernetes manifests — render + quota headroom", "app_id": 15368},
->     {"context": "Reconcile gate", "app_id": 15368} ] },
->   "enforce_admins": true,
->   "required_pull_request_reviews": { "dismiss_stale_reviews": true,
->     "require_code_owner_reviews": false, "required_approving_review_count": 0 },
->   "restrictions": null }
-> JSON
-> ```
->
-> Send `checks` with `app_id`, never the flat `contexts` list. `contexts` resets
-> every entry's `app_id` to null, which lets any app satisfy the checks — a
-> silent weakening performed in the middle of a hardening change.
+Applied to `main` on 2026-09-05:
 
-When `enforce_admins` is `true`, a red required check blocks **everyone**,
-admins included. There is no per-merge override — that is the entire point of
-the setting, and it is what makes a #130 repeat impossible.
+| Setting | Value |
+|---|---|
+| `Reconcile gate` required | **yes** |
+| Other required checks | the 6 `ci.yml` contexts, unchanged |
+| `enforce_admins` | **`false`** — a deliberate choice, see below |
+| `strict` (up-to-date branch) | `false`, unchanged |
+| Required approvals | `0`, unchanged |
 
-That also means a genuine infrastructure failure can block a merge that nothing
-is wrong with. The escape hatch is to lower the protection deliberately, merge,
-and put it back:
+**`enforce_admins` is `false`, so a red gate does not physically stop an admin
+merge.** GitHub still offers "merge without waiting for requirements" to a repo
+admin. On a solo repo that is the whole population.
+
+So be honest about what this buys. The gate turns an agent's mis-fix from
+*invisible* into *loud*: #130 merged with nothing red and nothing to notice,
+whereas the same PR today shows a failed required check, a verdict naming the
+reason, and a QA comment on the PR. What it does not do is make the merge
+impossible. Bypassing it is one click, and that click looks like an ordinary
+merge in the log.
+
+Turning `enforce_admins` on removes that click and makes the check binding on
+everyone:
+
+```bash
+gh api -X POST /repos/amdhd/vesselAI/branches/main/protection/enforce_admins
+```
+
+The reason to hold off is that a red gate is not always a judgement on the code.
+A Bedrock throttle, a `trycloudflare` hiccup, or a stack that will not boot all
+land red as verdict `infra`, and with `enforce_admins` on there is no override —
+including for the PR that would fix the gate itself. The escape hatch would then
+be to lower the protection deliberately, merge, and restore it:
 
 ```bash
 gh api -X DELETE /repos/amdhd/vesselAI/branches/main/protection/enforce_admins
@@ -145,15 +140,41 @@ gh api -X DELETE /repos/amdhd/vesselAI/branches/main/protection/enforce_admins
 gh api -X POST   /repos/amdhd/vesselAI/branches/main/protection/enforce_admins
 ```
 
-This is not a loophole. Flipping `enforce_admins` is an audited account-level
-act with a before and an after, rather than a button on a PR that leaves the
-same trace as an ordinary merge. The property #130 lacked — that bypassing the
-verdict is *deliberate and visible* — is preserved; it just lives on a different
-lever.
+That is not a loophole — flipping `enforce_admins` is an audited act with a
+before and an after, rather than a button that leaves the same trace as a normal
+merge. It is simply a heavier lever than a solo repo needs while the QA path is
+still young.
 
-**Before reaching for it, check the verdict.** `infra` is a legitimate reason to
-re-run and, if it persists, to break glass. `blocking` is not — that is the gate
-doing its job.
+**Either way, read the verdict before overriding.** `infra` means nothing was
+said about your code and an override may well be right. `blocking` means the
+agent looked and the findings stand — that is the gate doing its job, and
+clicking past it is choosing to repeat #130 knowingly rather than accidentally.
+
+### Reproducing the protection
+
+Send `checks` with `app_id`, never the flat `contexts` list — `contexts` resets
+every entry's `app_id` to null, which lets any app satisfy the checks. That is a
+silent weakening performed in the middle of a hardening change. Safest is to
+build the payload from the live state rather than retyping it:
+
+```bash
+gh api /repos/amdhd/vesselAI/branches/main/protection --jq '{
+  required_status_checks: {strict: .required_status_checks.strict,
+    checks: (.required_status_checks.checks | map({context, app_id}))},
+  enforce_admins: .enforce_admins.enabled,
+  required_pull_request_reviews: {
+    dismiss_stale_reviews: .required_pull_request_reviews.dismiss_stale_reviews,
+    require_code_owner_reviews: .required_pull_request_reviews.require_code_owner_reviews,
+    required_approving_review_count: .required_pull_request_reviews.required_approving_review_count},
+  restrictions: null}' > protection.json
+# edit protection.json, then:
+gh api -X PUT /repos/amdhd/vesselAI/branches/main/protection --input protection.json
+```
+
+Order matters: apply protection only **after** the gate workflow is on `main`. A
+required check does not exist for PRs whose merge ref lacks the workflow that
+reports it, so requiring the context early strands open PRs at
+"Expected — waiting for status to be reported".
 
 ## Things that will bite you
 
