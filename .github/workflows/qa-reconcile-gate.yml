@@ -1,7 +1,6 @@
 name: QA reconcile gate
 
-# THE REQUIRED CHECK on main, and the thing that makes PR #130 impossible to
-# repeat.
+# THE REQUIRED CHECK on main, and the thing that would have made PR #130 loud.
 #
 # #130 was an agent-authored fix that mis-diagnosed its own finding, compiled,
 # passed the old tests -- which is all ci.yml checks -- and merged. The only
@@ -179,7 +178,12 @@ jobs:
                 echo "still there. **This is a judgement on the code**, not a flake:"
                 echo "the fix did not fix it. See the QA comment on this PR."
                 echo
-                echo "This is the PR #130 outcome, and it is now unmergeable."
+                echo "This is the PR #130 outcome. #130 merged with nothing red and"
+                echo "nothing to notice; this one is red, named, and on the record."
+                echo
+                echo "\`enforce_admins\` is false on main, so a repo admin CAN still"
+                echo "merge past this check. Doing so is now a deliberate choice rather"
+                echo "than an accident — see \`docs/QA_GATE.md\`."
               } >> "$GITHUB_STEP_SUMMARY"
               echo "::error::QA agent reported blocking findings on an agent-authored fix"
               exit 1 ;;
