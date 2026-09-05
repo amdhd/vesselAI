@@ -80,10 +80,14 @@ env:
   # find the ref" -- a long way from its cause. amdhd/pipelineguard#30 is
   # merged, so this SHA is durable.
   #
-  # 7e968d75 is amdhd/pipelineguard#74 (D-4 fix-loop chaining), merged to main
-  # 2026-09-04: it carries the fix harness --origin-pr/--origin-repo flags and
-  # the qa-fix-origin.json sidecar writer this file feeds, so a dispatch that
-  # names an origin PR needs a ref at or past it.
+  # e2ddd24f is amdhd/pipelineguard#76 (API contract context), merged to main
+  # 2026-09-05. It is the ref that can READ .qa-contracts.json in this repo's
+  # root: before it, the manifest is an unknown file and is ignored, so the
+  # declaration and the harness that honours it are promoted together here.
+  #
+  # It supersedes 7e968d75 (#74, D-4 fix-loop chaining), whose --origin-pr /
+  # --origin-repo flags and qa-fix-origin.json sidecar writer this file still
+  # feeds -- #76 is a descendant, so the D-4 chain is unaffected.
   #
   # PINNED, unlike ui-qa-agent.yml which tracks main on purpose.
   # WORKFLOW-REVIEW.md rules the mutable ref "not a defect, and the right call"
@@ -93,7 +97,7 @@ env:
   # branches, so its worst failure is a bad commit, and an unpinned ref would
   # promote every push to PipelineGuard main straight into this repo's write
   # path with no review of the promotion.
-  PIPELINEGUARD_REF: 7e968d75e0dde69eb52830d27c817b3e0aaaab65
+  PIPELINEGUARD_REF: e2ddd24f0c8dbbfe3f75dedd6346b3502fe7cb52
 
 jobs:
   fix:
