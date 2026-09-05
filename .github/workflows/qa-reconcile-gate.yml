@@ -1,0 +1,201 @@
+name: QA reconcile gate
+
+# THE REQUIRED CHECK on main, and the thing that makes PR #130 impossible to
+# repeat.
+#
+# #130 was an agent-authored fix that mis-diagnosed its own finding, compiled,
+# passed the old tests -- which is all ci.yml checks -- and merged. The only
+# independent verdict on it was a browser-QA run that nothing required. This
+# workflow makes that verdict a merge condition for agent PRs, and stays out of
+# the way of everyone else's.
+#
+# WHY IT FIRES ON EVERY PR AND HAS NO paths: FILTER. A required status check
+# must REPORT on every PR to the protected branch. A workflow that declines to
+# start -- because of a path filter, a label gate, an event-type mismatch --
+# leaves the check permanently "Expected — waiting for status to be reported"
+# and the PR permanently unmergeable. That is why the label-gated ui-qa-agent.yml
+# could never itself be the required check, and why this thin always-on wrapper
+# exists.
+#
+# THE COST SHAPE. A human PR runs three seconds of `classify` and `gate` on a
+# free runner. Only an agent PR reaches qa-run.yml and spends (~$0.20, ~25 min).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+# Keyed to the PR, not the ref: a second push supersedes the first run's verdict
+# and there is no reason to pay for both. The superseding run reports on the same
+# check context, so the cancelled one does not strand the merge.
+concurrency:
+  group: qa-reconcile-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # WHY THREE JOBS. A job that `uses:` a reusable workflow cannot also have
+  # steps, so the classification and the verdict cannot live in the same job as
+  # the QA call. And a SKIPPED job reports no check at all -- so the required
+  # context cannot be the QA job itself, which is skipped on every human PR.
+  # Hence: classify (cheap) -> qa (conditional) -> gate (always reports).
+  classify:
+    name: Classify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      agent: ${{ steps.c.outputs.agent }}
+      pr_number: ${{ steps.c.outputs.pr_number }}
+      head_sha: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Is this an agent PR?
+        id: c
+        # Branch names are attacker-controlled on a fork, so HEAD_REF arrives
+        # through env and is never interpolated into the shell line.
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          agent=false
+          case "$HEAD_REF" in
+            # agent-fix.yml names its branches agent-fix/run-<run_id>.
+            # ui-qa-converge.yml names its branches agent-converge/run-<run_id>,
+            # opens against main by default, and says in its own PR body that
+            # "none of it has been reviewed by a human yet". Matching only the
+            # first prefix would leave multi-round agent output on the free
+            # pass-through -- #130 again, under a different branch name.
+            agent-fix/*|agent-converge/*) agent=true ;;
+          esac
+
+          # A fork PR is never machine-verified. qa-run.yml assumes AWS
+          # credentials and boots the code it is handed; that is not safe on an
+          # untrusted head, and it is the same stance ui-qa-agent.yml takes.
+          # A fork cannot push an agent-* branch to this repo anyway, so this is
+          # belt-and-braces rather than the primary control.
+          if [ "$IS_FORK" = "true" ]; then
+            agent=false
+            echo "::notice::fork PR — pass-through (an untrusted head is never run against AWS credentials)"
+          fi
+
+          echo "agent=$agent" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "::notice::head=$HEAD_REF agent=$agent"
+
+  qa:
+    needs: classify
+    if: needs.classify.outputs.agent == 'true'
+    uses: ./.github/workflows/qa-run.yml
+    secrets: inherit
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    with:
+      pr_number: ${{ needs.classify.outputs.pr_number }}
+      head_sha: ${{ needs.classify.outputs.head_sha }}
+      # FALSE, and this is the load-bearing difference from ui-qa-agent.yml.
+      # Job outputs do not survive a failed job, so if qa-run.yml failed here we
+      # could not read WHY. Letting it succeed and reading `verdict` is what lets
+      # the gate below distinguish "the fix is broken" from "Bedrock throttled",
+      # which matters a great deal once enforce_admins is on and a red check has
+      # no override.
+      fail_on_findings: false
+
+  gate:
+    # THIS EXACT STRING is the required-status-check context on main. Changing
+    # the job name silently detaches the protection rule from the job that
+    # satisfies it, leaving every PR waiting on a check that no longer exists.
+    name: Reconcile gate
+    needs: [classify, qa]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Apply the verdict
+        env:
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          AGENT: ${{ needs.classify.outputs.agent }}
+          QA_RESULT: ${{ needs.qa.result }}
+          VERDICT: ${{ needs.qa.outputs.verdict }}
+        run: |
+          set -euo pipefail
+
+          # Fail closed. If classification did not complete we do not know what
+          # kind of PR this is, and "unknown" must never take the pass-through.
+          if [ "$CLASSIFY_RESULT" != "success" ]; then
+            echo "::error::could not classify this PR (classify job: $CLASSIFY_RESULT) — failing closed"
+            exit 1
+          fi
+
+          if [ "$AGENT" != "true" ]; then
+            if [ "$QA_RESULT" != "skipped" ]; then
+              echo "::error::non-agent PR but the QA job ran ($QA_RESULT) — the classify/qa wiring disagrees with itself"
+              exit 1
+            fi
+            {
+              echo "### ✅ Reconcile gate — pass-through"
+              echo
+              echo "Not an agent-authored branch, so no browser-QA run was required"
+              echo "and none was paid for. Human review is the gate on this PR."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::pass-through — not an agent PR"
+            exit 0
+          fi
+
+          # From here on this IS an agent PR and something must have judged it.
+          case "$QA_RESULT" in
+            success) ;;
+            skipped)
+              echo "::error::agent PR but the QA run was skipped — an agent fix may not merge unverified"
+              exit 1 ;;
+            cancelled)
+              echo "::error::the QA run was cancelled, so this fix is unverified. Re-run the gate."
+              exit 1 ;;
+            *)
+              echo "::error::the QA run failed before reaching a verdict ($QA_RESULT) — see the QA agent job. This is a PIPELINE failure, not a judgement on the code."
+              exit 1 ;;
+          esac
+
+          case "$VERDICT" in
+            clean)
+              {
+                echo "### ✅ Reconcile gate — agent fix verified"
+                echo
+                echo "The browser-QA agent re-ran against this head and reported no"
+                echo "blocking findings. See the QA comment on this PR for the detail."
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::notice::verdict clean"
+              ;;
+            blocking)
+              {
+                echo "### ❌ Reconcile gate — blocking findings stand"
+                echo
+                echo "The browser-QA agent re-ran against this head and the findings are"
+                echo "still there. **This is a judgement on the code**, not a flake:"
+                echo "the fix did not fix it. See the QA comment on this PR."
+                echo
+                echo "This is the PR #130 outcome, and it is now unmergeable."
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::QA agent reported blocking findings on an agent-authored fix"
+              exit 1 ;;
+            *)
+              {
+                echo "### ❌ Reconcile gate — the QA run did not reach a verdict"
+                echo
+                echo "The harness failed before it could judge anything (verdict:"
+                echo "\`${VERDICT:-none}\`). **Nothing here says the code is wrong** — a"
+                echo "throttle, a tunnel that never came up, or a stack that would not"
+                echo "boot all land here."
+                echo
+                echo "Re-run this workflow. If it keeps failing for pipeline reasons and"
+                echo "the merge is genuinely needed, the break-glass is documented in"
+                echo "\`docs/QA_GATE.md\`."
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::QA harness did not reach a verdict (${VERDICT:-none}) — pipeline failure, not a code judgement"
+              exit 1 ;;
+          esac

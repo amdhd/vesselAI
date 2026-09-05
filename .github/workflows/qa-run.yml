@@ -1,0 +1,467 @@
+name: QA run
+
+# THE ONE IMPLEMENTATION of the browser-QA run. Two callers:
+#
+#   ui-qa-agent.yml       — the human-triggered path (agent-qa label, manual
+#                           dispatch, weekly schedule). Advisory.
+#   qa-reconcile-gate.yml — the machine-verified path for agent PRs. Its verdict
+#                           is a REQUIRED check on main.
+#
+# It stands the app up on the runner, proves it is healthy, and invokes the QA
+# agent that lives in AgentCore Runtime in PipelineGuard's account
+# (149751500899 / ap-southeast-1).
+#
+# THE TARGET IS THIS COMPOSE STACK, NOT EKS. Chromium cannot tell what is behind
+# a URL, and the bug class being hunted -- contract drift, NaN renders, blank
+# charts, unguarded React crashes -- reproduces identically here. EKS costs
+# ~$0.37/hr and 20-30 minutes to reach a testable URL; compose costs runner
+# minutes and ~3. EKS QA stays a deliberate manual exercise.
+#
+# WHY A REUSABLE WORKFLOW AND NOT A COMPOSITE ACTION. A composite action cannot
+# express this job. Its steps do not support `continue-on-error`, which the
+# verdict handling below is built on -- without it the run aborts at the first
+# blocking finding, so no PR comment is posted, the stack is never torn down,
+# and a harness crash becomes indistinguishable from a real finding. Composite
+# actions also cannot read the `secrets` context, which ANTHROPIC_API_KEY needs.
+# `workflow_call` has neither limitation.
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        description: "PR to comment on. Empty means this run is not about a PR."
+        required: false
+        default: ""
+        type: string
+      head_sha:
+        description: "Commit the findings are ABOUT (the PR head, not the merge ref)."
+        required: false
+        default: ""
+        type: string
+      ref:
+        description: "Checkout target. Empty keeps actions/checkout's default, which for a pull_request is the MERGE ref -- the code that would actually land."
+        required: false
+        default: ""
+        type: string
+      model:
+        description: "Bedrock inference profile (blank = cheap rung)"
+        required: false
+        default: ""
+        type: string
+      max_routes:
+        description: "Cap on routes explored"
+        required: false
+        default: "8"
+        type: string
+      live_ai:
+        description: "Use a real ANTHROPIC_API_KEY (costs money, see below)"
+        required: false
+        default: false
+        type: boolean
+      fail_on_findings:
+        # THE ONE BEHAVIOURAL KNOB, and it exists for a specific reason.
+        #
+        # Job outputs do not survive a failed job -- GitHub empties them -- so a
+        # caller that needs to KNOW WHY the run failed cannot both fail here and
+        # read `verdict` afterwards. The reconcile gate needs that distinction
+        # (a Bedrock throttle must not read as "the fix is broken"), so it sets
+        # this false, reads the verdict, and renders the red check itself.
+        #
+        # ui-qa-agent.yml leaves it true and keeps its current behaviour: the QA
+        # check fails on blocking findings.
+        #
+        # This never suppresses a failure. A false value moves WHERE the failure
+        # is rendered, not WHETHER. Infrastructure failures -- a stack that will
+        # not boot, a refused health gate -- fail the job regardless, because
+        # those are step failures well before the verdict is known.
+        description: "Fail this workflow on blocking findings. False reports the verdict as an output and leaves the decision to the caller."
+        required: false
+        default: true
+        type: boolean
+    outputs:
+      verdict:
+        description: "clean | blocking | infra. 'infra' means the harness itself failed and this run is NOT a judgement on the code under test."
+        value: ${{ jobs.qa.outputs.verdict }}
+
+# Least privilege at the GitHub layer. pull-requests: write is for the findings
+# comment and is the only write scope; note it does NOT grant push.
+#
+# A reusable workflow's token is the intersection of what it asks for and what
+# the caller granted, so every caller must declare at least these three.
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  AWS_REGION: ap-southeast-1
+  PIPELINEGUARD_REF: main
+  # Pinned, and checksummed. This file SHA-pins every action on the argument
+  # that a mutable tag "runs inside a job holding id-token: write" -- which
+  # applies with more force to a 40 MB binary we chmod +x and execute. Cloudflare
+  # publishes no checksum asset, so this digest was computed from the pinned
+  # release and must be updated with the version.
+  CLOUDFLARED_VERSION: "2026.8.2"
+  CLOUDFLARED_SHA256: "fcfb02b575a52ca1af2e3267af4e1517bcdeb30ac48c834c69abaed3c0576ad2"
+
+jobs:
+  qa:
+    name: QA agent
+    runs-on: ubuntu-latest
+    # Sized for a ~3 min stack build plus the agent's own wall-clock cap, and no
+    # more. Affordable precisely because the target is not a 20-minute cluster.
+    timeout-minutes: 25
+
+    # Always set, even when the job fails, BECAUSE the job may not fail: with
+    # fail_on_findings false a blocking verdict still leaves this job green and
+    # the caller renders the red check. The `|| 'infra'` catches the case where
+    # the run died before the agent step wrote anything -- an empty verdict must
+    # never read as clean.
+    outputs:
+      verdict: ${{ steps.qa.outputs.verdict || 'infra' }}
+
+    steps:
+      # THE FORK GUARD LIVES IN THE CALLERS, NOT HERE, and that is deliberate.
+      # This workflow assumes AWS credentials and boots the code it is handed;
+      # it is not safe to invoke on an untrusted head. Both callers refuse fork
+      # PRs before reaching this point (ui-qa-agent.yml's job `if`, and the
+      # reconcile gate's classify step). A third caller must do the same.
+      - name: Checkout the app
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          # Empty is not "no ref" -- actions/checkout treats it as "use the
+          # default", which for a pull_request is the merge ref. That is what we
+          # want to TEST; inputs.head_sha is what we REPORT the findings against.
+          ref: ${{ inputs.ref }}
+
+      # The harness lives in PipelineGuard, next to the agent it invokes and the
+      # schema both halves validate against. Checked out rather than vendored so
+      # the two cannot drift -- a copied schema that falls behind would accept
+      # findings the agent can no longer produce.
+      - name: Checkout the QA harness
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: amdhd/pipelineguard
+          ref: ${{ env.PIPELINEGUARD_REF }}
+          path: .pipelineguard
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@cabfdba3510de1431bac9dba27511d97497fc100 # v5
+        with:
+          role-to-assume: ${{ vars.QA_AGENT_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install harness deps
+        run: pip install --quiet boto3
+
+      # Runner minutes are the one cost figure the agent cannot know about
+      # itself, and Phase 1's exit criteria require them in the comment.
+      - name: Mark start
+        run: echo "JOB_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+
+      # POSTGRES_PASSWORD and JWT_SECRET are required-with-no-default in the
+      # compose file. Both are ephemeral -- the stack lives minutes and dies with
+      # the runner -- so they are GENERATED rather than stored. A stored secret
+      # is one to rotate; a generated one cannot leak from anywhere.
+      #
+      # ANTHROPIC_API_KEY defaults to a DUMMY. vesselAI's AI paths all fall back
+      # deterministically and flag it, so the app runs fine and the rubric is
+      # told it is in fallback mode. A live billable key behind a public tunnel
+      # is a spend liability in two directions: outward (trycloudflare hostnames
+      # are scanned) and inward (the agent itself exercises chat surfaces every
+      # run). Real key only on an attended workflow_dispatch.
+      - name: Compose environment
+        env:
+          LIVE_AI_INPUT: ${{ inputs.live_ai }}
+          ANTHROPIC_API_KEY_SECRET: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          {
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)"
+            echo "JWT_SECRET=$(openssl rand -hex 32)"
+          } >> "$GITHUB_ENV"
+          if [ "$LIVE_AI_INPUT" = "true" ]; then
+            echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY_SECRET" >> "$GITHUB_ENV"
+            echo "LIVE_AI=1" >> "$GITHUB_ENV"
+          else
+            echo "ANTHROPIC_API_KEY=dummy-fallback-mode-not-a-real-key" >> "$GITHUB_ENV"
+            echo "LIVE_AI=0" >> "$GITHUB_ENV"
+          fi
+
+      # --wait blocks on the healthchecks the compose file already declares, so
+      # postgres is healthy and migrate + seed have COMPLETED before anything
+      # downstream runs. No hand-rolled polling needed.
+      - name: Start the stack
+        run: docker compose -f docker-compose.prod.yml up -d --build --wait
+
+      - name: Open tunnel
+        run: |
+          curl -fsSL -o cloudflared \
+            "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64"
+          echo "${CLOUDFLARED_SHA256}  cloudflared" | sha256sum -c -
+          chmod +x cloudflared
+          ./cloudflared tunnel --no-autoupdate --url http://localhost:8080 \
+            > tunnel.log 2>&1 &
+          echo $! > tunnel.pid
+          for _ in $(seq 1 30); do
+            URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' tunnel.log | head -1 || true)
+            [ -n "$URL" ] && break
+            sleep 2
+          done
+          if [ -z "${URL:-}" ]; then
+            echo "::error::tunnel did not produce a URL"; cat tunnel.log; exit 1
+          fi
+          echo "TARGET_URL=$URL" >> "$GITHUB_ENV"
+          # The URL itself is deliberately NOT logged. PLAN.md 1e: a quick tunnel
+          # is an unauthenticated public URL with no reason to be written
+          # anywhere durable -- "not into the PR comment, not into the findings
+          # JSON, not into logs". A ::notice:: on a public repo is all three.
+          echo "::notice::tunnel is up"
+
+      # THE HEALTH GATE. Prime directive 5: assert the deploy before invoking any
+      # agent. Every assertion runs against the TUNNEL, not localhost, because
+      # the tunnel is the path the agent will actually use.
+      #
+      # If this fails we stop WITHOUT invoking the agent -- the point is to never
+      # spend a browser session reporting the pipeline's own bug. It is also why
+      # a failure here surfaces as verdict `infra` to a gate caller: the code
+      # under test was never examined, so nothing has been judged.
+      - name: Health gate
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::health gate: $1"; exit 1; }
+
+          # From Secrets Manager, not hardcoded. These credentials are public in
+          # the README, so this is not about exposure -- it is about DRIFT: a
+          # gate asserting its own literals would keep passing after the secret
+          # rotated, while every agent run failed to log in and reported it as
+          # "never authenticated", pointing the reader at the login page instead
+          # of at the secret. It is also what makes the CI role's
+          # GetSecretValue statement true to its stated justification.
+          creds=$(aws secretsmanager get-secret-value \
+            --secret-id "${{ vars.QA_SECRET_ARN }}" \
+            --query SecretString --output text)
+          QA_EMAIL=$(printf '%s' "$creds" | python3 -c 'import json,sys; print(json.load(sys.stdin)["QA_TARGET_EMAIL"])')
+          QA_PASSWORD=$(printf '%s' "$creds" | python3 -c 'import json,sys; print(json.load(sys.stdin)["QA_TARGET_PASSWORD"])')
+
+          for _ in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$TARGET_URL/" || true)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          [ "${code:-}" = "200" ] || fail "SPA did not return 200 (got ${code:-none})"
+
+          # JSON, not HTML. Also proves nginx's longest-prefix match reaches the
+          # FastAPI service rather than falling through to the SPA -- a
+          # misconfigured prefix returns index.html with a 200 and looks fine.
+          ct=$(curl -s -o /dev/null -w '%{content_type}' --max-time 10 "$TARGET_URL/api/analytics/health" || true)
+          case "$ct" in
+            application/json*) ;;
+            *) fail "/api/analytics/health returned '$ct', expected JSON — nginx routing or analytics service is wrong" ;;
+          esac
+
+          # A real login. This is the assertion that proves `seed` ran, and it
+          # only proves it because the backend runs with NODE_ENV=production:
+          # DEMO_LOGIN_ENABLED is `NODE_ENV !== 'production'` (backend/src/lib/
+          # jwtConfig.ts), so the demo-credential fallback is OFF and the
+          # credentials must come from the seeded database.
+          #
+          # If anyone sets NODE_ENV=development in the compose file, this
+          # assertion silently stops proving anything.
+          token=$(curl -s --max-time 15 -X POST "$TARGET_URL/api/auth/login" \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\":\"$QA_EMAIL\",\"password\":\"$QA_PASSWORD\"}" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token",""))' 2>/dev/null || true)
+          [ -n "$token" ] || fail "login returned no token — the database is probably not seeded"
+
+          # An authenticated, Postgres-backed read. Proves the whole chain, not
+          # just that a token was minted.
+          fleet=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+            -H "Authorization: Bearer $token" "$TARGET_URL/api/fleet" || true)
+          [ "$fleet" = "200" ] || fail "/api/fleet returned $fleet with a valid token"
+
+          # A bundle that shipped without its API config renders a broken app and
+          # the agent would faithfully report it as one.
+          curl -s --max-time 15 "$TARGET_URL/" | grep -q 'undefined' \
+            && fail "served HTML contains 'undefined' — the frontend build is missing config" || true
+
+          echo "::notice::health gate passed — SPA, analytics JSON, seeded login, fleet read"
+
+      # D-4: a fix-leg run -- or the origin PR once the fix merged up into it --
+      # carries a committed qa-fix-origin.json at the workspace root. Read it into
+      # FIX_ORIGIN so the harness reconciles the ORIGIN report instead of this
+      # PR's own history. Absent on any ordinary PR, and the harness ignores
+      # FIX_ORIGIN unless this head is the agent-fix/ branch or the origin PR
+      # itself (anti-taint gate), so the env var is inert where no chain exists.
+      - name: Read the fix-origin sidecar (D-4)
+        run: |
+          if [ -f qa-fix-origin.json ]; then
+            { echo "FIX_ORIGIN<<_EOF_"; cat qa-fix-origin.json; echo "_EOF_"; } >> "$GITHUB_ENV"
+          fi
+
+      # continue-on-error, and the exit code captured by hand rather than left to
+      # `steps.qa.outcome`. The harness has THREE outcomes and outcome has two:
+      #
+      #   0  clean     — no blocking findings
+      #   1  blocking  — the agent judged the code under test and it failed
+      #   2+ infra     — the harness never reached a judgement
+      #
+      # Collapsing 1 and 2 into "failure" was survivable while this was an
+      # advisory comment. It is not survivable as a REQUIRED merge gate, where it
+      # would report a Bedrock throttle as "your fix is broken" and block a merge
+      # that nothing is wrong with. So the code is read directly and named.
+      - name: Run the QA agent
+        id: qa
+        continue-on-error: true
+        # ${{ }} is substituted BEFORE the shell sees this script, so an input
+        # interpolated into the command is not an argument -- it is source code,
+        # in a job holding id-token: write. Inputs therefore arrive through env
+        # and are quoted by the shell.
+        #
+        # D-3 (re-verify): the harness fetches this PR's last archived report
+        # from vars.REPORTS_BUCKET under reports/pr-<n>/latest and re-verifies
+        # this run against it. Outside a PR the namespace resolves to "" and the
+        # run stays run-scoped, never archiving under a pr- alias.
+        env:
+          QA_MODEL: ${{ inputs.model }}
+          QA_MAX_ROUTES: ${{ inputs.max_routes }}
+          QA_TARGET_COMMIT: ${{ inputs.head_sha || github.sha }}
+          QA_NAMESPACE: ${{ inputs.pr_number != '' && format('pr-{0}', inputs.pr_number) || '' }}
+        run: |
+          # An ARRAY, not a string with $( ... ) holes in it. The previous shape
+          # relied on unquoted command substitution to expand to either a flag or
+          # nothing, which is word splitting doing load-bearing work in a job
+          # holding id-token: write -- the same reasoning agent-fix.yml gives for
+          # building its own argv this way.
+          args=(--runtime-arn "${{ vars.QA_RUNTIME_ARN }}"
+                --target-url "$TARGET_URL"
+                --region "$AWS_REGION"
+                --secret-arn "${{ vars.QA_SECRET_ARN }}"
+                --session-label "gh-${{ github.run_id }}-${{ github.run_attempt }}"
+                --max-routes "$QA_MAX_ROUTES"
+                --runner-minutes "$(( ( $(date +%s) - JOB_STARTED + 59 ) / 60 ))"
+                --json-out findings.json
+                --comment-out comment.md
+                --target-commit "$QA_TARGET_COMMIT"
+                --reports-bucket "${{ vars.REPORTS_BUCKET }}"
+                --report-namespace "$QA_NAMESPACE")
+          if [ -n "$QA_MODEL" ]; then
+            args+=(--model "$QA_MODEL")
+          fi
+          if [ "$LIVE_AI" = "1" ]; then
+            args+=(--live-ai)
+          fi
+
+          set +e
+          python .pipelineguard/agents/qa/harness/main.py "${args[@]}"
+          code=$?
+          set -e
+          case "$code" in
+            0) verdict=clean ;;
+            1) verdict=blocking ;;
+            *) verdict=infra ;;
+          esac
+          {
+            echo "code=$code"
+            echo "verdict=$verdict"
+          } >> "$GITHUB_OUTPUT"
+          echo "::notice::QA harness exited $code — verdict $verdict"
+          exit "$code"
+
+      # The raw findings JSON is the measurement artifact: pipelineguard's
+      # score.py matches it against the seeded corpus, and recall is measured
+      # from the JSON, never hand-typed from the rendered comment. The PR
+      # comment is a summary; this step is what makes the raw record survive
+      # the runner. Named by run_id so repeated dispatches do not collide.
+      - name: Upload raw findings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: findings-${{ github.run_id }}
+          path: findings.json
+          if-no-files-found: ignore
+
+      # The harness writes comment.md for every outcome INCLUDING failures, so a
+      # missing file means the harness itself died. Reporting that is more useful
+      # than failing on `cat: No such file` -- which is what the first real run
+      # did, three steps and one misleading error away from the actual cause
+      # (Bedrock throttling).
+      - name: Ensure there is something to report
+        if: always()
+        # Two very different reasons for a missing report, and the message has to
+        # tell them apart. When the health gate stops the job the agent step is
+        # SKIPPED -- pointing the reader at "the Run the QA agent step and its
+        # CloudWatch logs" then sends them to a step that never executed and a
+        # log group with nothing in it. Confirmed on the criterion-3 negative
+        # test, where the gate correctly refused and the comment blamed the agent.
+        env:
+          QA_OUTCOME: ${{ steps.qa.outcome }}
+        run: |
+          if [ ! -s comment.md ]; then
+            {
+              echo "<!-- pipelineguard-qa-agent -->"
+              if [ "$QA_OUTCOME" = "skipped" ]; then
+                echo "## 🚫 QA agent — not invoked"
+                echo
+                echo "The job stopped before the agent ran, so there are no findings"
+                echo "and **no agent session was paid for** — which is the health"
+                echo "gate working as intended, not a failure of the agent."
+                echo
+                echo "The cause is in an earlier step of this job; **Health gate** is"
+                echo "the usual one, and its annotation says which assertion failed."
+                echo
+                echo "_Nothing here is a judgement on the code under test — it was"
+                echo "never examined._"
+              else
+                echo "## 🚫 QA agent — harness did not produce a report"
+                echo
+                echo "The harness exited without writing \`comment.md\`, which means it"
+                echo "failed before it could render one. The cause is in this job's"
+                echo "**Run the QA agent** step, and — if the runtime was reached at all —"
+                echo "in its CloudWatch log group."
+                echo
+                echo "_Nothing here is a judgement on the code under test._"
+              fi
+            } > comment.md
+          fi
+
+      - name: Post findings
+        if: always() && inputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        run: gh pr comment "$PR_NUMBER" --body-file comment.md
+
+      - name: Report outside a PR
+        if: always() && inputs.pr_number == ''
+        run: cat comment.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Hygiene, not a guarantee. On a GitHub-hosted runner the machine is
+      # destroyed regardless -- which is the whole reason this design has no
+      # reaper, no TTL tags and no orphan sweep. Written anyway so moving to a
+      # self-hosted runner is not a landmine.
+      - name: Tear down
+        if: always()
+        run: |
+          [ -f tunnel.pid ] && kill "$(cat tunnel.pid)" 2>/dev/null || true
+          docker compose -f docker-compose.prod.yml down -v || true
+
+      # Only when the caller asked to be failed here. A caller that set
+      # fail_on_findings false reads `verdict` and renders the failure itself --
+      # see the input's comment for why both shapes have to exist.
+      - name: Apply the agent's verdict
+        if: always() && inputs.fail_on_findings && steps.qa.outcome == 'failure'
+        env:
+          VERDICT: ${{ steps.qa.outputs.verdict }}
+          CODE: ${{ steps.qa.outputs.code }}
+        run: |
+          if [ "$VERDICT" = "blocking" ]; then
+            echo "::error::QA agent reported blocking findings"
+          else
+            echo "::error::QA harness failed to complete (exit ${CODE:-unknown}) — a PIPELINE failure, not a verdict on the code under test"
+          fi
+          exit 1

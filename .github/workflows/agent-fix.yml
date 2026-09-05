@@ -294,6 +294,19 @@ jobs:
           git config user.name  "${{ steps.app-token.outputs.app-slug }}[bot]"
           git config user.email "${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
+          # THE PATHSPEC IS A SECURITY BOUNDARY, not tidiness. Two guarantees
+          # rest on the agent being unable to stage anything outside these two
+          # trees, and both are invisible from here:
+          #
+          #   1. It cannot edit .github/. A `pull_request` event runs workflows
+          #      from the MERGE ref, so a branch that could rewrite
+          #      qa-reconcile-gate.yml would be a branch that could switch off
+          #      the check standing between it and main.
+          #   2. It cannot edit .qa-contracts.json, the manifest that tells the
+          #      fix harness which files define an API contract. A fixer that
+          #      could rewrite its own ground truth has none.
+          #
+          # Widening this pathspec removes both. Do not.
           git add -- frontend backend
           # D-4: a fix-leg run left the origin sidecar at the repo root. It must
           # ride the fix branch -- the fix PR's QA run reads it to reconcile the
@@ -313,24 +326,19 @@ jobs:
             --base "$FIX_BASE")"
           echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
 
-      # D-4: agent-qa is the label ui-qa-agent.yml fires on (`labeled` type), so
-      # this is the step that starts QA on the fix PR -- the harness must see the
-      # ORIGIN sidecar, which only exists on this PR's head. Uses the App token,
-      # never GITHUB_TOKEN: events it generates do not trigger workflows. Labels
-      # sit under the Issues REST API, so the App needs Issues: write as well as
-      # Pull requests: write -- a grant no workflow file can prove. If the App
-      # cannot label, say so and move on: the loop is human-gated anyway, and a
-      # maintainer labels the fix PR by hand to start its QA run.
-      - name: Label the fix PR for QA (D-4)
-        if: steps.changed.outputs.any == 'true' && inputs.dry_run != true
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR_URL: ${{ steps.publish.outputs.pr_url }}
-        run: |
-          set -euo pipefail
-          if ! gh pr edit "$PR_URL" --add-label agent-qa; then
-            echo "::notice::could not add 'agent-qa' to $PR_URL — add it by hand to start the fix-PR QA run (the GitHub App needs Pull requests: write AND Issues: write)"
-          fi
+      # NO `agent-qa` LABEL STEP HERE, and its absence is deliberate.
+      #
+      # Until the reconcile gate existed, this step labelled the fix PR to start
+      # ui-qa-agent.yml -- the only way the fix got a browser-QA verdict, and an
+      # advisory one that nothing required. qa-reconcile-gate.yml now fires on
+      # every PR, recognises the `agent-fix/` branch this job just pushed, and
+      # runs that same QA through qa-run.yml as a REQUIRED check. Labelling as
+      # well would buy a second identical run at full price.
+      #
+      # The D-4 chain is unaffected: the gate checks out this head, so it reads
+      # the committed qa-fix-origin.json sidecar and reconciles the ORIGIN report
+      # exactly as the labelled run did. Origin PRs are also unaffected -- their
+      # QA stays human-label-triggered through ui-qa-agent.yml.
 
       - name: Report when nothing was patched
         if: steps.changed.outputs.any != 'true'
