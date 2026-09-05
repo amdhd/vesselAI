@@ -1,0 +1,167 @@
+{
+  "overall": "FAIL",
+  "pages_tested": 8,
+  "findings": [
+    {
+      "id": "F-001",
+      "severity": "HIGH",
+      "page": "/voyage",
+      "summary": "Voyage History SAVINGS ($) column shows large positive multi-million dollar values even for voyages where actual fuel exceeded planned fuel, and the total is implausibly large",
+      "evidence": "On the Voyage History tab, voyages where actual fuel > planned fuel (e.g., Kerteh\u2192Singapore: planned 95 MT, actual 98 MT) display savings of +$10,140,000. Sign is wrong \u2014 a 3 MT over-consumption at ~$650/MT is a ~$2,000 cost overrun, not a $10M saving. Every row shows a large positive savings figure regardless of whether actual fuel was higher or lower than planned. The computed 'Total savings this month: $192,790,000' across 19 voyages is similarly impossible for a single vessel.",
+      "steps_to_reproduce": [
+        "Log in as demo@petronas.com / demo123",
+        "Navigate to /voyage",
+        "Click the 'Voyage History' tab",
+        "Observe the SAVINGS ($) column \u2014 values such as +$10,140,000 appear on rows where ACTUAL FUEL > PLANNED FUEL (e.g. 98 MT actual vs 95 MT planned)",
+        "Observe the 'Total savings this month: $192,790,000' footer"
+      ],
+      "expected": "Savings should equal (planned_fuel \u2212 actual_fuel) \u00d7 fuel_price_per_MT, yielding small positive or negative values (order of thousands of dollars); rows where actual > planned should show negative savings",
+      "actual": "All rows show large positive savings in the range $4.9M\u2013$15.4M regardless of fuel delta direction; total shown as $192,790,000 for 19 voyages",
+      "suspected_source": null
+    }
+  ],
+  "candidate_assessments": [
+    {
+      "candidate_id": "cand-1",
+      "verdict": "refuted",
+      "reason": "The two svg-adjacent empty slots are the Recharts fuel-consumption chart SVG container and the sidebar logo SVG; chart axes and legend labels render; the blank is the chart drawing canvas itself, not a missing numeric field"
+    },
+    {
+      "candidate_id": "cand-2",
+      "verdict": "refuted",
+      "reason": "All 20 console errors are 'Extension context invalidated' originating from a Chrome browser extension (chrome-extension://pnbccbamcffpphfpnkpooldgbkoehjlb), not from the application"
+    },
+    {
+      "candidate_id": "cand-3",
+      "verdict": "refuted",
+      "reason": "Single console error is 'Extension context invalidated' from the same browser extension, not an application error"
+    },
+    {
+      "candidate_id": "cand-4",
+      "verdict": "refuted",
+      "reason": "The svg-adjacent empty slots are the speed-vs-fuel Recharts curve SVG and sidebar logo; the chart renders axes (8\u201318 kn, 0\u2013380 MT/day) and computed voyage figures all appear; the blank is the chart canvas, not a missing value"
+    },
+    {
+      "candidate_id": "cand-5",
+      "verdict": "refuted",
+      "reason": "The svg-adjacent empty slot beside the work order row is a status-ring or progress-icon SVG decorator, not a missing data field; all work order fields (title, priority, assignee, date, hours, status) are populated"
+    },
+    {
+      "candidate_id": "cand-6",
+      "verdict": "refuted",
+      "reason": "The svg-adjacent empty slots are the CII Trajectory Recharts line chart SVG container and sidebar logo; axis labels (Jan\u2013Dec, 0\u20138) and CII values render correctly; blank is chart canvas"
+    },
+    {
+      "candidate_id": "cand-7",
+      "verdict": "refuted",
+      "reason": "The 10 svg-adjacent empty slots on /ports are Leaflet map SVG anchor-icon (\u2693) markers and the map tile container; these are decorative map elements, not data value fields"
+    },
+    {
+      "candidate_id": "cand-8",
+      "verdict": "refuted",
+      "reason": "The two svg-adjacent empty slots are the AI assistant bot-avatar SVG icon and the sidebar logo SVG; both are decorative, not missing value fields"
+    },
+    {
+      "candidate_id": "cand-9",
+      "verdict": "refuted",
+      "reason": "'CRITICAL:' is the first word of the stored free-text finding description, not a UI status label; the page consistently renders finding severity types as 'Non-Conformance' and 'Observation' in sentence case, so no status casing leak exists"
+    },
+    {
+      "candidate_id": "cand-10",
+      "verdict": "refuted",
+      "reason": "The three svg-adjacent empty slots on /analytics are the vessels-by-type bar chart SVG, the top-vessels-by-distance bar chart SVG, and the sidebar logo; axis labels and table data render; blanks are chart canvases"
+    }
+  ],
+  "session_seconds": 205,
+  "cost": {
+    "model_tokens": {
+      "input": 28,
+      "output": 6278,
+      "cache_read": 434243,
+      "cache_write": 32288
+    },
+    "turns": 26,
+    "model": "global.anthropic.claude-sonnet-4-6",
+    "excludes": [
+      "S3 storage",
+      "CloudWatch Logs",
+      "GitHub runner minutes"
+    ]
+  },
+  "screenshots": [
+    {
+      "key": "screenshots/gh-33852176978-1/candidate-cand-1.png",
+      "label": "candidate-cand-1",
+      "url": "https://pipelineguard-qa-dev-reports-149751500899.s3.amazonaws.com/screenshots/gh-33852176978-1/candidate-cand-1.png?AWSAccessKeyId=ASIASFXPCSBRWD2WMETP&Signature=LOBMTBUCynM9uMw3Ib09tDZB4hs%3D&x-amz-security-token=IQoJb3JpZ2luX2VjECgaDmFwLXNvdXRoZWFzdC0xIkcwRQIgIZDkB1i5yG73itybjZLZEK47cPLtK2FTJv5HTvdMeSsCIQDW7C20RpYObBCiGqd2tPirXy4HXp6MmnTqK6O%2ByISSFSqZAwjx%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDE0OTc1MTUwMDg5OSIMVZqLgTXNhh5djAv%2FKu0CWZXzCFPhdKBhCXQqTh7BD6ubMSWvZ4Rjt%2B8bH9EY%2FDe5d86ceM58NFlNkGc6oTQdA%2BI2S0NAtBQEmvQ57Nj3EMgBM5kg0jLN0e53JLRF9EQmIVw2l56E9RPQlJJjCowGx2285y62Jc2cltd7LIF9pdUSyYzA0wYX2SHfZcsOL01Ig1muxZiTLpr4VWiq1ZA0k%2FY%2BSbF%2B5U4ZUuBcyUoeZekPUNcy2YpcIzFSM0XURaweNAvT12Knj6%2BVXEnpjPgwmDstIit1W9t7sJGpeLjBTOvT%2Biaz3BkCDIXMfvY6EGnSu91DYhG%2BdZW378ok2GzD9yG6TFYU0ZbSTXLQbJaY1Sbs0bUkPGkJSHD1beTRdBevssCM7pTmpQoF3wXZjRNYqUuOCwocrFgjwZwiTPrKKov%2B96hsXLHkHa3xprsOh5A0wBJIRHnxzdWqSad%2BQSAn4Do2u%2FuaziSdM7wNbG77RGQMVRaBoYmneNx73t0wkv7p1AY6lQEvY%2F9PIt7zHmKc6WTyd1G%2FKxlR49SqSHnAEGjHu9gM5Oh5y4JbcQ%2BWgPhk0%2FL2WsNx7bfaCwXbp%2FX4J1VL8dssBhi5qpDAxHYg0Kr92y7l5LyiYP%2Fg8wcdwkm4jnYGMRHB7Wbq4ji3aBCfV3ne2an1Gu35f%2BlkQ7ZyeQ9%2FxuEsAsX5iADt0JI0zeOPJJodc1HuQcJ6Hw%3D%3D&Expires=1789114978"
+    },
+    {
+      "key": "screenshots/gh-33852176978-1/candidate-cand-2.png",
+      "label": "candidate-cand-2",
+      "url": "https://pipelineguard-qa-dev-reports-149751500899.s3.amazonaws.com/screenshots/gh-33852176978-1/candidate-cand-2.png?AWSAccessKeyId=ASIASFXPCSBRWD2WMETP&Signature=frHX5jGTxOEUVd4GQtONDzr%2BSxw%3D&x-amz-security-token=IQoJb3JpZ2luX2VjECgaDmFwLXNvdXRoZWFzdC0xIkcwRQIgIZDkB1i5yG73itybjZLZEK47cPLtK2FTJv5HTvdMeSsCIQDW7C20RpYObBCiGqd2tPirXy4HXp6MmnTqK6O%2ByISSFSqZAwjx%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDE0OTc1MTUwMDg5OSIMVZqLgTXNhh5djAv%2FKu0CWZXzCFPhdKBhCXQqTh7BD6ubMSWvZ4Rjt%2B8bH9EY%2FDe5d86ceM58NFlNkGc6oTQdA%2BI2S0NAtBQEmvQ57Nj3EMgBM5kg0jLN0e53JLRF9EQmIVw2l56E9RPQlJJjCowGx2285y62Jc2cltd7LIF9pdUSyYzA0wYX2SHfZcsOL01Ig1muxZiTLpr4VWiq1ZA0k%2FY%2BSbF%2B5U4ZUuBcyUoeZekPUNcy2YpcIzFSM0XURaweNAvT12Knj6%2BVXEnpjPgwmDstIit1W9t7sJGpeLjBTOvT%2Biaz3BkCDIXMfvY6EGnSu91DYhG%2BdZW378ok2GzD9yG6TFYU0ZbSTXLQbJaY1Sbs0bUkPGkJSHD1beTRdBevssCM7pTmpQoF3wXZjRNYqUuOCwocrFgjwZwiTPrKKov%2B96hsXLHkHa3xprsOh5A0wBJIRHnxzdWqSad%2BQSAn4Do2u%2FuaziSdM7wNbG77RGQMVRaBoYmneNx73t0wkv7p1AY6lQEvY%2F9PIt7zHmKc6WTyd1G%2FKxlR49SqSHnAEGjHu9gM5Oh5y4JbcQ%2BWgPhk0%2FL2WsNx7bfaCwXbp%2FX4J1VL8dssBhi5qpDAxHYg0Kr92y7l5LyiYP%2Fg8wcdwkm4jnYGMRHB7Wbq4ji3aBCfV3ne2an1Gu35f%2BlkQ7ZyeQ9%2FxuEsAsX5iADt0JI0zeOPJJodc1HuQcJ6Hw%3D%3D&Expires=1789114978"
+    },
+    {
+      "key": "screenshots/gh-33852176978-1/candidate-cand-3.png",
+      "label": "candidate-cand-3",
+      "url": "https://pipelineguard-qa-dev-reports-149751500899.s3.amazonaws.com/screenshots/gh-33852176978-1/candidate-cand-3.png?AWSAccessKeyId=ASIASFXPCSBRWD2WMETP&Signature=9kqEwHk06oxvp5YdmhQSIgMSB9M%3D&x-amz-security-token=IQoJb3JpZ2luX2VjECgaDmFwLXNvdXRoZWFzdC0xIkcwRQIgIZDkB1i5yG73itybjZLZEK47cPLtK2FTJv5HTvdMeSsCIQDW7C20RpYObBCiGqd2tPirXy4HXp6MmnTqK6O%2ByISSFSqZAwjx%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDE0OTc1MTUwMDg5OSIMVZqLgTXNhh5djAv%2FKu0CWZXzCFPhdKBhCXQqTh7BD6ubMSWvZ4Rjt%2B8bH9EY%2FDe5d86ceM58NFlNkGc6oTQdA%2BI2S0NAtBQEmvQ57Nj3EMgBM5kg0jLN0e53JLRF9EQmIVw2l56E9RPQlJJjCowGx2285y62Jc2cltd7LIF9pdUSyYzA0wYX2SHfZcsOL01Ig1muxZiTLpr4VWiq1ZA0k%2FY%2BSbF%2B5U4ZUuBcyUoeZekPUNcy2YpcIzFSM0XURaweNAvT12Knj6%2BVXEnpjPgwmDstIit1W9t7sJGpeLjBTOvT%2Biaz3BkCDIXMfvY6EGnSu91DYhG%2BdZW378ok2GzD9yG6TFYU0ZbSTXLQbJaY1Sbs0bUkPGkJSHD1beTRdBevssCM7pTmpQoF3wXZjRNYqUuOCwocrFgjwZwiTPrKKov%2B96hsXLHkHa3xprsOh5A0wBJIRHnxzdWqSad%2BQSAn4Do2u%2FuaziSdM7wNbG77RGQMVRaBoYmneNx73t0wkv7p1AY6lQEvY%2F9PIt7zHmKc6WTyd1G%2FKxlR49SqSHnAEGjHu9gM5Oh5y4JbcQ%2BWgPhk0%2FL2WsNx7bfaCwXbp%2FX4J1VL8dssBhi5qpDAxHYg0Kr92y7l5LyiYP%2Fg8wcdwkm4jnYGMRHB7Wbq4ji3aBCfV3ne2an1Gu35f%2BlkQ7ZyeQ9%2FxuEsAsX5iADt0JI0zeOPJJodc1HuQcJ6Hw%3D%3D&Expires=1789114978"
+    },
+    {
+      "key": "screenshots/gh-33852176978-1/candidate-cand-4.png",
+      "label": "candidate-cand-4",
+      "url": "https://pipelineguard-qa-dev-reports-149751500899.s3.amazonaws.com/screenshots/gh-33852176978-1/candidate-cand-4.png?AWSAccessKeyId=ASIASFXPCSBRWD2WMETP&Signature=tkLPVbPuj2MD4%2FgOZmdfWcItYgs%3D&x-amz-security-token=IQoJb3JpZ2luX2VjECgaDmFwLXNvdXRoZWFzdC0xIkcwRQIgIZDkB1i5yG73itybjZLZEK47cPLtK2FTJv5HTvdMeSsCIQDW7C20RpYObBCiGqd2tPirXy4HXp6MmnTqK6O%2ByISSFSqZAwjx%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDE0OTc1MTUwMDg5OSIMVZqLgTXNhh5djAv%2FKu0CWZXzCFPhdKBhCXQqTh7BD6ubMSWvZ4Rjt%2B8bH9EY%2FDe5d86ceM58NFlNkGc6oTQdA%2BI2S0NAtBQEmvQ57Nj3EMgBM5kg0jLN0e53JLRF9EQmIVw2l56E9RPQlJJjCowGx2285y62Jc2cltd7LIF9pdUSyYzA0wYX2SHfZcsOL01Ig1muxZiTLpr4VWiq1ZA0k%2FY%2BSbF%2B5U4ZUuBcyUoeZekPUNcy2YpcIzFSM0XURaweNAvT12Knj6%2BVXEnpjPgwmDstIit1W9t7sJGpeLjBTOvT%2Biaz3BkCDIXMfvY6EGnSu91DYhG%2BdZW378ok2GzD9yG6TFYU0ZbSTXLQbJaY1Sbs0bUkPGkJSHD1beTRdBevssCM7pTmpQoF3wXZjRNYqUuOCwocrFgjwZwiTPrKKov%2B96hsXLHkHa3xprsOh5A0wBJIRHnxzdWqSad%2BQSAn4Do2u%2FuaziSdM7wNbG77RGQMVRaBoYmneNx73t0wkv7p1AY6lQEvY%2F9PIt7zHmKc6WTyd1G%2FKxlR49SqSHnAEGjHu9gM5Oh5y4JbcQ%2BWgPhk0%2FL2WsNx7bfaCwXbp%2FX4J1VL8dssBhi5qpDAxHYg0Kr92y7l5LyiYP%2Fg8wcdwkm4jnYGMRHB7Wbq4ji3aBCfV3ne2an1Gu35f%2BlkQ7ZyeQ9%2FxuEsAsX5iADt0JI0zeOPJJodc1HuQcJ6Hw%3D%3D&Expires=1789114978"
+    },
+    {
+      "key": "screenshots/gh-33852176978-1/candidate-cand-5.png",
+      "label": "candidate-cand-5",
+      "url": "https://pipelineguard-qa-dev-reports-149751500899.s3.amazonaws.com/screenshots/gh-33852176978-1/candidate-cand-5.png?AWSAccessKeyId=ASIASFXPCSBRWD2WMETP&Signature=RMC3BbONJaKkqGnjF6n4nVPt5to%3D&x-amz-security-token=IQoJb3JpZ2luX2VjECgaDmFwLXNvdXRoZWFzdC0xIkcwRQIgIZDkB1i5yG73itybjZLZEK47cPLtK2FTJv5HTvdMeSsCIQDW7C20RpYObBCiGqd2tPirXy4HXp6MmnTqK6O%2ByISSFSqZAwjx%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDE0OTc1MTUwMDg5OSIMVZqLgTXNhh5djAv%2FKu0CWZXzCFPhdKBhCXQqTh7BD6ubMSWvZ4Rjt%2B8bH9EY%2FDe5d86ceM58NFlNkGc6oTQdA%2BI2S0NAtBQEmvQ57Nj3EMgBM5kg0jLN0e53JLRF9EQmIVw2l56E9RPQlJJjCowGx2285y62Jc2cltd7LIF9pdUSyYzA0wYX2SHfZcsOL01Ig1muxZiTLpr4VWiq1ZA0k%2FY%2BSbF%2B5U4ZUuBcyUoeZekPUNcy2YpcIzFSM0XURaweNAvT12Knj6%2BVXEnpjPgwmDstIit1W9t7sJGpeLjBTOvT%2Biaz3BkCDIXMfvY6EGnSu91DYhG%2BdZW378ok2GzD9yG6TFYU0ZbSTXLQbJaY1Sbs0bUkPGkJSHD1beTRdBevssCM7pTmpQoF3wXZjRNYqUuOCwocrFgjwZwiTPrKKov%2B96hsXLHkHa3xprsOh5A0wBJIRHnxzdWqSad%2BQSAn4Do2u%2FuaziSdM7wNbG77RGQMVRaBoYmneNx73t0wkv7p1AY6lQEvY%2F9PIt7zHmKc6WTyd1G%2FKxlR49SqSHnAEGjHu9gM5Oh5y4JbcQ%2BWgPhk0%2FL2WsNx7bfaCwXbp%2FX4J1VL8dssBhi5qpDAxHYg0Kr92y7l5LyiYP%2Fg8wcdwkm4jnYGMRHB7Wbq4ji3aBCfV3ne2an1Gu35f%2BlkQ7ZyeQ9%2FxuEsAsX5iADt0JI0zeOPJJodc1HuQcJ6Hw%3D%3D&Expires=1789114978"
+    },
+    {
+      "key": "screenshots/gh-33852176978-1/candidate-cand-6.png",
+      "label": "candidate-cand-6",
+      "url": "https://pipelineguard-qa-dev-reports-149751500899.s3.amazonaws.com/screenshots/gh-33852176978-1/candidate-cand-6.png?AWSAccessKeyId=ASIASFXPCSBRWD2WMETP&Signature=ogXjzEZL7H4jqCVg6I%2F81M9mn0Q%3D&x-amz-security-token=IQoJb3JpZ2luX2VjECgaDmFwLXNvdXRoZWFzdC0xIkcwRQIgIZDkB1i5yG73itybjZLZEK47cPLtK2FTJv5HTvdMeSsCIQDW7C20RpYObBCiGqd2tPirXy4HXp6MmnTqK6O%2ByISSFSqZAwjx%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDE0OTc1MTUwMDg5OSIMVZqLgTXNhh5djAv%2FKu0CWZXzCFPhdKBhCXQqTh7BD6ubMSWvZ4Rjt%2B8bH9EY%2FDe5d86ceM58NFlNkGc6oTQdA%2BI2S0NAtBQEmvQ57Nj3EMgBM5kg0jLN0e53JLRF9EQmIVw2l56E9RPQlJJjCowGx2285y62Jc2cltd7LIF9pdUSyYzA0wYX2SHfZcsOL01Ig1muxZiTLpr4VWiq1ZA0k%2FY%2BSbF%2B5U4ZUuBcyUoeZekPUNcy2YpcIzFSM0XURaweNAvT12Knj6%2BVXEnpjPgwmDstIit1W9t7sJGpeLjBTOvT%2Biaz3BkCDIXMfvY6EGnSu91DYhG%2BdZW378ok2GzD9yG6TFYU0ZbSTXLQbJaY1Sbs0bUkPGkJSHD1beTRdBevssCM7pTmpQoF3wXZjRNYqUuOCwocrFgjwZwiTPrKKov%2B96hsXLHkHa3xprsOh5A0wBJIRHnxzdWqSad%2BQSAn4Do2u%2FuaziSdM7wNbG77RGQMVRaBoYmneNx73t0wkv7p1AY6lQEvY%2F9PIt7zHmKc6WTyd1G%2FKxlR49SqSHnAEGjHu9gM5Oh5y4JbcQ%2BWgPhk0%2FL2WsNx7bfaCwXbp%2FX4J1VL8dssBhi5qpDAxHYg0Kr92y7l5LyiYP%2Fg8wcdwkm4jnYGMRHB7Wbq4ji3aBCfV3ne2an1Gu35f%2BlkQ7ZyeQ9%2FxuEsAsX5iADt0JI0zeOPJJodc1HuQcJ6Hw%3D%3D&Expires=1789114978"
+    },
+    {
+      "key": "screenshots/gh-33852176978-1/candidate-cand-7.png",
+      "label": "candidate-cand-7",
+      "url": "https://pipelineguard-qa-dev-reports-149751500899.s3.amazonaws.com/screenshots/gh-33852176978-1/candidate-cand-7.png?AWSAccessKeyId=ASIASFXPCSBRWD2WMETP&Signature=BnkQL8yjbul%2BeZbpasBBkU7DGXM%3D&x-amz-security-token=IQoJb3JpZ2luX2VjECgaDmFwLXNvdXRoZWFzdC0xIkcwRQIgIZDkB1i5yG73itybjZLZEK47cPLtK2FTJv5HTvdMeSsCIQDW7C20RpYObBCiGqd2tPirXy4HXp6MmnTqK6O%2ByISSFSqZAwjx%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDE0OTc1MTUwMDg5OSIMVZqLgTXNhh5djAv%2FKu0CWZXzCFPhdKBhCXQqTh7BD6ubMSWvZ4Rjt%2B8bH9EY%2FDe5d86ceM58NFlNkGc6oTQdA%2BI2S0NAtBQEmvQ57Nj3EMgBM5kg0jLN0e53JLRF9EQmIVw2l56E9RPQlJJjCowGx2285y62Jc2cltd7LIF9pdUSyYzA0wYX2SHfZcsOL01Ig1muxZiTLpr4VWiq1ZA0k%2FY%2BSbF%2B5U4ZUuBcyUoeZekPUNcy2YpcIzFSM0XURaweNAvT12Knj6%2BVXEnpjPgwmDstIit1W9t7sJGpeLjBTOvT%2Biaz3BkCDIXMfvY6EGnSu91DYhG%2BdZW378ok2GzD9yG6TFYU0ZbSTXLQbJaY1Sbs0bUkPGkJSHD1beTRdBevssCM7pTmpQoF3wXZjRNYqUuOCwocrFgjwZwiTPrKKov%2B96hsXLHkHa3xprsOh5A0wBJIRHnxzdWqSad%2BQSAn4Do2u%2FuaziSdM7wNbG77RGQMVRaBoYmneNx73t0wkv7p1AY6lQEvY%2F9PIt7zHmKc6WTyd1G%2FKxlR49SqSHnAEGjHu9gM5Oh5y4JbcQ%2BWgPhk0%2FL2WsNx7bfaCwXbp%2FX4J1VL8dssBhi5qpDAxHYg0Kr92y7l5LyiYP%2Fg8wcdwkm4jnYGMRHB7Wbq4ji3aBCfV3ne2an1Gu35f%2BlkQ7ZyeQ9%2FxuEsAsX5iADt0JI0zeOPJJodc1HuQcJ6Hw%3D%3D&Expires=1789114978"
+    },
+    {
+      "key": "screenshots/gh-33852176978-1/candidate-cand-8.png",
+      "label": "candidate-cand-8",
+      "url": "https://pipelineguard-qa-dev-reports-149751500899.s3.amazonaws.com/screenshots/gh-33852176978-1/candidate-cand-8.png?AWSAccessKeyId=ASIASFXPCSBRWD2WMETP&Signature=KM7MgEAM4hR9JNMLXYhEkoTjTHY%3D&x-amz-security-token=IQoJb3JpZ2luX2VjECgaDmFwLXNvdXRoZWFzdC0xIkcwRQIgIZDkB1i5yG73itybjZLZEK47cPLtK2FTJv5HTvdMeSsCIQDW7C20RpYObBCiGqd2tPirXy4HXp6MmnTqK6O%2ByISSFSqZAwjx%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDE0OTc1MTUwMDg5OSIMVZqLgTXNhh5djAv%2FKu0CWZXzCFPhdKBhCXQqTh7BD6ubMSWvZ4Rjt%2B8bH9EY%2FDe5d86ceM58NFlNkGc6oTQdA%2BI2S0NAtBQEmvQ57Nj3EMgBM5kg0jLN0e53JLRF9EQmIVw2l56E9RPQlJJjCowGx2285y62Jc2cltd7LIF9pdUSyYzA0wYX2SHfZcsOL01Ig1muxZiTLpr4VWiq1ZA0k%2FY%2BSbF%2B5U4ZUuBcyUoeZekPUNcy2YpcIzFSM0XURaweNAvT12Knj6%2BVXEnpjPgwmDstIit1W9t7sJGpeLjBTOvT%2Biaz3BkCDIXMfvY6EGnSu91DYhG%2BdZW378ok2GzD9yG6TFYU0ZbSTXLQbJaY1Sbs0bUkPGkJSHD1beTRdBevssCM7pTmpQoF3wXZjRNYqUuOCwocrFgjwZwiTPrKKov%2B96hsXLHkHa3xprsOh5A0wBJIRHnxzdWqSad%2BQSAn4Do2u%2FuaziSdM7wNbG77RGQMVRaBoYmneNx73t0wkv7p1AY6lQEvY%2F9PIt7zHmKc6WTyd1G%2FKxlR49SqSHnAEGjHu9gM5Oh5y4JbcQ%2BWgPhk0%2FL2WsNx7bfaCwXbp%2FX4J1VL8dssBhi5qpDAxHYg0Kr92y7l5LyiYP%2Fg8wcdwkm4jnYGMRHB7Wbq4ji3aBCfV3ne2an1Gu35f%2BlkQ7ZyeQ9%2FxuEsAsX5iADt0JI0zeOPJJodc1HuQcJ6Hw%3D%3D&Expires=1789114978"
+    },
+    {
+      "key": "screenshots/gh-33852176978-1/candidate-cand-9.png",
+      "label": "candidate-cand-9",
+      "url": "https://pipelineguard-qa-dev-reports-149751500899.s3.amazonaws.com/screenshots/gh-33852176978-1/candidate-cand-9.png?AWSAccessKeyId=ASIASFXPCSBRWD2WMETP&Signature=E50i0JBkiaB6AzH6Jlma5v8E3k8%3D&x-amz-security-token=IQoJb3JpZ2luX2VjECgaDmFwLXNvdXRoZWFzdC0xIkcwRQIgIZDkB1i5yG73itybjZLZEK47cPLtK2FTJv5HTvdMeSsCIQDW7C20RpYObBCiGqd2tPirXy4HXp6MmnTqK6O%2ByISSFSqZAwjx%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDE0OTc1MTUwMDg5OSIMVZqLgTXNhh5djAv%2FKu0CWZXzCFPhdKBhCXQqTh7BD6ubMSWvZ4Rjt%2B8bH9EY%2FDe5d86ceM58NFlNkGc6oTQdA%2BI2S0NAtBQEmvQ57Nj3EMgBM5kg0jLN0e53JLRF9EQmIVw2l56E9RPQlJJjCowGx2285y62Jc2cltd7LIF9pdUSyYzA0wYX2SHfZcsOL01Ig1muxZiTLpr4VWiq1ZA0k%2FY%2BSbF%2B5U4ZUuBcyUoeZekPUNcy2YpcIzFSM0XURaweNAvT12Knj6%2BVXEnpjPgwmDstIit1W9t7sJGpeLjBTOvT%2Biaz3BkCDIXMfvY6EGnSu91DYhG%2BdZW378ok2GzD9yG6TFYU0ZbSTXLQbJaY1Sbs0bUkPGkJSHD1beTRdBevssCM7pTmpQoF3wXZjRNYqUuOCwocrFgjwZwiTPrKKov%2B96hsXLHkHa3xprsOh5A0wBJIRHnxzdWqSad%2BQSAn4Do2u%2FuaziSdM7wNbG77RGQMVRaBoYmneNx73t0wkv7p1AY6lQEvY%2F9PIt7zHmKc6WTyd1G%2FKxlR49SqSHnAEGjHu9gM5Oh5y4JbcQ%2BWgPhk0%2FL2WsNx7bfaCwXbp%2FX4J1VL8dssBhi5qpDAxHYg0Kr92y7l5LyiYP%2Fg8wcdwkm4jnYGMRHB7Wbq4ji3aBCfV3ne2an1Gu35f%2BlkQ7ZyeQ9%2FxuEsAsX5iADt0JI0zeOPJJodc1HuQcJ6Hw%3D%3D&Expires=1789114978"
+    },
+    {
+      "key": "screenshots/gh-33852176978-1/candidate-cand-10.png",
+      "label": "candidate-cand-10",
+      "url": "https://pipelineguard-qa-dev-reports-149751500899.s3.amazonaws.com/screenshots/gh-33852176978-1/candidate-cand-10.png?AWSAccessKeyId=ASIASFXPCSBRWD2WMETP&Signature=VM4Ha0wUOykz9DLC4eGgl6cAzls%3D&x-amz-security-token=IQoJb3JpZ2luX2VjECgaDmFwLXNvdXRoZWFzdC0xIkcwRQIgIZDkB1i5yG73itybjZLZEK47cPLtK2FTJv5HTvdMeSsCIQDW7C20RpYObBCiGqd2tPirXy4HXp6MmnTqK6O%2ByISSFSqZAwjx%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDE0OTc1MTUwMDg5OSIMVZqLgTXNhh5djAv%2FKu0CWZXzCFPhdKBhCXQqTh7BD6ubMSWvZ4Rjt%2B8bH9EY%2FDe5d86ceM58NFlNkGc6oTQdA%2BI2S0NAtBQEmvQ57Nj3EMgBM5kg0jLN0e53JLRF9EQmIVw2l56E9RPQlJJjCowGx2285y62Jc2cltd7LIF9pdUSyYzA0wYX2SHfZcsOL01Ig1muxZiTLpr4VWiq1ZA0k%2FY%2BSbF%2B5U4ZUuBcyUoeZekPUNcy2YpcIzFSM0XURaweNAvT12Knj6%2BVXEnpjPgwmDstIit1W9t7sJGpeLjBTOvT%2Biaz3BkCDIXMfvY6EGnSu91DYhG%2BdZW378ok2GzD9yG6TFYU0ZbSTXLQbJaY1Sbs0bUkPGkJSHD1beTRdBevssCM7pTmpQoF3wXZjRNYqUuOCwocrFgjwZwiTPrKKov%2B96hsXLHkHa3xprsOh5A0wBJIRHnxzdWqSad%2BQSAn4Do2u%2FuaziSdM7wNbG77RGQMVRaBoYmneNx73t0wkv7p1AY6lQEvY%2F9PIt7zHmKc6WTyd1G%2FKxlR49SqSHnAEGjHu9gM5Oh5y4JbcQ%2BWgPhk0%2FL2WsNx7bfaCwXbp%2FX4J1VL8dssBhi5qpDAxHYg0Kr92y7l5LyiYP%2Fg8wcdwkm4jnYGMRHB7Wbq4ji3aBCfV3ne2an1Gu35f%2BlkQ7ZyeQ9%2FxuEsAsX5iADt0JI0zeOPJJodc1HuQcJ6Hw%3D%3D&Expires=1789114978"
+    },
+    {
+      "key": "screenshots/gh-33852176978-1/voyage-history-savings-wrong.png",
+      "label": "voyage-history-savings-wrong",
+      "url": "https://pipelineguard-qa-dev-reports-149751500899.s3.amazonaws.com/screenshots/gh-33852176978-1/voyage-history-savings-wrong.png?AWSAccessKeyId=ASIASFXPCSBRWD2WMETP&Signature=79O19KMatbSe%2FwZeoqPPqV8psew%3D&x-amz-security-token=IQoJb3JpZ2luX2VjECgaDmFwLXNvdXRoZWFzdC0xIkcwRQIgIZDkB1i5yG73itybjZLZEK47cPLtK2FTJv5HTvdMeSsCIQDW7C20RpYObBCiGqd2tPirXy4HXp6MmnTqK6O%2ByISSFSqZAwjx%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDE0OTc1MTUwMDg5OSIMVZqLgTXNhh5djAv%2FKu0CWZXzCFPhdKBhCXQqTh7BD6ubMSWvZ4Rjt%2B8bH9EY%2FDe5d86ceM58NFlNkGc6oTQdA%2BI2S0NAtBQEmvQ57Nj3EMgBM5kg0jLN0e53JLRF9EQmIVw2l56E9RPQlJJjCowGx2285y62Jc2cltd7LIF9pdUSyYzA0wYX2SHfZcsOL01Ig1muxZiTLpr4VWiq1ZA0k%2FY%2BSbF%2B5U4ZUuBcyUoeZekPUNcy2YpcIzFSM0XURaweNAvT12Knj6%2BVXEnpjPgwmDstIit1W9t7sJGpeLjBTOvT%2Biaz3BkCDIXMfvY6EGnSu91DYhG%2BdZW378ok2GzD9yG6TFYU0ZbSTXLQbJaY1Sbs0bUkPGkJSHD1beTRdBevssCM7pTmpQoF3wXZjRNYqUuOCwocrFgjwZwiTPrKKov%2B96hsXLHkHa3xprsOh5A0wBJIRHnxzdWqSad%2BQSAn4Do2u%2FuaziSdM7wNbG77RGQMVRaBoYmneNx73t0wkv7p1AY6lQEvY%2F9PIt7zHmKc6WTyd1G%2FKxlR49SqSHnAEGjHu9gM5Oh5y4JbcQ%2BWgPhk0%2FL2WsNx7bfaCwXbp%2FX4J1VL8dssBhi5qpDAxHYg0Kr92y7l5LyiYP%2Fg8wcdwkm4jnYGMRHB7Wbq4ji3aBCfV3ne2an1Gu35f%2BlkQ7ZyeQ9%2FxuEsAsX5iADt0JI0zeOPJJodc1HuQcJ6Hw%3D%3D&Expires=1789114978"
+    },
+    {
+      "key": "screenshots/gh-33852176978-1/voyage-savings-computation-error.png",
+      "label": "voyage-savings-computation-error",
+      "url": "https://pipelineguard-qa-dev-reports-149751500899.s3.amazonaws.com/screenshots/gh-33852176978-1/voyage-savings-computation-error.png?AWSAccessKeyId=ASIASFXPCSBRWD2WMETP&Signature=7aE6bhR0ruOdL%2FQYmjfdeGNKgTY%3D&x-amz-security-token=IQoJb3JpZ2luX2VjECgaDmFwLXNvdXRoZWFzdC0xIkcwRQIgIZDkB1i5yG73itybjZLZEK47cPLtK2FTJv5HTvdMeSsCIQDW7C20RpYObBCiGqd2tPirXy4HXp6MmnTqK6O%2ByISSFSqZAwjx%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDE0OTc1MTUwMDg5OSIMVZqLgTXNhh5djAv%2FKu0CWZXzCFPhdKBhCXQqTh7BD6ubMSWvZ4Rjt%2B8bH9EY%2FDe5d86ceM58NFlNkGc6oTQdA%2BI2S0NAtBQEmvQ57Nj3EMgBM5kg0jLN0e53JLRF9EQmIVw2l56E9RPQlJJjCowGx2285y62Jc2cltd7LIF9pdUSyYzA0wYX2SHfZcsOL01Ig1muxZiTLpr4VWiq1ZA0k%2FY%2BSbF%2B5U4ZUuBcyUoeZekPUNcy2YpcIzFSM0XURaweNAvT12Knj6%2BVXEnpjPgwmDstIit1W9t7sJGpeLjBTOvT%2Biaz3BkCDIXMfvY6EGnSu91DYhG%2BdZW378ok2GzD9yG6TFYU0ZbSTXLQbJaY1Sbs0bUkPGkJSHD1beTRdBevssCM7pTmpQoF3wXZjRNYqUuOCwocrFgjwZwiTPrKKov%2B96hsXLHkHa3xprsOh5A0wBJIRHnxzdWqSad%2BQSAn4Do2u%2FuaziSdM7wNbG77RGQMVRaBoYmneNx73t0wkv7p1AY6lQEvY%2F9PIt7zHmKc6WTyd1G%2FKxlR49SqSHnAEGjHu9gM5Oh5y4JbcQ%2BWgPhk0%2FL2WsNx7bfaCwXbp%2FX4J1VL8dssBhi5qpDAxHYg0Kr92y7l5LyiYP%2Fg8wcdwkm4jnYGMRHB7Wbq4ji3aBCfV3ne2an1Gu35f%2BlkQ7ZyeQ9%2FxuEsAsX5iADt0JI0zeOPJJodc1HuQcJ6Hw%3D%3D&Expires=1789114978"
+    }
+  ],
+  "routes_visited": [
+    "/voyage",
+    "/maintenance",
+    "/compliance",
+    "/ports",
+    "/knowledge",
+    "/sire",
+    "/analytics",
+    "/"
+  ],
+  "paced_seconds": 59.1,
+  "authenticated": true,
+  "auth_probe": "measured",
+  "pages_tested_reported_by_model": 8
+}

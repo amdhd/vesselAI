@@ -1,0 +1,11 @@
+{
+  "schema": "pipelineguard/fix-origin/v1",
+  "origin": {
+    "repo": "amdhd/vesselAI",
+    "pr": "129"
+  },
+  "origin_findings_key": "reports/pr-129/latest/findings.json",
+  "applied_fingerprints": [
+    "/voyage::HIGH::voyage history savings ($) column shows large positive multi-million dollar values even for voyages where actual fuel exceeded planned fuel, and the total is implausibly large"
+  ]
+}
