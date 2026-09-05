@@ -173,6 +173,28 @@ jobs:
           path: .pipelineguard
           persist-credentials: false
 
+      # --- Tripwire -------------------------------------------------------
+      #
+      # This loop opens `agent-converge/run-<id>` PRs whose own body says none of
+      # the code has been reviewed by a human. The reconcile gate classifies that
+      # prefix as an agent PR and machine-verifies it -- but only if the base
+      # branch requires the gate, so the base is checked before a round is paid
+      # for. agent-fix.yml carries the same step for the same reason.
+      #
+      # SKIPPED ON A DRY RUN, unlike agent-fix.yml's copy, and the difference is
+      # not an inconsistency: `ref` here doubles as the checkout target and
+      # accepts a SHA when dry_run is set (see the input's own description). A
+      # SHA has no branch protection to read, so an unconditional check would
+      # refuse the one shape the input explicitly permits. A dry run commits
+      # nothing and opens no PR, so there is nothing to guard.
+      - name: Refuse an unguarded base
+        if: inputs.dry_run != true
+        uses: ./.github/actions/require-protected-base
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          repo: ${{ github.repository }}
+          base: ${{ inputs.ref }}
+
       # --- Two roles, one job ---------------------------------------------
       #
       # The two halves hold deliberately different permissions: the QA half may

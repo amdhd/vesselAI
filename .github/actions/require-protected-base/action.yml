@@ -1,0 +1,87 @@
+name: Require a protected base
+description: >-
+  Refuse to run a code-writing agent unless the branch it would open a PR
+  against requires the QA reconcile gate. Fails closed.
+
+# WHY THIS EXISTS
+#
+# PR #130 merged an unverified agent fix. Two things had to be true for that,
+# and the reconcile gate only fixes one of them: the fix was unverified, AND its
+# base branch (demo/d4-fixbase, a throwaway) had no protection at all. A gate
+# that main requires does nothing for a PR opened against a branch that requires
+# nothing.
+#
+# So before an agent spends a model token, it proves its destination is guarded.
+# A future throwaway fix base can only be used after it has been protected --
+# which makes the #130 shape impossible rather than merely discouraged.
+#
+# WHY A COMPOSITE ACTION HERE, when qa-run.yml deliberately is not one: this is
+# plain shell with no secrets context and no continue-on-error, so none of the
+# limitations that ruled a composite out for the QA run apply. It is duplicated
+# into two callers otherwise, and a security control that exists twice is a
+# security control that will eventually exist in two versions.
+
+inputs:
+  token:
+    description: >-
+      A token that can READ BRANCH PROTECTION. That is an admin-scoped read: a
+      GitHub App installation token needs the `Administration: read` permission,
+      which no workflow file can assert for you. If this action reports a 403,
+      that grant is the first thing to check.
+    required: true
+  base:
+    description: Branch the agent would open its PR against.
+    required: true
+  repo:
+    description: owner/repo to query.
+    required: true
+  required_context:
+    description: Status check the base must require.
+    required: false
+    default: Reconcile gate
+
+runs:
+  using: composite
+  steps:
+    - name: Assert the base requires the reconcile gate
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        BASE: ${{ inputs.base }}
+        REPO: ${{ inputs.repo }}
+        WANT: ${{ inputs.required_context }}
+      run: |
+        set -uo pipefail
+
+        # FAIL CLOSED, and note what is NOT done here: an error is never treated
+        # as "protected". A 404 (branch has no protection), a 403 (the App
+        # cannot read protection) and a network blip all land in the same place
+        # -- refusal -- because none of them is evidence that the base is
+        # guarded. The deleted agent-qa label step could afford to shrug at a
+        # failed API call; its worst case was a missing label. This one's worst
+        # case is #130 again.
+        if ! body=$(gh api "/repos/$REPO/branches/$BASE/protection/required_status_checks" 2>&1); then
+          {
+            echo "::error::refusing to run: cannot confirm '$BASE' requires the '$WANT' check."
+            echo "::error::GitHub said: $(printf '%s' "$body" | head -3 | tr '\n' ' ')"
+            echo "::error::Either the branch has no protection, or this App lacks 'Administration: read'."
+          } >&2
+          exit 1
+        fi
+
+        # Both shapes. `.contexts` is the legacy flat list and `.checks[].context`
+        # the current app-pinned form; the API returns both today, but reading
+        # only one would make this silently stop asserting anything the day that
+        # changes.
+        if ! printf '%s' "$body" \
+             | jq -e --arg c "$WANT" '[.contexts[]?, (.checks[]?.context)] | index($c)' >/dev/null; then
+          {
+            echo "::error::refusing to run: '$BASE' does not require the '$WANT' check."
+            echo "::error::An agent may only open a PR against a branch that will machine-verify it."
+            echo "::error::Required there today: $(printf '%s' "$body" | jq -c '[.contexts[]?]')"
+            echo "::error::Fix the base's protection, or point fix_base at one that is guarded."
+          } >&2
+          exit 1
+        fi
+
+        echo "::notice::base '$BASE' requires '$WANT' — proceeding"
