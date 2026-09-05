@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "_comment": [
+    "API contract context for the PipelineGuard fix agent.",
+    "",
+    "WHY THIS FILE EXISTS. PR #130 was an agent fix that mis-diagnosed its own",
+    "finding: it guarded ciiImpact when the crash was formatFuel(voyage.actualFuel)",
+    "throwing on an undefined, because /voyage/history was sending actual_fuel.",
+    "Replaying that selection (see d4-demo/BASELINE.md) showed the model HAD both",
+    "sides of the boundary and still fixed the wrong field. What it lacked was the",
+    "declared type and the formatter signature -- the two things that turn an odd",
+    "key into a contract violation. Text-similarity ranking cannot find those:",
+    "they scored 6, under six irrelevant same-directory siblings. So we declare",
+    "them.",
+    "",
+    "AUTHORING RULES:",
+    "  - anchor must match EXACTLY ONE line in the file. An ambiguous anchor is",
+    "    refused and the whole file is shown instead (manifest_ambiguous).",
+    "  - a missing anchor is refused the same way (manifest_stale). Both surface",
+    "    as errors on the fix run, so a drifted manifest is loud, not silent.",
+    "  - editable: true means 'the fix may land here'. Everything else is",
+    "    reference the model may read and may NOT patch.",
+    "  - keep each feature under 6 read-only entries and 24KB.",
+    "  - a terms-only feature (no page_prefix) must use DISTINCTIVE terms.",
+    "    Scoring is +1 per matched term, so a feature listing common words wins",
+    "    over one listing few specific ones. 'fleet' and 'vessel' are in every",
+    "    finding in a fleet-management app: an early draft of the 'fleet' feature",
+    "    used them and stole an ETS compliance finding from 'compliance'.",
+    "    Prefer multi-word phrases that only that feature's findings would say.",
+    "",
+    "Verify after editing, free and with no model call:",
+    "  python agents/fix/harness.py --findings <f.json> --repo . --dry-run",
+    "and check the run reports no manifest_ warnings."
+  ],
+  "features": [
+    {
+      "id": "voyage",
+      "match": { "page_prefix": "/voyage", "terms": ["voyage history", "fuel", "savings"] },
+      "context": [
+        { "path": "frontend/src/lib/types.ts", "anchor": "export interface VoyageHistoryRecord", "span": 12 },
+        { "path": "frontend/src/lib/types.ts", "anchor": "export interface Voyage {", "span": 18 },
+        { "path": "frontend/src/lib/api.ts", "anchor": "getHistory: async", "span": 5 },
+        { "path": "backend/src/mock/voyages.ts", "anchor": "export interface MockVoyage", "span": 24 },
+        { "path": "frontend/src/lib/utils.ts", "anchor": "export function formatNumber", "span": 40 },
+        { "path": "backend/src/routes/voyage.ts", "editable": true }
+      ]
+    },
+    {
+      "id": "compliance",
+      "match": { "page_prefix": "/compliance", "terms": ["ets compliance", "compliance status", "cii rating", "mrv", "emission log", "carbon intensity"] },
+      "context": [
+        { "path": "frontend/src/lib/types.ts", "anchor": "export interface CIIData", "span": 16 },
+        { "path": "frontend/src/lib/types.ts", "anchor": "export interface ETSData", "span": 17 },
+        { "path": "frontend/src/lib/api.ts", "anchor": "getCII: async", "span": 10 },
+        { "path": "frontend/src/lib/utils.ts", "anchor": "export function formatNumber", "span": 40 },
+        { "path": "backend/src/routes/compliance.ts", "editable": true }
+      ]
+    },
+    {
+      "id": "maintenance",
+      "match": { "page_prefix": "/maintenance", "terms": ["equipment", "work order", "sensor", "health"] },
+      "context": [
+        { "path": "frontend/src/lib/types.ts", "anchor": "export interface Equipment {", "span": 24 },
+        { "path": "frontend/src/lib/types.ts", "anchor": "export interface WorkOrder {", "span": 20 },
+        { "path": "frontend/src/lib/api.ts", "anchor": "getEquipment: async", "span": 6 },
+        { "path": "backend/src/mock/equipment.ts", "anchor": "export interface MockEquipment", "span": 24 },
+        { "path": "frontend/src/lib/utils.ts", "anchor": "export function formatNumber", "span": 40 },
+        { "path": "backend/src/routes/maintenance.ts", "editable": true }
+      ]
+    },
+    {
+      "id": "fleet",
+      "match": { "terms": ["fleet utilisation", "fleet utilization", "fleet overview", "vessel list", "vessel status", "fleet summary"] },
+      "context": [
+        { "path": "frontend/src/lib/types.ts", "anchor": "export interface Vessel {", "span": 18 },
+        { "path": "frontend/src/lib/types.ts", "anchor": "export interface Fleet {", "span": 11 },
+        { "path": "frontend/src/lib/api.ts", "anchor": "export const fleetApi = {", "span": 14 },
+        { "path": "backend/src/mock/vessels.ts", "anchor": "export interface MockVessel", "span": 24 },
+        { "path": "frontend/src/lib/utils.ts", "anchor": "export function formatNumber", "span": 40 },
+        { "path": "backend/src/routes/fleet.ts", "editable": true }
+      ]
+    },
+    {
+      "id": "ports",
+      "match": { "page_prefix": "/ports", "terms": ["port call", "congestion", "demurrage", "berth"] },
+      "context": [
+        { "path": "frontend/src/lib/types.ts", "anchor": "export interface PortCongestion", "span": 15 },
+        { "path": "frontend/src/lib/types.ts", "anchor": "export interface PortCall", "span": 18 },
+        { "path": "frontend/src/lib/api.ts", "anchor": "getCongestion: async", "span": 6 },
+        { "path": "backend/src/mock/ports.ts", "anchor": "export interface MockPort", "span": 24 },
+        { "path": "backend/src/routes/ports.ts", "editable": true }
+      ]
+    },
+    {
+      "id": "knowledge",
+      "match": { "page_prefix": "/knowledge", "terms": ["knowledge base", "document", "defect report", "handover"] },
+      "context": [
+        { "path": "frontend/src/lib/types.ts", "anchor": "export interface KnowledgeDocument", "span": 13 },
+        { "path": "frontend/src/lib/api.ts", "anchor": "export const knowledgeApi = {", "span": 22 },
+        { "path": "backend/src/mock/knowledgeDocuments.ts", "anchor": "export interface KnowledgeDoc", "span": 22 },
+        { "path": "backend/src/routes/knowledge.ts", "editable": true }
+      ]
+    },
+    {
+      "id": "sire",
+      "match": { "page_prefix": "/sire", "terms": ["sire", "inspection", "non-conformance", "chapter score"] },
+      "context": [
+        { "path": "frontend/src/lib/types.ts", "anchor": "export interface SireDocument", "span": 20 },
+        { "path": "frontend/src/lib/types.ts", "anchor": "export interface SireFinding {", "span": 16 },
+        { "path": "frontend/src/lib/api.ts", "anchor": "export const sireApi = {", "span": 22 },
+        { "path": "backend/src/mock/sireDocuments.ts", "anchor": "export interface MockSireDocument", "span": 24 },
+        { "path": "backend/src/routes/sire.ts", "editable": true }
+      ]
+    }
+  ]
+}
