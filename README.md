@@ -897,6 +897,52 @@ Running under Kubernetes surfaced real defects that Docker Compose never would:
 
 ---
 
+## Agentic QA, and the guardrails it needed
+
+Two agents run against this repo from [amdhd/pipelineguard](https://github.com/amdhd/pipelineguard): a **QA agent** that drives a real Chromium session over the deployed app and reports what it observes, and a **fix agent** that takes those findings, proposes patches, and opens a PR. Both are workflow-gated and cost a few cents per run.
+
+The interesting part is not that they work. It is what happened when one of them was wrong.
+
+### The incident
+
+PR #130 was a fix the agent proposed for a real crash: the Voyage History page threw a `TypeError` on `toFixed`. The agent guarded the wrong field. The crash was still there. **It merged anyway.**
+
+The actual defect was one token wide — `/voyage/history` returned `actual_fuel` where the client reads `actualFuel`, so the value arrived `undefined` and the formatter threw on it.
+
+Three independent things had to be true for a broken fix to land, and all three were:
+
+1. **The fixer could not see enough.** It gets 8 files of context, ranked by text similarity to the report.
+2. **Nothing enforced the re-test.** The QA agent *did* re-run on the fix PR and *did* report the finding still failing — as a PR comment no merge waited on.
+3. **The base branch had no protection.** The PR targeted a throwaway branch where none of the repo's checks applied.
+
+### What the measurement showed
+
+Replaying that run's file selection was more useful than reasoning about it. The eight slots went to the crashing component, the route that fed it, five unrelated sibling modules, and a test file — with **131 files withheld at the 8-file cap**.
+
+So the model had *both sides of the API boundary*, with the wrong key visible in the route, and still misdiagnosed. Proximity was never the problem. What it never saw were the three files that make the mismatch legible: the type declaring the field non-null, the API call asserting that type, and the formatter that throws. They scored just under the cut.
+
+That ruled out the obvious fix. Raising the cap admits the *siblings' successors*, not the contract — and text similarity cannot tell "mentions the same words" from "defines the shape of the data", because that is a fact about the architecture, not the text.
+
+### The three guardrails
+
+| Failure | Guardrail |
+|---|---|
+| Fixer could not see the contract | [`.qa-contracts.json`](.qa-contracts.json) — the repo declares which files define the shape of data crossing the API boundary. Shown **read-only**, on a budget separate from the editable files so it cannot displace them, and enforced in the harness rather than requested in the prompt: a model shown a type that disagrees with the wire can otherwise silence the type-checker by editing the type. |
+| Re-test was advisory | [`qa-reconcile-gate.yml`](.github/workflows/qa-reconcile-gate.yml) — a required status check on `main`. Human PRs take a free pass-through in seconds; only `agent-fix/*` and `agent-converge/*` branches reach the paid browser-QA path. It reports three verdicts, not two: `clean`, `blocking` (the code is wrong) and `infra` (the harness never reached a judgement) — so a throttled model is not mistaken for a bad fix. |
+| Base branch unguarded | [`require-protected-base`](.github/actions/require-protected-base/action.yml) — the fix agent reads its target branch's protection before spending a token and refuses unless the gate is required there. Fails closed: a 403, a 404 and a network blip all end in refusal, because none is evidence the base is guarded. |
+
+Full write-up, including the break-glass procedure and what each verdict means: [`docs/QA_GATE.md`](docs/QA_GATE.md).
+
+### What it is worth, honestly
+
+Re-running the same finding against the same tree with the contract context in place, the agent proposed exactly one edit — the correct one, in the correct file, with the correct causal explanation, matching the human fix. Its rationale cited the formatter, which lives in a file that had been withheld at the cap on the failing run.
+
+**That is N=1.** One finding, one model call, one defect whose shape the manifest was authored knowing. It demonstrates the mechanism end to end; it is not a measured recall improvement, and the selection code carries its own warning against treating a single case as a measurement.
+
+The gate is **binding**: `enforce_admins` is on, so a red check stops the merge for everyone, admins included. It was left off for a day first, until the check had gone green on four real PRs — proving a gate before making anything depend on it is cheaper than debugging it while it blocks the repo.
+
+The uncomfortable property that buys is real and worth naming: an `infra` verdict — a throttled model, a tunnel that never came up — also blocks, including the PR that would fix the outage. The escape hatch is to lower the protection deliberately, merge, and restore it, which is an audited act rather than a button that looks like an ordinary merge. That trade is documented rather than discovered.
+
 ## How this maps to an FDE role
 
 The Forward Deployed Engineer JD asks for specific things. Here's where each one lives in this repo:
@@ -911,6 +957,7 @@ The Forward Deployed Engineer JD asks for specific things. Here's where each one
 | *Move a POC toward production* | Prisma migrations, Docker Compose, graceful DB/AI fallbacks, `X-AI-Fallback` observability, seeded demo scenarios |
 | *Communicate* | This README, honest "real vs. mocked" accounting, and commit messages that explain *why* |
 | *Run it where the customer runs it* | The same manifests deploy to k3d and to EKS built from an empty AWS account by Terraform — IRSA for per-pod IAM, an ALB with an ACM certificate, KMS-encrypted Secrets, GitOps reconciliation, and a teardown that removes what Terraform does not own ([Running on Kubernetes](#running-on-kubernetes)) |
+| *Make agent output trustworthy* | Two agents (browser QA, auto-fix) gated so a wrong fix cannot merge silently — a required re-test check that distinguishes "the code is wrong" from "the pipeline broke", repo-declared API contracts fed to the fixer read-only, and a tripwire that stops an agent targeting an unprotected branch ([Agentic QA](#agentic-qa-and-the-guardrails-it-needed)) |
 | *Debug what you deployed* | Nine bugs the EKS rebuild surfaced that a laptop cluster could not — including a GitOps deadlock that meant the repo could not deploy itself from empty, and a NetworkPolicy that was only *proven* enforced when it returned 504 with every pod healthy |
 
 ## Roadmap (honest gaps)
