@@ -176,6 +176,73 @@ required check does not exist for PRs whose merge ref lacks the workflow that
 reports it, so requiring the context early strands open PRs at
 "Expected — waiting for status to be reported".
 
+## Evidence: does the contract context actually work?
+
+The whole point of `.qa-contracts.json` is a claim that can be wrong, so it was
+measured rather than asserted. The fixture was `test/qa-contracts-regression`
+(since deleted): `main` with PR #130's seed defect re-planted — `/voyage/history`
+sending `actual_fuel` where the client reads `actualFuel` — plus the findings
+file that drove the #130 run.
+
+### 1. The baseline — what #130 actually saw (free)
+
+Replayed 2026-09-05 with the harness at `7e968d75`, the ref pinned at the time.
+For F-001 (`TypeError on 'toFixed'`), the eight editable slots went to:
+
+| # | File | |
+|---|---|---|
+| 1 | `VoyageHistory.tsx` | the crashing component |
+| 2 | `backend/src/routes/voyage.ts` | the other side of the boundary |
+| 3–7 | five sibling voyage modules | irrelevant |
+| 8 | `voyageAgent.eval.test.ts` | a test file |
+
+**131 files were withheld at `file cap (8)`**, including the three that carry the
+contract — `types.ts`, `api.ts`, `utils.ts` — all scoring 6, just under the cut.
+
+This refutes the obvious diagnosis. The model **had both sides of the boundary**,
+with the wrong key visible in the route, and still guarded `ciiImpact`. Proximity
+was never the problem.
+
+### 2. After the manifest — what it is shown now (free)
+
+Same branch, same findings, harness at `e2ddd24f` with the manifest present:
+
+- `types.ts`, `api.ts`, `utils.ts` → present as **read-only contract context**
+- editable set: **the same eight files**, nothing displaced
+- only change is order — `voyage.ts` moves 2 → 1, because the manifest declares
+  it `editable: true`
+- contract context costs 1,511 bytes against 75,443 editable, ~2%
+
+### 3. The live run — does it change the diagnosis? (~$0.09)
+
+2026-09-06, one Bedrock call, `global.anthropic.claude-sonnet-4-6`, 27,397 in /
+421 out. The agent proposed exactly one edit:
+
+```diff
+-        actual_fuel: v.actualFuel ?? v.plannedFuel,
++        actualFuel: v.actualFuel ?? v.plannedFuel,
+```
+
+> The field was named actual_fuel (snake_case) instead of actualFuel
+> (camelCase), so voyage.actualFuel was undefined on the frontend, causing
+> formatFuel to call toFixed on undefined.
+
+That is the correct fix — identical to the human's `7da25c1` — and the correct
+causal chain. It is also the fix #130 failed to find while looking at the same
+route file.
+
+Note the rationale cites **`formatFuel`**, which lives in `utils.ts`: a
+read-only contract file, and one that was withheld at `file cap (8)` in the
+#130 run. The added context is visibly load-bearing in the reasoning rather
+than merely present.
+
+### What this does not establish
+
+**N=1.** One finding, one model call, one defect whose shape the manifest was
+authored knowing. It shows the mechanism works end to end; it is not a measured
+recall improvement, and `sources.py` warns in its own comments against treating
+a single case as a measurement. Treat it as an existence proof.
+
 ## Things that will bite you
 
 - **The job name is the contract.** The required-check context is the string
