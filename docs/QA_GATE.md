@@ -98,41 +98,36 @@ Collapsing these two was survivable while QA was advisory. It is not survivable
 for a required check, which is why the exit code is captured by hand rather than
 inferred from `steps.qa.outcome`.
 
-## Current protection, and what it does not do
+## Current protection
 
-Applied to `main` on 2026-09-05:
+`main`, as of 2026-09-06:
 
 | Setting | Value |
 |---|---|
 | `Reconcile gate` required | **yes** |
 | Other required checks | the 6 `ci.yml` contexts, unchanged |
-| `enforce_admins` | **`false`** — a deliberate choice, see below |
-| `strict` (up-to-date branch) | `false`, unchanged |
-| Required approvals | `0`, unchanged |
+| `enforce_admins` | **`true`** |
+| `strict` (up-to-date branch) | `false` |
+| Required approvals | `0` |
 
-**`enforce_admins` is `false`, so a red gate does not physically stop an admin
-merge.** GitHub still offers "merge without waiting for requirements" to a repo
-admin. On a solo repo that is the whole population.
+**`enforce_admins` is on, so the gate is binding on everyone — admins included.**
+GitHub's "merge without waiting for requirements" button is gone. A red
+`Reconcile gate` means the PR does not merge, full stop. That is what makes a
+#130 repeat impossible rather than merely visible.
 
-So be honest about what this buys. The gate turns an agent's mis-fix from
-*invisible* into *loud*: #130 merged with nothing red and nothing to notice,
-whereas the same PR today shows a failed required check, a verdict naming the
-reason, and a QA comment on the PR. What it does not do is make the merge
-impossible. Bypassing it is one click, and that click looks like an ordinary
-merge in the log.
+It was deliberately `false` for a day first, which is worth recording: the check
+was proven green on four real PRs before anything was made binding on it. Do the
+same for any future required check.
 
-Turning `enforce_admins` on removes that click and makes the check binding on
-everyone:
+### The cost of that, and the break-glass
 
-```bash
-gh api -X POST /repos/amdhd/vesselAI/branches/main/protection/enforce_admins
-```
+A red gate is not always a judgement on the code. A Bedrock throttle, a
+`trycloudflare` hiccup, or a stack that will not boot all land red as verdict
+`infra` — and with `enforce_admins` on there is no override, **including for the
+PR that would fix the gate itself.**
 
-The reason to hold off is that a red gate is not always a judgement on the code.
-A Bedrock throttle, a `trycloudflare` hiccup, or a stack that will not boot all
-land red as verdict `infra`, and with `enforce_admins` on there is no override —
-including for the PR that would fix the gate itself. The escape hatch would then
-be to lower the protection deliberately, merge, and restore it:
+That is the one genuinely uncomfortable property of this setup, and it has a
+documented escape hatch. Lower the protection deliberately, merge, restore it:
 
 ```bash
 gh api -X DELETE /repos/amdhd/vesselAI/branches/main/protection/enforce_admins
@@ -140,15 +135,16 @@ gh api -X DELETE /repos/amdhd/vesselAI/branches/main/protection/enforce_admins
 gh api -X POST   /repos/amdhd/vesselAI/branches/main/protection/enforce_admins
 ```
 
-That is not a loophole — flipping `enforce_admins` is an audited act with a
-before and an after, rather than a button that leaves the same trace as a normal
-merge. It is simply a heavier lever than a solo repo needs while the QA path is
-still young.
+This is not a loophole. Flipping `enforce_admins` is an audited account-level act
+with a before and an after, rather than a button on a PR that leaves the same
+trace as an ordinary merge. The property #130 lacked — that bypassing the verdict
+is *deliberate and visible* — is preserved; it lives on a heavier lever.
 
-**Either way, read the verdict before overriding.** `infra` means nothing was
-said about your code and an override may well be right. `blocking` means the
-agent looked and the findings stand — that is the gate doing its job, and
-clicking past it is choosing to repeat #130 knowingly rather than accidentally.
+**Read the verdict before reaching for it.** `infra` means nothing was said about
+your code, and an override may well be right — try a re-run first, since most
+`infra` causes are transient. `blocking` means the agent looked and the findings
+stand. That is the gate doing its job, and breaking glass past it is choosing to
+repeat #130 knowingly.
 
 ### Reproducing the protection
 
