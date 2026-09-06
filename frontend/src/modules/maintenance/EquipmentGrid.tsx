@@ -54,6 +54,9 @@ const statusLabel: Record<Equipment['status'], string> = {
   maintenance: 'In Maintenance',
 }
 
+// Statuses that put a unit on the "needs attention" shortlist.
+const ATTENTION_STATUSES: string[] = [statusLabel.warning, statusLabel.critical]
+
 function StatusBadge({ status }: { status: Equipment['status'] }) {
   return <Badge variant={statusVariant[status]}>{statusLabel[status]}</Badge>
 }
@@ -113,6 +116,7 @@ export default function EquipmentGrid() {
   const { selectedVessel } = useFleet()
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null)
   const [analyzeResult, setAnalyzeResult] = useState<string | null>(null)
+  const [attentionOnly, setAttentionOnly] = useState(false)
 
   const { data: equipment, isLoading } = useQuery<Equipment[]>({
     queryKey: ['equipment', selectedVessel?.id],
@@ -177,14 +181,33 @@ export default function EquipmentGrid() {
 
   const flaggedCount = sortedEquipment.filter((e) => e.status === 'warning' || e.status === 'critical').length
 
+  const attentionEquipment = sortedEquipment.filter((e) => ATTENTION_STATUSES.includes(e.status))
+  const visibleEquipment = attentionOnly ? attentionEquipment : sortedEquipment
+
   return (
     <>
       <div className="space-y-4">
         {/* Analyze button */}
         <div className="flex items-center justify-between">
-          <p className="text-gray-400 text-sm">
-            {sortedEquipment.length} equipment units — {flaggedCount} flagged for review
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-gray-400 text-sm">
+              {sortedEquipment.length} equipment units — {flaggedCount} flagged for review
+            </p>
+            <button
+              onClick={() => setAttentionOnly((prev) => !prev)}
+              className={cn(
+                'flex items-center gap-2 px-3 py-1.5 rounded-[2px] text-[12.5px] font-medium transition-colors border',
+                attentionOnly
+                  ? 'border-teal-500 text-teal-300 bg-teal-500/10'
+                  : 'border-navy-600 text-gray-400 hover:text-gray-200'
+              )}
+            >
+              Needs attention
+              <span className="px-1.5 py-0.5 rounded-full bg-navy-700 text-[10.5px] font-mono text-gray-300">
+                {attentionEquipment.length}
+              </span>
+            </button>
+          </div>
           <button
             onClick={() => analyzeAll()}
             disabled={isAnalyzing || flaggedCount === 0}
@@ -217,7 +240,7 @@ export default function EquipmentGrid() {
 
         {/* Equipment grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-px bg-navy-700 border border-navy-700">
-          {sortedEquipment.map((eq) => (
+          {visibleEquipment.map((eq) => (
             <EquipmentCard
               key={eq.id}
               equipment={eq}
