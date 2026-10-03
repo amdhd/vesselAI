@@ -96,19 +96,31 @@ _bearer = HTTPBearer(auto_error=False)
 
 def require_auth(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
-) -> None:
-    """Reject any request without a valid app-issued JWT.
+) -> dict:
+    """Reject any request without a valid app-issued JWT that carries a fleet.
 
     Runs as a route dependency before the query functions, so an unauthenticated
     caller never reaches DuckDB. A token minted by the Express /api/auth/login
     endpoint is accepted here unchanged because both sides share JWT_SECRET.
+
+    A valid signature is not enough on its own. The gold tables hold every
+    vessel in the warehouse and have no fleet column, so this service cannot
+    filter per tenant — but the Express API scopes every read to the caller's
+    fleet and treats "no fleet" as "no access" (backend/src/lib/tenant.ts).
+    A self-service registrant is created with fleetId: null, so without also
+    requiring the claim, anyone who signs up could read the whole warehouse
+    through this endpoint. Requiring it keeps this service's gate consistent
+    with the app's model.
     """
     if credentials is None:
         raise HTTPException(status_code=401, detail="Missing bearer token")
     try:
-        jwt.decode(credentials.credentials, JWT_SECRET, algorithms=["HS256"])
+        claims = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=["HS256"])
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if not claims.get("fleetId"):
+        raise HTTPException(status_code=403, detail="Analytics requires a fleet assignment")
+    return claims
 
 
 def query(sql: str, params: list | None = None) -> list[dict]:
