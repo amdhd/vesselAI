@@ -15,6 +15,15 @@ duckdb==1.5.4
 dbt-duckdb==1.10.1
 dbt-core==1.12.0
 
+# --- Transitive, pinned for a security fix ---
+# urllib3 arrives via requests (dbt-core -> requests -> urllib3) and is not a
+# direct dependency of anything here, but it ships in the warehouse-builder
+# image and that image is scanned: 2.7.0 carries two HIGH advisories (proxy TLS
+# interception, unbounded-memory DoS), both fixed in 2.8.0. requests allows
+# urllib3<3, so the pin resolves cleanly. Drop it once the resolver picks a
+# patched version on its own.
+urllib3==2.8.0
+
 # --- Dashboard (Phase 4) ---
 # Install this separately when you build the dashboard. It's kept out of the
 # main resolve because streamlit and dbt pin several of the same packages, and
