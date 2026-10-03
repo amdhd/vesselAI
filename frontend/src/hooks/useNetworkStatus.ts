@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { offlineQueue } from '@/lib/offlineQueue'
+import { offlineQueue, currentUserId } from '@/lib/offlineQueue'
 
 interface NetworkStatus {
   isOnline: boolean
@@ -9,13 +9,15 @@ interface NetworkStatus {
 
 export function useNetworkStatus(): NetworkStatus {
   const [isOnline, setIsOnline] = useState(navigator.onLine)
-  const [pendingCount, setPendingCount] = useState(offlineQueue.count())
+  const [pendingCount, setPendingCount] = useState(offlineQueue.countFor(currentUserId()))
   const [isSyncing, setIsSyncing] = useState(false)
 
-  const refreshCount = () => setPendingCount(offlineQueue.count())
+  const refreshCount = () => setPendingCount(offlineQueue.countFor(currentUserId()))
 
   const flushQueue = async () => {
-    const items = offlineQueue.getAll()
+    // Only this user's queued writes. Entries left by a previous session on a
+    // shared browser must not be replayed under the current user's token.
+    const items = offlineQueue.getAllFor(currentUserId())
     if (items.length === 0) return
     setIsSyncing(true)
     const token = localStorage.getItem('vm_token')

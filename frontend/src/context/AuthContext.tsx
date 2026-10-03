@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { del } from 'idb-keyval'
 import type { User } from '@/lib/types'
 import { MOCK_USER } from '@/lib/mockData'
 import { authApi } from '@/lib/api'
+import { queryClient, QUERY_CACHE_KEY } from '@/lib/queryClient'
 
 interface AuthContextType {
   user: User | null
@@ -78,8 +80,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     setUser(null)
     setToken(null)
-    localStorage.removeItem('vm_token')
-    localStorage.removeItem('vm_user')
+
+    // Purge every client-side store that outlives the session. The token and
+    // user are the obvious ones; without the rest, the next person to use this
+    // browser can read the previous user's fleet data, cached sensor/compliance
+    // responses, AI chat and agent state — or have the previous user's queued
+    // offline writes replayed. localStorage is shared by every session on the
+    // origin, so anything under the app's `vm_`/`vm-` prefix is session data.
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith('vm_') || key.startsWith('vm-')) {
+        localStorage.removeItem(key)
+      }
+    }
+    queryClient.clear()
+    // The persisted copy lives in IndexedDB, outside the localStorage sweep.
+    void del(QUERY_CACHE_KEY)
+    // Service worker's API response cache (see vite.config.ts runtimeCaching).
+    if (typeof caches !== 'undefined') void caches.delete('vm-api-cache')
   }, [])
 
   const value: AuthContextType = {

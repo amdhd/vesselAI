@@ -67,53 +67,70 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
   const [selectedVessel, setSelectedVessel] = useState<Vessel | null>(null)
   const [fleet, setFleet] = useState<Fleet | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isAuthenticated) {
       setVessels([])
       setFleet(null)
       setSelectedVessel(null)
+      setError(null)
       setIsLoading(false)
       return
     }
 
-    // Try real API, fall back to mock
     const loadFleet = async () => {
       try {
         const token = localStorage.getItem('vm_token')
         const res = await fetch('/api/fleet', {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
-        if (res.ok) {
-          const data = await res.json() as { id: string; name: string; operator: string; vessels: BackendVessel[] }
-          const normalizedVessels = data.vessels.map(normalizeVessel)
-          setFleet({
-            id: data.id,
-            name: data.name,
-            company: data.operator,
-            vessels: normalizedVessels,
-            totalVessels: normalizedVessels.length,
-          })
-          setVessels(normalizedVessels)
-          if (normalizedVessels.length > 0) setSelectedVessel(normalizedVessels[0])
-          return
-        }
+        if (!res.ok) throw new Error(`fleet request failed: ${res.status}`)
+        const data = await res.json() as { id: string; name: string; operator: string; vessels: BackendVessel[] }
+        const normalizedVessels = data.vessels.map(normalizeVessel)
+        setFleet({
+          id: data.id,
+          name: data.name,
+          company: data.operator,
+          vessels: normalizedVessels,
+          totalVessels: normalizedVessels.length,
+        })
+        setVessels(normalizedVessels)
+        if (normalizedVessels.length > 0) setSelectedVessel(normalizedVessels[0])
+        setError(null)
       } catch {
-        // Fall back to mock
+        // Dev without a backend: fixtures keep the UI workable. Production must
+        // never present fixtures as real fleet data — an operator acting on an
+        // invented vessel is worse than an empty screen, so surface it instead.
+        if (import.meta.env.DEV) {
+          setFleet(MOCK_FLEET)
+          setVessels(MOCK_VESSELS)
+          setSelectedVessel(MOCK_VESSELS[0])
+          setError(null)
+        } else {
+          setFleet(null)
+          setVessels([])
+          setSelectedVessel(null)
+          setError('Could not load fleet data')
+        }
+      } finally {
+        setIsLoading(false)
       }
-      // Use mock data
-      setFleet(MOCK_FLEET)
-      setVessels(MOCK_VESSELS)
-      setSelectedVessel(MOCK_VESSELS[0])
-      setIsLoading(false)
     }
 
     void loadFleet()
-    setIsLoading(false)
   }, [isAuthenticated])
 
   return (
     <FleetContext.Provider value={{ vessels, selectedVessel, setSelectedVessel, fleet, isLoading }}>
+      {error && (
+        <div
+          role="alert"
+          className="fixed top-0 inset-x-0 z-50 bg-status-red/90 border-b border-status-red px-4 py-2 text-center text-sm text-white"
+        >
+          {error}
+        </div>
+      )}
       {children}
     </FleetContext.Provider>
   )

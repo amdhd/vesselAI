@@ -17,12 +17,17 @@ from api.main import JWT_SECRET, app
 client = TestClient(app)
 
 
-def _token(secret: str = JWT_SECRET) -> str:
-    return jwt.encode(
-        {"id": "u1", "email": "demo@petronas.com", "role": "fleet_manager"},
-        secret,
-        algorithm="HS256",
-    )
+def _token(secret: str = JWT_SECRET, **claims) -> str:
+    # Mirrors what the Express /api/auth/login endpoint mints: a fleet member.
+    # Override any claim (e.g. fleetId=None) to exercise the gate.
+    payload = {
+        "id": "u1",
+        "email": "demo@petronas.com",
+        "role": "fleet_manager",
+        "fleetId": "fleet-001",
+    }
+    payload.update(claims)
+    return jwt.encode(payload, secret, algorithm="HS256")
 
 
 def test_health_is_open():
@@ -52,6 +57,18 @@ def test_analytics_rejects_token_signed_with_wrong_secret():
         headers={"Authorization": f"Bearer {forged}"},
     )
     assert r.status_code == 401
+
+
+def test_analytics_rejects_token_without_a_fleet():
+    # A self-service registrant gets fleetId: null (backend/src/routes/auth.ts).
+    # It must not reach a warehouse holding every fleet's vessels, even though
+    # its token is correctly signed.
+    token = _token(fleetId=None)
+    r = client.get(
+        "/api/analytics/summary",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 403
 
 
 def test_valid_token_passes_auth(monkeypatch):

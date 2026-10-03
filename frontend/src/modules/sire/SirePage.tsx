@@ -242,18 +242,24 @@ function ReadinessTab({ vesselId }: { vesselId: string }) {
 }
 
 function DocumentsTab({ vesselId }: { vesselId: string }) {
-  const { data: docs, isLoading } = useQuery<SireDocument[]>({
+  const { data: docs, isLoading, isError } = useQuery<SireDocument[]>({
     queryKey: ['sire-docs', vesselId],
     queryFn: async () => {
       try {
         return await sireApi.getDocuments(vesselId)
-      } catch {
-        return MOCK_SIRE_DOCS.filter((d) => d.vesselId === vesselId)
+      } catch (err) {
+        // Fixtures in dev only — a fabricated certificate list must never stand
+        // in for a vessel's real SIRE documents in production.
+        if (import.meta.env.DEV) return MOCK_SIRE_DOCS.filter((d) => d.vesselId === vesselId)
+        throw err
       }
     },
   })
 
   if (isLoading) return <div className="card animate-pulse h-48" />
+  if (isError) {
+    return <div className="card text-gray-400 text-sm text-center py-8">Could not load documents</div>
+  }
 
   const expired = docs?.filter((d) => d.status === 'expired').length ?? 0
   const expiring = docs?.filter((d) => d.status === 'expiring_soon').length ?? 0
@@ -289,12 +295,14 @@ function DocumentsTab({ vesselId }: { vesselId: string }) {
 }
 
 function FindingsTab({ vesselId }: { vesselId: string }) {
-  const { data, isLoading } = useQuery<SireFindingsResponse>({
+  const { data, isLoading, isError } = useQuery<SireFindingsResponse>({
     queryKey: ['sire-findings', vesselId],
     queryFn: async () => {
       try {
         return await sireApi.getFindings(vesselId)
-      } catch {
+      } catch (err) {
+        // Fixtures in dev only (see DocumentsTab).
+        if (!import.meta.env.DEV) throw err
         const fallback = MOCK_SIRE_FINDINGS.filter((f) => f.vesselId === vesselId)
         return {
           findings: fallback,
@@ -311,6 +319,9 @@ function FindingsTab({ vesselId }: { vesselId: string }) {
   })
 
   if (isLoading) return <div className="card animate-pulse h-48" />
+  if (isError) {
+    return <div className="card text-gray-400 text-sm text-center py-8">Could not load findings</div>
+  }
 
   const findings = data?.findings
   // From the server, not recomputed. One source of truth for a number the
