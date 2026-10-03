@@ -47,13 +47,17 @@ function generateMockData(normalRange: [number, number], warningRange: [number, 
 }
 
 export default function SensorChart({ equipmentId, sensorName, unit, normalRange, warningRange, days = 30 }: SensorChartProps) {
-  const { data: sensorData, isLoading } = useQuery<SensorReading[]>({
+  const { data: sensorData, isLoading, isError } = useQuery<SensorReading[]>({
     queryKey: ['sensor', equipmentId, sensorName, days],
     queryFn: async () => {
       try {
         return await maintenanceApi.getSensorData(equipmentId, days, sensorName)
-      } catch {
-        return generateMockData(normalRange, warningRange, days)
+      } catch (err) {
+        // Fixtures are a dev convenience only. Never present invented readings
+        // as a real sensor trend — an operator reading a fabricated anomaly
+        // curve is worse than an explicit failure.
+        if (import.meta.env.DEV) return generateMockData(normalRange, warningRange, days)
+        throw err
       }
     },
   })
@@ -66,7 +70,22 @@ export default function SensorChart({ equipmentId, sensorName, unit, normalRange
     )
   }
 
-  const chartData = (sensorData ?? []).map((r) => ({
+  // Also guards the empty case: the domain maths below would otherwise compute
+  // Math.min() of an empty array (Infinity).
+  if (isError || !sensorData || sensorData.length === 0) {
+    return (
+      <div className="space-y-2">
+        <h4 className="text-sm font-medium text-gray-300">
+          {sensorName} ({unit})
+        </h4>
+        <div className="h-48 flex items-center justify-center text-sm text-gray-500">
+          {isError ? 'Sensor data unavailable' : 'No sensor data for this period'}
+        </div>
+      </div>
+    )
+  }
+
+  const chartData = sensorData.map((r) => ({
     time: format(new Date(r.timestamp), 'dd/MM HH:mm'),
     value: r.value,
     anomaly: r.isAnomaly ? r.value : undefined,
