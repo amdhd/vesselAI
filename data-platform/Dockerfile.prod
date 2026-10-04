@@ -46,6 +46,30 @@ COPY data/raw ./data/raw
 RUN python ingestion/load_bronze.py
 RUN cd dbt && dbt build --profiles-dir .
 
+# Remove pip now that every install is done — the last thing this stage needs it
+# for was the requirements install above. Nothing downstream uses it: the
+# warehouse-refresh CronJob runs ingestion/load_bronze.py and `dbt build`, and
+# neither imports pip.
+#
+# WHY IT HAS TO GO. pip VENDORS its own dependency tree, and Trivy reports that
+# tree as findings no requirements.txt pin can reach. Pinning urllib3==2.8.0 does
+# install 2.8.0 — the scan now lists site-packages/urllib3-2.8.0.dist-info as
+# clean — but pip 26.2.1 still carries urllib3 2.7.0 in _vendor/vendor.txt, and
+# the image scan kept failing on that copy: CVE-2026-97687 and CVE-2026-97689,
+# two HIGH, with no pin able to satisfy them. Same pattern this repo already
+# documents for pip's vendored msgpack and setuptools in .trivyignore.
+#
+# The vendored tree is unreachable at run time, so it is a false positive in
+# effect — but deleting it is better than suppressing it, because a suppression
+# keyed on the CVE id would also hide that CVE if it ever returned in a real
+# dependency. The runtime stage below already removes pip for the same reason.
+#
+# The rm is belt-and-braces: uninstall removes what pip recorded, and this
+# guarantees no vendored file survives it.
+RUN pip uninstall -y pip \
+    && rm -rf /usr/local/lib/python3.10/site-packages/pip \
+              /usr/local/lib/python3.10/site-packages/pip-*.dist-info
+
 # ---- runtime: slim, non-root ----
 FROM python:3.10-slim AS runtime
 ENV PYTHONUNBUFFERED=1 \
