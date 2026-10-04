@@ -4,23 +4,13 @@
 # indistinguishable from turning the scanner off, and the whole value of a gate is
 # that suppressing something is a deliberate, reviewable act.
 #
-# Nothing here is a runtime dependency of the application. Both live inside pip's
-# OWN vendored tree (site-packages/pip/_vendor/...), which nothing in this project
-# imports. The runtime image deletes pip entirely and is clean without these
-# entries; the build stage cannot, because installing packages is its job.
+# Both scanned images now delete pip before the scan runs, so nothing pip VENDORS
+# is reachable here. The entries that covered pip's bundled msgpack and setuptools
+# are gone rather than carried: those copies no longer exist in the image, and a
+# suppression keyed on a CVE id would also hide that CVE if it came back in a real
+# dependency.
 #
-# Re-check: 2026-11-18, or whenever the base image moves to a newer pip.
-
-# msgpack — vendored by pip for its HTTP cache. Out-of-bounds read when
-# unpacking untrusted data. This project never unpacks msgpack; only pip does,
-# against its own cache, at build time.
-GHSA-6v7p-g79w-8964
-
-# setuptools — pip vendors an old copy alongside the current 84.0.0 that pip
-# itself installed. Path traversal during package installation, which requires
-# installing a malicious package. No untrusted packages are installed at build
-# time; requirements are pinned.
-CVE-2025-47273
+# What remains is a package this repo actually installs — see its entry below.
 
 # sqlparse — three HIGH advisories, all fixed in 0.6.0, which cannot be installed:
 #
