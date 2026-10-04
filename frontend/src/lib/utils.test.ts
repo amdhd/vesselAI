@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   formatCurrency,
   formatDistance,
+  formatFuel,
   formatSpeed,
   getCIIColor,
   getStatusColor,
@@ -26,6 +27,17 @@ describe('formatDistance / formatSpeed', () => {
   it('appends the maritime unit', () => {
     expect(formatDistance(1234)).toBe('1,234 nm')
     expect(formatSpeed(14.567)).toBe('14.6 kn')
+  })
+})
+
+describe('formatFuel', () => {
+  it('renders a metric-tonne figure to one decimal', () => {
+    expect(formatFuel(1820)).toBe('1820.0 MT')
+  })
+
+  it('renders an em dash instead of crashing when the figure is missing', () => {
+    expect(formatFuel(null)).toBe('—')
+    expect(formatFuel(undefined)).toBe('—')
   })
 })
 
