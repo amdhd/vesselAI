@@ -5,7 +5,12 @@
 fastapi==0.141.1
 uvicorn==0.34.0
 duckdb==1.5.4
-PyJWT==2.13.0
+# 2.13.0 carries one CRITICAL and five HIGH advisories, all fixed in 2.14.0 —
+# including an HMAC-key-substitution class that directly targets the verification
+# this file's service performs. _resolve_jwt_secret() in main.py never hands
+# PyJWT an empty or attacker-supplied key, so the bypass was not reachable here,
+# but the library itself has to be patched.
+PyJWT==2.14.0
 # Pinned explicitly: fastapi allows starlette>=0.46.0 with no upper bound, and
 # the 0.4x line carries advisories fixed only in 1.x. Pinning forces the patched
 # major rather than whatever the resolver happens to pick.
