@@ -72,7 +72,15 @@ export function formatWeight(mt: number): string {
   return `${formatNumber(mt, 1)} MT`
 }
 
-export function formatFuel(mt: number): string {
+// VoyageHistoryRecord declares actualFuel as `number`, but the value crosses an
+// unchecked boundary: voyageApi.getHistory casts the response with a bare type
+// assertion, and the backend's own fixtures hold `actualFuel: null` until a
+// voyage reports a figure. The /voyage/history route coalesces it
+// (`v.actualFuel ?? v.plannedFuel`), so no null reaches this call today — this
+// guard is insurance at that boundary, not a fix for a live crash. A missing
+// figure renders an em dash, matching CIIImpactCell in the same table.
+export function formatFuel(mt: number | null | undefined): string {
+  if (mt == null) return '—'
   return `${mt.toFixed(1)} MT`
 }
 
