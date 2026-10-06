@@ -14,7 +14,10 @@ data/*.duckdb.wal
 data/raw/*.csv
 !data/raw/ais_sample.csv
 data/raw/*.zip
-data/*.csv          # large synthetic files from the scale demo (e.g. ais_large.csv)
+# Large synthetic files from the scale demo (e.g. ais_large.csv). The comment
+# must stay on its own line — gitignore has no trailing-comment syntax, and
+# `data/*.csv  # ...` matches nothing at all.
+data/*.csv
 
 # --- dbt (created in Phase 2) ---
 dbt/target/
