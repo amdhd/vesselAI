@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../lib/logger';
+import { requireFleetMembership } from '../lib/tenant';
 import { syncWeather, getLatestObservations, getObservationsNear } from '../services/weatherPipeline';
 import { fetchObservation } from '../lib/openMeteo';
 import { MARINE_LOCATIONS } from '../lib/marineLocations';
@@ -36,7 +37,11 @@ router.get('/live', authenticate, async (_req: AuthenticatedRequest, res: Respon
 
 // POST /api/weather/sync — manually trigger an ingestion run. Restricted to
 // fleet_manager: it makes outbound calls and writes to the DB (cost/abuse).
-router.post('/sync', authenticate, requireRole(['fleet_manager']), async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+// fleet_manager is self-assignable at registration (auth.ts SELF_REGISTER_ROLES),
+// so the role alone would let any fleetless registrant drive outbound fetches —
+// require an actual fleet as well.
+router.post('/sync', authenticate, requireRole(['fleet_manager']), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  if (!requireFleetMembership(req, res)) return;
   try {
     const summary = await syncWeather();
     // 502 if every point failed (upstream/DB down) so callers can distinguish a

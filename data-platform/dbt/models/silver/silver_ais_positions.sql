@@ -26,7 +26,15 @@ typed as (
         try_cast(BaseDateTime as timestamp)   as event_time,
         try_cast(LAT as double)               as latitude,
         try_cast(LON as double)               as longitude,
-        try_cast(SOG as double)               as sog_knots,        -- speed over ground
+        -- Speed over ground, cleaned. AIS encodes "speed not available" as the
+        -- literal 102.3, which is a sentinel rather than a measurement — left
+        -- in, it makes avg()/max() over a vessel-day report 60+ knot averages.
+        -- Anything outside a plausible band is nulled, NOT dropped: the
+        -- position fix is still good, only the speed is unknown.
+        case
+            when try_cast(SOG as double) between 0 and {{ var('max_plausible_knots') }}
+            then try_cast(SOG as double)
+        end                                   as sog_knots,        -- speed over ground, knots
         try_cast(COG as double)               as cog_degrees,      -- course over ground
         try_cast(Heading as double)           as heading_degrees,
         nullif(trim(VesselName), '')          as vessel_name,
@@ -52,6 +60,7 @@ validated as (
     select *
     from typed
     where mmsi is not null                       -- no vessel id -> unusable  (drops missing MMSI)
+      and regexp_matches(mmsi, '^[0-9]{9}$')     -- MMSI is 9 digits; explore.sql Q3 counts the rest as malformed
       and event_time is not null                 -- unparseable timestamp
       and latitude  between -90 and 90           -- impossible latitude
       and longitude between -180 and 180         -- impossible longitude

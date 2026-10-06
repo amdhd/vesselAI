@@ -99,7 +99,6 @@ export default function VoyageHistory() {
                 </tr>
               ) : (
                 history.map((voyage) => {
-                  const distance = Math.round(800 + Math.random() * 400)
                   return (
                     <tr key={voyage.id} className="hover:bg-navy-700/20 transition-colors">
                       <td className="py-3 px-4 pl-0 text-gray-300 font-mono whitespace-nowrap">{formatDate(voyage.departureDate)}</td>
@@ -110,7 +109,9 @@ export default function VoyageHistory() {
                           {voyage.route.split(' → ')[1]}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-gray-300 font-mono">{distance} nm</td>
+                      <td className="py-3 px-4 text-gray-300 font-mono">
+                        {voyage.distanceNm != null ? `${Math.round(voyage.distanceNm).toLocaleString()} nm` : '—'}
+                      </td>
                       <td className="py-3 px-4 text-gray-300 font-mono">{formatFuel(voyage.plannedFuel)}</td>
                       <td className="py-3 px-4 text-gray-300 font-mono">{formatFuel(voyage.actualFuel)}</td>
                       <td className="py-3 px-4">

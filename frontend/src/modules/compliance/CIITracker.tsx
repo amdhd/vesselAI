@@ -12,7 +12,7 @@ import {
 import { ChevronDown, Zap } from 'lucide-react'
 import { useFleet } from '@/context/FleetContext'
 import { complianceApi } from '@/lib/api'
-import { MOCK_CII_DATA, MOCK_VESSELS } from '@/lib/mockData'
+import { MOCK_CII_DATA } from '@/lib/mockData'
 import type { CIIData } from '@/lib/types'
 import type { CIIRating } from '@/lib/types'
 import LoadingSpinner from '@/components/ui/LoadingSpinner'
@@ -28,7 +28,7 @@ function calcProjectedCII(baseCII: number, speed: number, baseSpeed: number, rou
 }
 
 export default function CIITracker() {
-  const { selectedVessel } = useFleet()
+  const { selectedVessel, vessels } = useFleet()
   const [localVessel, setLocalVessel] = useState(selectedVessel)
   const [ciiData, setCiiData] = useState<CIIData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -108,7 +108,7 @@ export default function CIITracker() {
           </button>
           {showVesselDrop && (
             <div className="absolute right-0 top-full mt-1 bg-navy-800 border border-navy-700 rounded-[2px] z-10 min-w-[200px]">
-              {MOCK_VESSELS.map((v) => (
+              {vessels.map((v) => (
                 <button
                   key={v.id}
                   onClick={() => { setLocalVessel(v); setShowVesselDrop(false) }}

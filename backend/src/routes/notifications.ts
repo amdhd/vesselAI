@@ -128,8 +128,18 @@ router.post('/read-all', authenticate, (req: AuthenticatedRequest, res: Response
 router.post('/', authenticate, validate(CreateNotificationSchema), (req: AuthenticatedRequest, res: Response) => {
   const { vesselId, type, severity, title, message, link } = req.body;
 
+  // A notification with no vessel is system-wide by definition: visibleToUser()
+  // returns true for every caller, so it lands in every fleet's feed. Nothing in
+  // the app creates one, and there is no admin role to authorize it — so any
+  // authenticated account (including a self-registered, fleetless one) could
+  // otherwise broadcast into every tenant. Require a vessel instead.
+  if (!vesselId) {
+    res.status(403).json({ error: 'A notification must be scoped to one of your vessels' });
+    return;
+  }
+
   // A vessel-scoped notification may only target a vessel in the caller's fleet.
-  if (vesselId && !requireVessel(req, res, vesselId)) return;
+  if (!requireVessel(req, res, vesselId)) return;
 
   const newNotification = {
     id: `notif-${Date.now()}`,

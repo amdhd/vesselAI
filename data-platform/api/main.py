@@ -55,6 +55,16 @@ def _resolve_jwt_secret() -> str:
     """
     explicit = os.environ.get("JWT_SECRET") or _secret_from_backend_env()
     if explicit:
+        # A short secret is treated as no secret, mirroring backend/src/lib/jwtConfig.ts.
+        # Without this the two services disagree: Express refuses to boot on a weak
+        # JWT_SECRET while analytics would still verify tokens signed with it.
+        if len(explicit) < 32:
+            if os.environ.get("NODE_ENV") == "production":
+                raise RuntimeError(
+                    f"JWT_SECRET is too short ({len(explicit)} chars, min 32). "
+                    "Refusing to start in production."
+                )
+            return DEV_FALLBACK_SECRET
         return explicit
 
     # No real secret found. Mirror backend/src/lib/jwtConfig.ts, which refuses to
@@ -82,7 +92,16 @@ ALLOWED_ORIGINS = [
     if o.strip()
 ]
 
-app = FastAPI(title="VesselMind Analytics API", version="1.0.0")
+# Interactive docs are served without passing through require_auth — they are
+# route dependencies, not app middleware — so leaving them on publishes the full
+# endpoint/parameter schema to anonymous callers. Nothing consumes them.
+app = FastAPI(
+    title="VesselMind Analytics API",
+    version="1.0.0",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -140,7 +159,10 @@ def query(sql: str, params: list | None = None) -> list[dict]:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "db_exists": DB_PATH.exists()}
+    # Unauthenticated by design (probes hit it), so it says only whether the
+    # service is up — the existence of a file on the host is not the prober's
+    # business and is exactly the kind of detail worth not publishing.
+    return {"status": "ok"}
 
 
 @app.get("/api/analytics/summary", dependencies=[Depends(require_auth)])

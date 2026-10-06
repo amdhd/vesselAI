@@ -29,4 +29,6 @@ models:
 vars:
   idle_speed_knots: 0.5    # at/below this speed a ping counts as "idle"
   idle_min_minutes: 30     # an idle run must last this long to count as an episode
-  max_plausible_knots: 50  # legs implying a higher speed are GPS teleports -> dropped from distance
+  max_plausible_knots: 50  # speed sanity bound: silver nulls any SOG above it (the AIS "not available"
+                           # sentinel is 102.3), and fct_vessel_daily drops legs implying a faster speed
+                           # as GPS teleports

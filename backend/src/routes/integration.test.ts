@@ -148,6 +148,46 @@ describe('GET /api/ais/positions (fleet-membership gate)', () => {
   });
 });
 
+describe('POST /api/notifications (tenant scope)', () => {
+  const body = { type: 'anomaly', severity: 'critical', title: 't', message: 'm' };
+
+  it('refuses a notification with no vessel — it would be system-wide, visible to every fleet', async () => {
+    const token = await demoToken();
+    const res = await request(app)
+      .post('/api/notifications')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+    expect(res.status).toBe(403);
+  });
+
+  it('refuses the no-vessel case for a fleetless registrant too', async () => {
+    const res = await request(app)
+      .post('/api/notifications')
+      .set('Authorization', `Bearer ${noFleetToken()}`)
+      .send(body);
+    expect(res.status).toBe(403);
+  });
+
+  it('still accepts a notification scoped to a vessel in the caller fleet', async () => {
+    const token = await demoToken(); // fleet-001, which owns vessel-001
+    const res = await request(app)
+      .post('/api/notifications')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ ...body, vesselId: 'vessel-001' });
+    expect(res.status).toBe(201);
+    expect(res.body.vesselId).toBe('vessel-001');
+  });
+});
+
+describe('POST /api/weather/sync (fleet-membership gate)', () => {
+  it('blocks a fleetless fleet_manager — the role alone is self-assignable at signup', async () => {
+    const res = await request(app)
+      .post('/api/weather/sync')
+      .set('Authorization', `Bearer ${noFleetToken()}`);
+    expect(res.status).toBe(403);
+  });
+});
+
 describe('GET /api/imports/bunker/template', () => {
   it('serves the CSV template to an authenticated caller', async () => {
     const token = await demoToken();
