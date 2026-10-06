@@ -202,6 +202,10 @@ router.get('/history/:vesselId', authenticate, (req: AuthenticatedRequest, res: 
         route: `${v.departurePort} → ${v.destinationPort}`,
         departureDate: v.departureDate,
         arrivalDate: v.arrivalDate,
+        // The client previously filled this column with Math.random() per render.
+        // The real figure has been on the Voyage model all along — pass it through
+        // and let the UI show a dash when a voyage has no recorded distance.
+        distanceNm: v.actualDistance ?? v.plannedDistance,
         plannedFuel: v.plannedFuel,
         actualFuel: v.actualFuel ?? v.plannedFuel,
         // Frontend multiplies savings by $650/MT and signs it, so the field must be

@@ -466,6 +466,8 @@ export interface VoyageHistoryRecord {
   route: string
   departureDate: string
   arrivalDate: string
+  /** Absent on the fixture records, which predate the field. */
+  distanceNm?: number | null
   plannedFuel: number
   actualFuel: number
   savings: number
