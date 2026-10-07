@@ -25,6 +25,7 @@ export default function ShiftHandover() {
   })
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<HandoverResult | null>(null)
+  const [error, setError] = useState('')
 
   const { data: history = [] } = useQuery<HandoverRecord[]>({
     queryKey: ['handover-history', selectedVessel?.id],
@@ -36,17 +37,24 @@ export default function ShiftHandover() {
 
   const handleGenerate = async () => {
     setLoading(true)
+    setError('')
     try {
       const { data } = await axios.post('/api/knowledge/handover', {
         vesselId: toBackendVesselId(selectedVessel?.id),
         ...form,
       }, { headers: { Authorization: `Bearer ${localStorage.getItem('vm_token')}` } })
       setResult(data)
-    } catch {
-      setResult({
-        reportText: `WATCH HANDOVER REPORT\n${new Date().toLocaleString()}\nVessel: ${selectedVessel?.name || 'MV Merdeka Spirit'}\n\nWatch: ${form.watch}\nHandover By: ${form.engineer || 'Engineer'}\n\nONGOING JOBS:\n${form.ongoingJobs || 'None'}\n\nABNORMAL READINGS:\n${form.abnormalReadings || 'None'}\n\nPARTS ON ORDER:\n${form.partsOnOrder || 'None'}\n\nPENDING WORK ORDERS:\n${form.pendingOrders || 'None'}\n\nSigned: ${form.engineer}`,
-        summary: 'Handover completed. Vessel in normal operational condition.',
-      })
+    } catch (err) {
+      // This used to synthesise a report on failure, ending with "Vessel in
+      // normal operational condition" — a claim about the ship that no AI ever
+      // made, in a document the watchkeeper signs and files. A failed handover
+      // is now reported as failed.
+      setResult(null)
+      setError(
+        axios.isAxiosError(err) && err.response?.data?.error
+          ? String(err.response.data.error)
+          : 'Could not reach the handover service. Check your connection and try again.',
+      )
     } finally {
       setLoading(false)
     }
@@ -93,6 +101,11 @@ export default function ShiftHandover() {
               className="btn-primary w-full flex items-center justify-center gap-2">
               {loading ? <><LoadingSpinner size="sm" /> Generating...</> : <><Zap size={16} /> Generate Handover Report</>}
             </button>
+            {error && (
+              <div role="alert" className="bg-red-500/10 border border-red-500/30 text-red-300 text-[13px] rounded-md px-4 py-3">
+                {error}
+              </div>
+            )}
           </div>
         </div>
       </div>
