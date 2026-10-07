@@ -7,10 +7,21 @@
 -- run of consecutive idle pings lasting at least {{ var('idle_min_minutes') }}
 -- minutes (a single slow ping isn't idling).
 --
+-- A run also ends when the reporting stops. "Consecutive" here means adjacent
+-- in time, not merely adjacent in the ordering: a vessel that went idle, fell
+-- silent for a day, then resumed idle still has no non-idle ping between the two
+-- runs, so ordering alone merges them into one episode spanning the silence.
+-- 2,140 of 23,632 episodes were inflated that way — the worst reported 1,433
+-- minutes of idling from 14 pings with a 23-hour hole in the middle, which is a
+-- congestion figure an operator would act on. {{ var('idle_max_gap_minutes') }}
+-- minutes sits in the gap between the reporting cadence (pings arrive every
+-- 10 minutes or less; nothing lands between 44 and 45 in the sample) and a real
+-- outage.
+--
 -- The core technique is "gaps and islands": we need to group consecutive idle
 -- pings into runs. Trick: mark the first ping of each idle run (idle now, not
--- idle just before), then a running SUM of those markers gives every ping in
--- the same run an identical run_id.
+-- idle just before, or reporting resumed after too long a gap), then a running
+-- SUM of those markers gives every ping in the same run an identical run_id.
 
 with flagged as (
 
@@ -20,7 +31,13 @@ with flagged as (
         latitude,
         longitude,
         sog_knots,
-        case when sog_knots <= {{ var('idle_speed_knots') }} then 1 else 0 end as is_idle
+        case when sog_knots <= {{ var('idle_speed_knots') }} then 1 else 0 end as is_idle,
+        -- Minutes since this vessel's previous ping; NULL for its first ping.
+        date_diff(
+            'minute',
+            lag(event_time) over (partition by mmsi order by event_time),
+            event_time
+        ) as minutes_since_prev
     from {{ ref('silver_ais_positions') }}
 
 ),
@@ -29,11 +46,15 @@ run_starts as (
 
     select
         *,
-        -- 1 exactly when an idle run BEGINS: this ping is idle and the previous
-        -- ping (for this vessel) was not. coalesce handles the very first ping.
+        -- 1 exactly when an idle run BEGINS: this ping is idle and either the
+        -- previous ping (for this vessel) was not, or the reporting lapsed
+        -- between them. coalesce handles the very first ping.
         case
             when is_idle = 1
-             and coalesce(lag(is_idle) over (partition by mmsi order by event_time), 0) = 0
+             and (
+                 coalesce(lag(is_idle) over (partition by mmsi order by event_time), 0) = 0
+                 or minutes_since_prev > {{ var('idle_max_gap_minutes') }}
+             )
             then 1 else 0
         end as is_run_start
     from flagged
