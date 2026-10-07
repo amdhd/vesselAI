@@ -5,8 +5,10 @@ import type { Equipment, WorkOrder, MaintenanceAlert } from '@/lib/types'
 import { maintenanceApi } from '@/lib/api'
 import { MOCK_ALERTS, MOCK_WORK_ORDERS } from '@/lib/mockData'
 import { formatDate, timeAgo, cn } from '@/lib/utils'
+import { describeApiError } from '@/lib/apiError'
 import Badge from '@/components/ui/Badge'
 import Tabs from '@/components/ui/Tabs'
+import { useToast } from '@/components/ui/Toast'
 import SensorChart from './SensorChart'
 
 interface EquipmentDetailProps {
@@ -54,6 +56,7 @@ function PriorityBadge({ priority }: { priority: WorkOrder['priority'] }) {
 }
 
 export default function EquipmentDetail({ equipment, onClose }: EquipmentDetailProps) {
+  const toast = useToast()
   const [activeTab, setActiveTab] = useState<TabId>('sensors')
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null)
   const [analysisOpen, setAnalysisOpen] = useState(false)
@@ -86,6 +89,11 @@ export default function EquipmentDetail({ equipment, onClose }: EquipmentDetailP
     onSuccess: (data) => {
       setAiAnalysis(data.analysis)
       setAnalysisOpen(true)
+    },
+    // A failed analysis used to be indistinguishable from a button that did
+    // nothing: no panel, no message.
+    onError: (err) => {
+      toast.error('Analysis failed', describeApiError(err, 'The AI service did not respond. Try again.'))
     },
   })
 

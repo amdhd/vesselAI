@@ -25,6 +25,7 @@ export default function AgentHub() {
   const [messageType, setMessageType] = useState<MessageType>('pre_arrival')
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedMsg, setGeneratedMsg] = useState<GeneratedMessage | null>(null)
+  const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [sentIds, setSentIds] = useState<Set<string>>(new Set())
   const [markedSent, setMarkedSent] = useState(false)
@@ -33,6 +34,7 @@ export default function AgentHub() {
     if (!selectedPortCall) return
     setIsGenerating(true)
     setGeneratedMsg(null)
+    setError('')
 
     try {
       const data = await voyageApi.generateAgentMessage({
@@ -43,22 +45,10 @@ export default function AgentHub() {
       })
       setGeneratedMsg(data)
     } catch {
-      // Mock response
-      const vessel = MOCK_VESSELS.find((v) => v.id === selectedPortCall.vesselId)
-      const now = new Date()
-      const eta = new Date(selectedPortCall.eta)
-      const subjectMap: Record<MessageType, string> = {
-        pre_arrival: `PRE-ARRIVAL NOTICE — ${vessel?.name ?? ''} — ETA ${formatDate(eta)}`,
-        eta_update: `ETA UPDATE — ${vessel?.name ?? ''} — Revised ETA ${formatDate(eta)}`,
-        berth_request: `BERTH REQUEST — ${vessel?.name ?? ''} — ${selectedPortCall.portName}`,
-        departure_notice: `DEPARTURE NOTICE — ${vessel?.name ?? ''} — Departing ${formatDate(now)}`,
-      }
-      const body = generateMockBody(messageType, vessel?.name ?? 'Vessel', selectedPortCall, now)
-      setGeneratedMsg({
-        subject: subjectMap[messageType],
-        to: selectedPortCall.agentEmail ?? 'agent@port.com',
-        body,
-      })
+      // This used to fall back to a locally composed notice built from fixture
+      // data, so a backend failure produced a letter that looked ready to send
+      // to a port agent but carried figures no one had verified. Say it failed.
+      setError('Could not reach the message service. Check your connection and try again.')
     } finally {
       setIsGenerating(false)
     }
@@ -171,6 +161,12 @@ export default function AgentHub() {
                     </>
                   )}
                 </button>
+
+                {error && (
+                  <div role="alert" className="mt-3 bg-red-500/10 border border-red-500/30 text-red-300 text-[13px] rounded-md px-4 py-3">
+                    {error}
+                  </div>
+                )}
               </div>
 
               {generatedMsg && (
@@ -225,78 +221,4 @@ export default function AgentHub() {
       </div>
     </div>
   )
-}
-
-function generateMockBody(type: MessageType, vesselName: string, pc: PortCall, now: Date): string {
-  const eta = new Date(pc.eta)
-  const dateStr = eta.toUTCString().replace(' GMT', ' UTC')
-
-  const bodies: Record<MessageType, string> = {
-    pre_arrival: `Dear ${pc.agentName ?? 'Port Agent'},
-
-We hereby give you pre-arrival notice for the following vessel:
-
-Vessel: ${vesselName}
-Port of Call: ${pc.portName}, ${pc.country}
-ETA: ${dateStr}
-Purpose: ${pc.cargoOps ?? 'Loading/Discharging operations'}
-Laytime Allowed: ${pc.layTimeAllowed} hours
-Demurrage Rate: USD ${pc.demurrageRate.toLocaleString()}/day
-
-Kindly arrange for the necessary port formalities, berth allocation, and customs clearance. We request prompt confirmation of berth availability.
-
-Vessel documents will be forwarded separately.
-
-Best regards,
-Fleet Operations — PETRONAS Marine`,
-
-    eta_update: `Dear ${pc.agentName ?? 'Port Agent'},
-
-Please note the following ETA update for ${vesselName}:
-
-REVISED ETA: ${dateStr}
-Reason: Updated weather routing and voyage optimization
-Previous ETA: As per pre-arrival notice
-
-All other details remain unchanged. Please update your records and advise berth availability accordingly.
-
-We apologize for any inconvenience caused.
-
-Best regards,
-Fleet Operations — PETRONAS Marine`,
-
-    berth_request: `Dear ${pc.agentName ?? 'Port Agent'},
-
-We hereby formally request berth allocation for ${vesselName}:
-
-ETA: ${dateStr}
-LOA: 183m
-Beam: 32m
-Draft: 11.2m (laden)
-Cargo: As per charter party terms
-Estimated berth time: ${pc.layTimeAllowed} hours
-
-Please confirm berth number and mooring arrangements at your earliest convenience.
-
-Best regards,
-Fleet Operations — PETRONAS Marine`,
-
-    departure_notice: `Dear ${pc.agentName ?? 'Port Agent'},
-
-This serves as departure notice for ${vesselName}:
-
-ETD: ${now.toUTCString().replace(' GMT', ' UTC')}
-Next port: As per voyage orders
-Cargo completed: As per BL
-Draft on departure: 12.4m
-
-All documents have been settled. Kindly issue port clearance and arrange for customs departure formalities.
-
-Thank you for your assistance during our port stay.
-
-Best regards,
-Fleet Operations — PETRONAS Marine`,
-  }
-
-  return bodies[type]
 }

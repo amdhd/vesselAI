@@ -6,7 +6,9 @@ import { maintenanceApi } from '@/lib/api'
 import { MOCK_EQUIPMENT, MOCK_ALERTS } from '@/lib/mockData'
 import type { Equipment } from '@/lib/types'
 import { formatDate, getHealthBg, cn } from '@/lib/utils'
+import { describeApiError } from '@/lib/apiError'
 import Badge from '@/components/ui/Badge'
+import { useToast } from '@/components/ui/Toast'
 import EquipmentDetail from './EquipmentDetail'
 
 function HealthCircle({ score }: { score: number }) {
@@ -111,6 +113,7 @@ function EquipmentCard({ equipment, hasAlert, onClick }: EquipmentCardProps) {
 
 export default function EquipmentGrid() {
   const { selectedVessel } = useFleet()
+  const toast = useToast()
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null)
   const [analyzeResult, setAnalyzeResult] = useState<string | null>(null)
 
@@ -143,6 +146,11 @@ export default function EquipmentGrid() {
     },
     onSuccess: (data) => {
       setAnalyzeResult(data.analysis)
+    },
+    // Without this the spinner stopped on a failed request and nothing else
+    // happened: no result, no error, no way to tell it had been tried.
+    onError: (err) => {
+      toast.error('Analysis failed', describeApiError(err, 'The AI service did not respond. Try again.'))
     },
   })
 
