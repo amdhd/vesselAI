@@ -1,15 +1,21 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, User, Anchor, Trash2 } from 'lucide-react'
+import { Send, Bot, User, Anchor, Trash2, Square } from 'lucide-react'
 import { useFleet } from '../../context/FleetContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import AiFallbackNotice from '../../components/ui/AiFallbackNotice'
 import { toBackendVesselId } from '../../lib/utils'
 import ChatMarkdown from '../../components/ui/ChatMarkdown'
 import { usePersistentVesselState } from '../../hooks/usePersistentVesselState'
+import { knowledgeApi, type ChatStreamChunk } from '../../lib/api'
+import { readSseStream } from '../../lib/sse'
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  // Set when the server substituted this text after an upstream AI failure,
+  // so the bubble can say so instead of passing it off as an answer.
+  fallback?: { rateLimited?: boolean; retryAfter?: number }
 }
 
 const EXAMPLE_PROMPTS = [
@@ -32,6 +38,11 @@ export default function KnowledgeChat() {
   const [isStreaming, setIsStreaming] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  // Cancels the in-flight request, which also closes the server-side stream
+  // rather than leaving it generating tokens nobody will read.
+  const abortRef = useRef<AbortController | null>(null)
+
+  const stopStreaming = () => abortRef.current?.abort()
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -53,55 +64,50 @@ export default function KnowledgeChat() {
     setInput('')
     setIsStreaming(true)
 
+    const controller = new AbortController()
+    abortRef.current = controller
+
     try {
-      const response = await fetch('/api/knowledge/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('vm_token')}`,
-        },
-        body: JSON.stringify({
-          vesselId: toBackendVesselId(selectedVessel?.id),
-          message: content,
-          conversationHistory: messages.slice(-6).map(m => ({ role: m.role, content: m.content })),
-        }),
+      const response = await knowledgeApi.chatStream({
+        vesselId: toBackendVesselId(selectedVessel?.id),
+        message: content,
+        conversationHistory: messages.slice(-6).map(m => ({ role: m.role, content: m.content })),
+        signal: controller.signal,
       })
 
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: 'Request failed' }))
-        throw new Error(err.error || `Error ${response.status}`)
+        const err = await response.json().catch(() => ({ error: null }))
+        throw new Error(err.error || `The AI service returned ${response.status}.`)
       }
-      if (!response.body) throw new Error('No response body')
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const text = decoder.decode(value)
-        const lines = text.split('\n')
-        for (const line of lines) {
-          if (line.startsWith('data: ') && line.trim() !== 'data: [DONE]') {
-            try {
-              const data = JSON.parse(line.slice(6))
-              if (data.text) {
-                setMessages(prev =>
-                  prev.map(m => m.id === aiId ? { ...m, content: m.content + data.text } : m)
-                )
-              }
-            } catch { /* skip parse errors */ }
-          }
+      await readSseStream<ChatStreamChunk>(response, (chunk) => {
+        if (chunk.aiFallback) {
+          setMessages(prev =>
+            prev.map(m =>
+              m.id === aiId
+                ? { ...m, content: chunk.text ?? '', fallback: { rateLimited: chunk.rateLimited, retryAfter: chunk.retryAfter } }
+                : m
+            )
+          )
+          return
         }
+        if (chunk.text) {
+          setMessages(prev =>
+            prev.map(m => m.id === aiId ? { ...m, content: m.content + chunk.text } : m)
+          )
+        }
+      })
+    } catch (err) {
+      // A transport failure rejects with a TypeError; anything else carries a
+      // message from the server worth showing.
+      if (!controller.signal.aborted) {
+        const reason = err instanceof Error && !(err instanceof TypeError)
+          ? err.message
+          : 'Unable to reach VesselMind AI. Please check your connection and try again.'
+        setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: reason } : m))
       }
-    } catch {
-      setMessages(prev =>
-        prev.map(m =>
-          m.id === aiId
-            ? { ...m, content: 'Unable to connect to VesselMind AI. Please check your connection and try again.' }
-            : m
-        )
-      )
     } finally {
+      abortRef.current = null
       setIsStreaming(false)
     }
   }
@@ -175,6 +181,7 @@ export default function KnowledgeChat() {
                   ? 'bg-teal-700 text-white'
                   : 'bg-navy-800 border border-navy-700 text-gray-200'
               }`}>
+                {msg.fallback && <AiFallbackNotice {...msg.fallback} />}
                 {msg.content ? (
                   msg.role === 'assistant' ? <ChatMarkdown content={msg.content} /> : msg.content
                 ) : (
@@ -208,13 +215,23 @@ export default function KnowledgeChat() {
             disabled={isStreaming}
             className="flex-1 bg-navy-800 border border-navy-700 rounded-[2px] px-4 py-3 text-white placeholder-gray-500 resize-none focus:outline-none focus:border-teal-600 text-sm disabled:opacity-60"
           />
-          <button
-            onClick={() => sendMessage(input)}
-            disabled={!input.trim() || isStreaming}
-            className="btn-primary p-3 rounded-[2px] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Send size={18} />
-          </button>
+          {isStreaming ? (
+            <button
+              onClick={stopStreaming}
+              title="Stop generating"
+              className="p-3 rounded-[2px] border border-navy-600 text-gray-400 hover:border-status-red hover:text-status-red transition-colors"
+            >
+              <Square size={18} className="fill-current" />
+            </button>
+          ) : (
+            <button
+              onClick={() => sendMessage(input)}
+              disabled={!input.trim()}
+              className="btn-primary p-3 rounded-[2px] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Send size={18} />
+            </button>
+          )}
         </div>
         <p className="text-xs text-gray-600 mt-2">Press Enter to send · Shift+Enter for new line</p>
       </div>

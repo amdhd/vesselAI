@@ -149,6 +149,7 @@ export const voyageApi = {
     destinationPort: string
     cargoLoad?: number
     speedPreference: 'eco' | 'normal' | 'fast'
+    signal?: AbortSignal
   }) => {
     const token = localStorage.getItem('vm_token')
     return fetch(`${BASE_URL}/voyage/agent-plan/stream`, {
@@ -157,6 +158,7 @@ export const voyageApi = {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
+      signal: params.signal,
       body: JSON.stringify({
         vesselId: params.vesselId,
         departurePort: params.departurePort,
@@ -312,6 +314,23 @@ export const portsApi = {
 
 // ─── Knowledge ────────────────────────────────────────────────────────────────
 
+/**
+ * One chunk of a streamed chat reply.
+ *
+ * `aiFallback` marks text the server substituted after an upstream AI failure
+ * (backend/src/services/aiService.ts). It is not a model answer, and a consumer
+ * that appends it like any other chunk presents canned text as if the assistant
+ * had written it. `rateLimited` / `retryAfter` ride along on the same chunk —
+ * HTTP headers are already flushed once streaming starts, so the signal has to
+ * travel in the body.
+ */
+export interface ChatStreamChunk {
+  text?: string
+  aiFallback?: boolean
+  rateLimited?: boolean
+  retryAfter?: number
+}
+
 export const knowledgeApi = {
   generateDefectReport: async (params: {
     vesselId: string
@@ -351,7 +370,12 @@ export const knowledgeApi = {
     return data
   },
   // Chat uses streaming fetch — not axios
-  chatStream: (params: { vesselId: string; message: string; conversationHistory: { role: string; content: string }[] }) => {
+  chatStream: (params: {
+    vesselId: string
+    message: string
+    conversationHistory: { role: string; content: string }[]
+    signal?: AbortSignal
+  }) => {
     const token = localStorage.getItem('vm_token')
     return fetch(`${BASE_URL}/knowledge/chat`, {
       method: 'POST',
@@ -359,7 +383,14 @@ export const knowledgeApi = {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify(params),
+      signal: params.signal,
+      // Spelled out rather than JSON.stringify(params): `signal` is not a
+      // request field, and stringifying the whole object would ship it as `{}`.
+      body: JSON.stringify({
+        vesselId: params.vesselId,
+        message: params.message,
+        conversationHistory: params.conversationHistory,
+      }),
     })
   },
 }
@@ -389,7 +420,12 @@ export const sireApi = {
     const { data } = await api.get<SireFindingsResponse>(`/sire/findings/${vesselId}`)
     return data
   },
-  inspectorChatStream: (params: { vesselId: string; message: string; conversationHistory: { role: string; content: string }[] }) => {
+  inspectorChatStream: (params: {
+    vesselId: string
+    message: string
+    conversationHistory: { role: string; content: string }[]
+    signal?: AbortSignal
+  }) => {
     const token = localStorage.getItem('vm_token')
     return fetch(`${BASE_URL}/sire/inspector-simulation`, {
       method: 'POST',
@@ -397,10 +433,21 @@ export const sireApi = {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify(params),
+      signal: params.signal,
+      // See chatStream: `signal` must not travel in the body.
+      body: JSON.stringify({
+        vesselId: params.vesselId,
+        message: params.message,
+        conversationHistory: params.conversationHistory,
+      }),
     })
   },
-  complianceChatStream: (params: { vesselId: string; message: string; conversationHistory: { role: string; content: string }[] }) => {
+  complianceChatStream: (params: {
+    vesselId: string
+    message: string
+    conversationHistory: { role: string; content: string }[]
+    signal?: AbortSignal
+  }) => {
     const token = localStorage.getItem('vm_token')
     return fetch(`${BASE_URL}/compliance/chat`, {
       method: 'POST',
@@ -408,7 +455,13 @@ export const sireApi = {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify(params),
+      signal: params.signal,
+      // See chatStream: `signal` must not travel in the body.
+      body: JSON.stringify({
+        vesselId: params.vesselId,
+        message: params.message,
+        conversationHistory: params.conversationHistory,
+      }),
     })
   },
 }

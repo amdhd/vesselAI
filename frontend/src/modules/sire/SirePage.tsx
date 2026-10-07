@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Shield, FileText, AlertTriangle, MessageSquare, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp } from 'lucide-react'
+import { Shield, FileText, AlertTriangle, MessageSquare, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Square } from 'lucide-react'
 import { useFleet } from '@/context/FleetContext'
-import { sireApi } from '@/lib/api'
+import { sireApi, type ChatStreamChunk } from '@/lib/api'
+import AiFallbackNotice from '@/components/ui/AiFallbackNotice'
+import { readSseStream } from '@/lib/sse'
 import { MOCK_SIRE_DOCS, MOCK_SIRE_FINDINGS, MOCK_SIRE_CHAPTERS } from '@/lib/mockData'
 import type { SireDocument, SireFinding, SireChapterScore, SireFindingsResponse } from '@/lib/types'
 import { formatDate, cn } from '@/lib/utils'
@@ -351,67 +353,84 @@ function FindingsTab({ vesselId }: { vesselId: string }) {
   )
 }
 
+interface InspectorMessage {
+  role: 'user' | 'assistant'
+  content: string
+  // Set when the server substituted this text after an upstream AI failure,
+  // so the bubble can say so instead of passing it off as an answer.
+  fallback?: { rateLimited?: boolean; retryAfter?: number }
+}
+
 function ChatTab({ vesselId }: { vesselId: string }) {
-  const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([
+  const [messages, setMessages] = useState<InspectorMessage[]>([
     { role: 'assistant', content: 'Hello! I\'m your SIRE 2.0 inspector AI. I can simulate inspector questions, help you prepare for the inspection, and assess your vessel\'s readiness. What would you like to practice?' }
   ])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  // Cancels the in-flight request, which also closes the server-side stream
+  // rather than leaving it generating tokens nobody will read.
+  const abortRef = useRef<AbortController | null>(null)
+
+  const stopStreaming = () => abortRef.current?.abort()
 
   const sendMessage = async () => {
     if (!input.trim() || isStreaming) return
     const userMsg = input.trim()
     setInput('')
-    setMessages((prev) => [...prev, { role: 'user', content: userMsg }])
+    // The assistant placeholder goes in up front, so every outcome below —
+    // tokens, an AI fallback, or a failure — replaces the same message instead
+    // of appending another one next to it.
+    setMessages((prev) => [...prev, { role: 'user', content: userMsg }, { role: 'assistant', content: '' }])
     setIsStreaming(true)
+
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    // The reply is always the final entry; patch it in place.
+    const patchReply = (patch: Partial<InspectorMessage>) =>
+      setMessages((prev) => {
+        const updated = [...prev]
+        updated[updated.length - 1] = { ...updated[updated.length - 1], ...patch }
+        return updated
+      })
+
+    let assistantMsg = ''
 
     try {
       const res = await sireApi.inspectorChatStream({
         vesselId,
         message: userMsg,
         conversationHistory: messages,
+        signal: controller.signal,
       })
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Request failed' }))
-        throw new Error(err.error || `Error ${res.status}`)
+        const err = await res.json().catch(() => ({ error: null }))
+        throw new Error(err.error || `The inspector simulation returned ${res.status}.`)
       }
 
-      const reader = res.body?.getReader()
-      const decoder = new TextDecoder()
-      let assistantMsg = ''
-      setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
-
-      while (reader) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const chunk = decoder.decode(value)
-        const lines = chunk.split('\n')
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6)
-            if (data === '[DONE]') break
-            try {
-              const parsed = JSON.parse(data) as { text: string }
-              assistantMsg += parsed.text
-              setMessages((prev) => {
-                const updated = [...prev]
-                updated[updated.length - 1] = { role: 'assistant', content: assistantMsg }
-                return updated
-              })
-            } catch { /* skip */ }
-          }
+      await readSseStream<ChatStreamChunk>(res, (chunk) => {
+        if (chunk.aiFallback) {
+          patchReply({ content: chunk.text ?? '', fallback: { rateLimited: chunk.rateLimited, retryAfter: chunk.retryAfter } })
+          return
         }
+        if (chunk.text) {
+          assistantMsg += chunk.text
+          patchReply({ content: assistantMsg })
+        }
+      })
+    } catch (err) {
+      // A transport failure rejects with a TypeError; anything else carries a
+      // message from the server worth showing.
+      if (!controller.signal.aborted) {
+        patchReply({
+          content: err instanceof Error && !(err instanceof TypeError)
+            ? err.message
+            : 'Unable to reach the SIRE inspector AI. Please check your connection and try again.',
+        })
       }
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: 'I apologize, I\'m unable to connect to the AI service right now. Please check the vessel\'s Certificate of Fitness and ensure all safety equipment is properly maintained and tested.',
-        },
-      ])
     } finally {
+      abortRef.current = null
       setIsStreaming(false)
     }
   }
@@ -431,6 +450,7 @@ function ChatTab({ vesselId }: { vesselId: string }) {
                 ? 'bg-teal-600/20 border border-teal-600 text-white'
                 : 'bg-navy-700 border border-navy-600 text-gray-200'
             )}>
+              {msg.fallback && <AiFallbackNotice {...msg.fallback} />}
               {msg.content ? (
                 msg.role === 'assistant' ? <ChatMarkdown content={msg.content} /> : msg.content
               ) : (
@@ -455,13 +475,23 @@ function ChatTab({ vesselId }: { vesselId: string }) {
           className="flex-1 bg-navy-700 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-teal-600 transition-colors"
           disabled={isStreaming}
         />
-        <button
-          onClick={sendMessage}
-          disabled={isStreaming || !input.trim()}
-          className="btn-primary px-4 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Send
-        </button>
+        {isStreaming ? (
+          <button
+            onClick={stopStreaming}
+            title="Stop generating"
+            className="px-4 text-sm rounded-[2px] border border-navy-600 text-gray-400 hover:border-status-red hover:text-status-red transition-colors"
+          >
+            <Square className="w-3.5 h-3.5 fill-current inline" />
+          </button>
+        ) : (
+          <button
+            onClick={sendMessage}
+            disabled={!input.trim()}
+            className="btn-primary px-4 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Send
+          </button>
+        )}
       </div>
     </div>
   )

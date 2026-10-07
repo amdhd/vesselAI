@@ -1,15 +1,20 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, User, Loader2, Trash2 } from 'lucide-react'
+import { Send, Bot, User, Loader2, Trash2, Square } from 'lucide-react'
 import { useFleet } from '@/context/FleetContext'
-import { sireApi } from '@/lib/api'
+import { sireApi, type ChatStreamChunk } from '@/lib/api'
 import { toBackendVesselId } from '@/lib/utils'
 import ChatMarkdown from '@/components/ui/ChatMarkdown'
+import AiFallbackNotice from '@/components/ui/AiFallbackNotice'
 import { usePersistentVesselState } from '@/hooks/usePersistentVesselState'
+import { readSseStream } from '@/lib/sse'
 
 interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
+  // Set when the server substituted this text after an upstream AI failure,
+  // so the bubble can say so instead of passing it off as an answer.
+  fallback?: { rateLimited?: boolean; retryAfter?: number }
 }
 
 const EXAMPLE_QUESTIONS = [
@@ -32,6 +37,11 @@ export default function ComplianceChat() {
   const [isStreaming, setIsStreaming] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // Cancels the in-flight request, which also closes the server-side stream
+  // rather than leaving it generating tokens nobody will read.
+  const abortRef = useRef<AbortController | null>(null)
+
+  const stopStreaming = () => abortRef.current?.abort()
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -53,55 +63,50 @@ export default function ComplianceChat() {
     setIsStreaming(true)
     setInput('')
 
+    const controller = new AbortController()
+    abortRef.current = controller
+
     try {
       const response = await sireApi.complianceChatStream({
         vesselId: toBackendVesselId(selectedVessel?.id),
         message: content,
         conversationHistory: messages.slice(-6).map((m) => ({ role: m.role, content: m.content })),
+        signal: controller.signal,
       })
 
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: 'Request failed' }))
-        throw new Error(err.error || `Error ${response.status}`)
+        const err = await response.json().catch(() => ({ error: null }))
+        throw new Error(err.error || `The compliance AI returned ${response.status}.`)
       }
-      if (!response.body) throw new Error('No response body')
 
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const text = decoder.decode(value)
-        const lines = text.split('\n')
-        for (const line of lines) {
-          if (line.startsWith('data: ') && line.trim() !== 'data: [DONE]') {
-            try {
-              const data = JSON.parse(line.slice(6)) as { text?: string }
-              if (data.text) {
-                setMessages((prev) =>
-                  prev.map((m) => (m.id === aiMsgId ? { ...m, content: m.content + data.text } : m)),
-                )
-              }
-            } catch {
-              /* skip parse errors */
-            }
-          }
+      await readSseStream<ChatStreamChunk>(response, (chunk) => {
+        if (chunk.aiFallback) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === aiMsgId
+                ? { ...m, content: chunk.text ?? '', fallback: { rateLimited: chunk.rateLimited, retryAfter: chunk.retryAfter } }
+                : m,
+            ),
+          )
+          return
         }
+        if (chunk.text) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === aiMsgId ? { ...m, content: m.content + chunk.text } : m)),
+          )
+        }
+      })
+    } catch (err) {
+      // A transport failure rejects with a TypeError; anything else carries a
+      // message from the server worth showing.
+      if (!controller.signal.aborted) {
+        const reason = err instanceof Error && !(err instanceof TypeError)
+          ? err.message
+          : 'Unable to reach the compliance AI service. Please check your connection and try again.'
+        setMessages((prev) => prev.map((m) => (m.id === aiMsgId ? { ...m, content: reason } : m)))
       }
-    } catch {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === aiMsgId
-            ? {
-                ...m,
-                content:
-                  'I apologize, I am unable to connect to the compliance AI service at the moment. Please ensure the backend is running and try again.',
-              }
-            : m,
-        ),
-      )
     } finally {
+      abortRef.current = null
       setIsStreaming(false)
     }
   }
@@ -182,6 +187,7 @@ export default function ComplianceChat() {
                   : 'bg-navy-800 border border-navy-700 text-gray-200'
               }`}
             >
+              {msg.fallback && <AiFallbackNotice {...msg.fallback} />}
               {msg.content ? (
                 msg.role === 'assistant' ? <ChatMarkdown content={msg.content} /> : msg.content
               ) : (
@@ -210,10 +216,14 @@ export default function ComplianceChat() {
           style={{ maxHeight: '120px' }}
         />
         {isStreaming && (
-          <span className="text-xs text-teal-400 flex items-center gap-1 pb-1">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            Thinking...
-          </span>
+          <button
+            onClick={stopStreaming}
+            title="Stop generating"
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-status-red pb-1 transition-colors flex-shrink-0"
+          >
+            <Square className="w-3 h-3 fill-current" />
+            Stop
+          </button>
         )}
         <button
           onClick={() => void sendMessage(input)}

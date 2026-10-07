@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { Bot, Loader2, Wrench, Sparkles, AlertTriangle } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Bot, Loader2, Wrench, Sparkles, AlertTriangle, Square } from 'lucide-react'
 import { useFleet } from '@/context/FleetContext'
 import { voyageApi, type AgentPlanResult, type AgentToolCall } from '@/lib/api'
+import { readSseStream } from '@/lib/sse'
 import { cn } from '@/lib/utils'
 import ChatMarkdown from '@/components/ui/ChatMarkdown'
 import { usePersistentVesselState } from '@/hooks/usePersistentVesselState'
@@ -107,6 +108,11 @@ export default function AgentPlanner() {
   // Tool calls accumulated live from the SSE stream, plus the current step tick.
   const [streamedCalls, setStreamedCalls] = useState<AgentToolCall[]>([])
   const [activeStep, setActiveStep] = useState(0)
+  // Lets the Stop button cancel the in-flight request, which also closes the
+  // server-side stream instead of leaving it generating into a dead connection.
+  const abortRef = useRef<AbortController | null>(null)
+
+  const stopRun = () => abortRef.current?.abort()
 
   const handleRun = async () => {
     if (!selectedVessel) {
@@ -123,6 +129,9 @@ export default function AgentPlanner() {
     setStreamedCalls([])
     setActiveStep(0)
 
+    const controller = new AbortController()
+    abortRef.current = controller
+
     try {
       const res = await voyageApi.agentPlanStream({
         vesselId: selectedVessel.id,
@@ -130,49 +139,36 @@ export default function AgentPlanner() {
         destinationPort,
         cargoLoad,
         speedPreference,
+        signal: controller.signal,
       })
-      if (!res.ok || !res.body) {
+      if (!res.ok) {
         throw new Error(`stream failed (${res.status})`)
       }
 
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
+      type AgentEvent =
+        | { type: 'model'; step: number }
+        | ({ type: 'tool' } & AgentToolCall)
+        | ({ type: 'done' } & AgentPlanResult)
+        | { type: 'error'; error: string }
 
-      // Parse SSE frames: each is "data: <json>\n\n"; "[DONE]" ends the stream.
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-
-        let sep: number
-        while ((sep = buffer.indexOf('\n\n')) !== -1) {
-          const frame = buffer.slice(0, sep).trim()
-          buffer = buffer.slice(sep + 2)
-          if (!frame.startsWith('data:')) continue
-          const payload = frame.slice(5).trim()
-          if (payload === '[DONE]') continue
-
-          const ev = JSON.parse(payload) as
-            | { type: 'model'; step: number }
-            | ({ type: 'tool' } & AgentToolCall)
-            | ({ type: 'done' } & AgentPlanResult)
-            | { type: 'error'; error: string }
-
-          if (ev.type === 'model') {
-            setActiveStep(ev.step)
-          } else if (ev.type === 'tool') {
-            setStreamedCalls((prev) => [...prev, { tool: ev.tool, input: ev.input, output: ev.output }])
-          } else if (ev.type === 'done') {
-            patchSnapshot({ result: ev })
-          } else if (ev.type === 'error') {
-            setError(ev.error)
-          }
+      await readSseStream<AgentEvent>(res, (ev) => {
+        if (ev.type === 'model') {
+          setActiveStep(ev.step)
+        } else if (ev.type === 'tool') {
+          setStreamedCalls((prev) => [...prev, { tool: ev.tool, input: ev.input, output: ev.output }])
+        } else if (ev.type === 'done') {
+          patchSnapshot({ result: ev })
+        } else if (ev.type === 'error') {
+          setError(ev.error)
         }
-      }
+      })
     } catch {
-      setError('The agent request failed. Is the backend running?')
+      // An abort is the user pressing Stop, not a failure — don't report it.
+      if (!controller.signal.aborted) {
+        setError('The agent request failed. Is the backend running?')
+      }
     } finally {
+      abortRef.current = null
       setLoading(false)
       setActiveStep(0)
     }
@@ -277,6 +273,16 @@ export default function AgentPlanner() {
             </>
           )}
         </button>
+
+        {loading && (
+          <button
+            onClick={stopRun}
+            className="mt-2 w-full py-2 flex items-center justify-center gap-2 rounded-[2px] text-sm text-[#a8adb5] border border-navy-600 hover:border-status-red hover:text-status-red transition-colors"
+          >
+            <Square className="w-3 h-3 fill-current" />
+            Stop
+          </button>
+        )}
       </div>
 
       {/* Recommendation — appears once the agent converges */}
