@@ -6,7 +6,9 @@ import { maintenanceApi } from '@/lib/api'
 import { MOCK_WORK_ORDERS } from '@/lib/mockData'
 import type { WorkOrder, WorkOrderStatus, WorkOrderPriority } from '@/lib/types'
 import { formatDate, cn } from '@/lib/utils'
+import { describeApiError } from '@/lib/apiError'
 import Badge from '@/components/ui/Badge'
+import { useToast } from '@/components/ui/Toast'
 
 const COLUMNS: { id: WorkOrderStatus; label: string; color: string }[] = [
   { id: 'open', label: 'Open', color: 'text-status-red border-status-red' },
@@ -200,6 +202,7 @@ function NewWorkOrderModal({ vesselId, onClose, onSubmit, isSubmitting }: NewWor
 export default function WorkOrderSystem() {
   const { selectedVessel } = useFleet()
   const queryClient = useQueryClient()
+  const toast = useToast()
   const [showModal, setShowModal] = useState(false)
   const [selectedWO, setSelectedWO] = useState<WorkOrder | null>(null)
 
@@ -225,9 +228,13 @@ export default function WorkOrderSystem() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['work-orders-all'] })
       setShowModal(false)
+      toast.success('Work order created')
     },
-    onError: () => {
-      setShowModal(false)
+    onError: (err) => {
+      // The modal stays open. Closing it on failure dismissed the form and
+      // returned the board unchanged, which reads as "saved" — the one outcome
+      // the user must not be left believing.
+      toast.error('Work order not created', describeApiError(err, 'The server rejected it. Try again.'))
     },
   })
 
