@@ -268,6 +268,24 @@ router.get('/active/:fleetId', authenticate, (req: AuthenticatedRequest, res: Re
   res.json({ fleetId, activeVoyages });
 });
 
+// Resolve which voyage a request is about.
+//
+// `voyageId` is optional, and omitting it legitimately means "whichever active
+// voyage this fleet has". A voyageId that was *supplied* and matched nothing is
+// a different case, and must not collapse into that default. Both callers below
+// used to do exactly that (`.find(matching) || .find(any)`), which answered a
+// question about the named voyage with a different voyage's numbers: an ETA for
+// a voyage the caller never asked about, and a port-agent letter carrying the
+// wrong departure port, cargo and ETA.
+//
+// Returns undefined when a supplied voyageId is missing or belongs to another
+// fleet, so the caller can 404 rather than substitute.
+function resolveFleetVoyage(req: AuthenticatedRequest, voyageId?: string | null) {
+  const accessible = MOCK_ACTIVE_VOYAGES.filter(v => canAccessVessel(req, v.vesselId));
+  if (voyageId) return accessible.find(v => v.id === voyageId);
+  return accessible[0];
+}
+
 // POST /api/voyage/predict-eta
 router.post('/predict-eta', authenticate, aiLimiter, validate(PredictEtaSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { vesselId, voyageId, currentSpeed, weatherConditions } = req.body;
@@ -277,11 +295,7 @@ router.post('/predict-eta', authenticate, aiLimiter, validate(PredictEtaSchema),
     res.status(403).json({ error: 'No accessible vessel for your fleet' });
     return;
   }
-  // Only consider voyages belonging to a vessel in the caller's fleet.
-  const voyage =
-    MOCK_ACTIVE_VOYAGES.find(v => v.id === voyageId && canAccessVessel(req, v.vesselId)) ||
-    MOCK_ACTIVE_VOYAGES.find(v => canAccessVessel(req, v.vesselId));
-
+  const voyage = resolveFleetVoyage(req, voyageId);
   if (!voyage) {
     res.status(404).json({ error: 'Active voyage not found' });
     return;
@@ -333,9 +347,11 @@ router.post('/generate-agent-message', authenticate, aiLimiter, validate(Generat
     res.status(403).json({ error: 'No accessible vessel for your fleet' });
     return;
   }
-  const voyage =
-    MOCK_ACTIVE_VOYAGES.find(v => v.id === voyageId && canAccessVessel(req, v.vesselId)) ||
-    MOCK_ACTIVE_VOYAGES.find(v => canAccessVessel(req, v.vesselId));
+  const voyage = resolveFleetVoyage(req, voyageId);
+  if (!voyage) {
+    res.status(404).json({ error: 'Active voyage not found' });
+    return;
+  }
 
   const mockMessage = {
     subject: `PRE-ARRIVAL NOTIFICATION - ${vessel.name} - ${portName || 'Port Fujairah'}`,
@@ -351,11 +367,11 @@ Flag: ${vessel.flag}
 GRT/DWT: ${vessel.dwt} MT DWT
 
 VOYAGE DETAILS:
-Last Port: ${voyage?.departurePort || 'Singapore'}
+Last Port: ${voyage.departurePort || 'Singapore'}
 Next Port (ETA): ${portName || 'Port Fujairah'}
-ETA: ${voyage ? new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString() : 'TBD'}
+ETA: ${new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString()}
 Draft Arrival (F/A): 18.5m / 20.1m
-Cargo: Crude Oil, ${voyage?.cargoLoad || 285000} MT
+Cargo: Crude Oil, ${voyage.cargoLoad || 285000} MT
 
 REQUIREMENTS:
 - Pilotage required
@@ -375,7 +391,7 @@ Petronas Marine Sdn Bhd`,
   const result = await generateJson(res, {
     system: 'You are a maritime operations assistant. Draft professional port agent communications for tanker vessels. Return JSON with subject and body fields only.',
     prompt: `Draft a ${messageType} message for vessel ${vessel.name} (${vessel.type}, ${vessel.dwt} DWT, IMO: ${vessel.imoNumber}) arriving at ${portName || 'Port Fujairah'}.
-Cargo: ${voyage?.cargoLoad || 285000} MT crude oil from ${voyage?.departurePort || 'Singapore'}.
+Cargo: ${voyage.cargoLoad || 285000} MT crude oil from ${voyage.departurePort || 'Singapore'}.
 ${additionalInfo ? `Additional info: ${additionalInfo}` : ''}
 Return JSON: {"subject": "string", "body": "string"}`,
     maxTokens: 1000,
