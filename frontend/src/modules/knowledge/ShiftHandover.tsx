@@ -6,6 +6,7 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import { formatDateTime } from '../../lib/utils'
 import { printAsPdf } from '../../lib/pdfExport'
 import { toBackendVesselId } from '../../lib/utils'
+import { describeApiError } from '../../lib/apiError'
 import axios from 'axios'
 
 const WATCH_OPTIONS = ['00-04 / 12-16', '04-08 / 16-20', '08-12 / 20-24']
@@ -50,11 +51,7 @@ export default function ShiftHandover() {
       // made, in a document the watchkeeper signs and files. A failed handover
       // is now reported as failed.
       setResult(null)
-      setError(
-        axios.isAxiosError(err) && err.response?.data?.error
-          ? String(err.response.data.error)
-          : 'Could not reach the handover service. Check your connection and try again.',
-      )
+      setError(describeApiError(err, 'Could not reach the handover service. Check your connection and try again.'))
     } finally {
       setLoading(false)
     }

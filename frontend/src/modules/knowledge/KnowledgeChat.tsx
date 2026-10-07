@@ -8,6 +8,7 @@ import ChatMarkdown from '../../components/ui/ChatMarkdown'
 import { usePersistentVesselState } from '../../hooks/usePersistentVesselState'
 import { knowledgeApi, type ChatStreamChunk } from '../../lib/api'
 import { readSseStream } from '../../lib/sse'
+import { describeApiError } from '../../lib/apiError'
 
 interface Message {
   id: string
@@ -98,12 +99,8 @@ export default function KnowledgeChat() {
         }
       })
     } catch (err) {
-      // A transport failure rejects with a TypeError; anything else carries a
-      // message from the server worth showing.
       if (!controller.signal.aborted) {
-        const reason = err instanceof Error && !(err instanceof TypeError)
-          ? err.message
-          : 'Unable to reach VesselMind AI. Please check your connection and try again.'
+        const reason = describeApiError(err, 'Unable to reach VesselMind AI. Please check your connection and try again.')
         setMessages(prev => prev.map(m => m.id === aiId ? { ...m, content: reason } : m))
       }
     } finally {

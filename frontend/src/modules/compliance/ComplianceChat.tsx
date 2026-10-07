@@ -7,6 +7,7 @@ import ChatMarkdown from '@/components/ui/ChatMarkdown'
 import AiFallbackNotice from '@/components/ui/AiFallbackNotice'
 import { usePersistentVesselState } from '@/hooks/usePersistentVesselState'
 import { readSseStream } from '@/lib/sse'
+import { describeApiError } from '@/lib/apiError'
 
 interface ChatMessage {
   id: string
@@ -97,12 +98,8 @@ export default function ComplianceChat() {
         }
       })
     } catch (err) {
-      // A transport failure rejects with a TypeError; anything else carries a
-      // message from the server worth showing.
       if (!controller.signal.aborted) {
-        const reason = err instanceof Error && !(err instanceof TypeError)
-          ? err.message
-          : 'Unable to reach the compliance AI service. Please check your connection and try again.'
+        const reason = describeApiError(err, 'Unable to reach the compliance AI service. Please check your connection and try again.')
         setMessages((prev) => prev.map((m) => (m.id === aiMsgId ? { ...m, content: reason } : m)))
       }
     } finally {

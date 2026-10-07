@@ -5,6 +5,7 @@ import { useFleet } from '@/context/FleetContext'
 import { sireApi, type ChatStreamChunk } from '@/lib/api'
 import AiFallbackNotice from '@/components/ui/AiFallbackNotice'
 import { readSseStream } from '@/lib/sse'
+import { describeApiError } from '@/lib/apiError'
 import { MOCK_SIRE_DOCS, MOCK_SIRE_FINDINGS, MOCK_SIRE_CHAPTERS } from '@/lib/mockData'
 import type { SireDocument, SireFinding, SireChapterScore, SireFindingsResponse } from '@/lib/types'
 import { formatDate, cn } from '@/lib/utils'
@@ -420,13 +421,9 @@ function ChatTab({ vesselId }: { vesselId: string }) {
         }
       })
     } catch (err) {
-      // A transport failure rejects with a TypeError; anything else carries a
-      // message from the server worth showing.
       if (!controller.signal.aborted) {
         patchReply({
-          content: err instanceof Error && !(err instanceof TypeError)
-            ? err.message
-            : 'Unable to reach the SIRE inspector AI. Please check your connection and try again.',
+          content: describeApiError(err, 'Unable to reach the SIRE inspector AI. Please check your connection and try again.'),
         })
       }
     } finally {
