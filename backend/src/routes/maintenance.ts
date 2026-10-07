@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import type { WorkOrder } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import {
   MOCK_MAINTENANCE_ALERTS,
   getEquipmentByVesselId,
@@ -48,51 +50,44 @@ function buildSensorSummaries(equipmentId: string) {
   });
 }
 
-// In-memory work orders store for demo
-const workOrdersStore: {
-  id: string;
-  equipmentId: string;
-  vesselId: string;
-  title: string;
-  description: string;
-  priority: string;
-  assignedTo?: string;
-  requiredParts?: string;
-  estimatedHours?: number;
-  plannedDate?: string;
-  completedDate?: string;
-  status: string;
-  createdAt: string;
-}[] = [
-  {
-    id: 'wo-001',
-    equipmentId: 'tc-001',
-    vesselId: 'vessel-001',
-    title: 'Turbocharger #1 Bearing Inspection & Replacement',
-    description: 'Critical bearing replacement required. Vibration levels at 4.8 mm/s indicating imminent failure. Arrange port call within 4 days.',
-    priority: 'critical',
-    assignedTo: 'Chief Engineer',
-    requiredParts: 'ABB-TCA88-BRG-001 (bearing kit), ABB-TCA88-SEAL-001 (seal kit)',
-    estimatedHours: 16,
-    plannedDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-    status: 'open',
-    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'wo-002',
-    equipmentId: 'me-002',
-    vesselId: 'vessel-002',
-    title: 'Main Engine Major Overhaul - Cylinder Units',
-    description: 'Overdue cylinder unit overhaul. 2,100 running hours past manufacturer interval. Schedule drydock.',
-    priority: 'high',
-    assignedTo: 'Technical Superintendent',
-    requiredParts: 'Piston rings set x6, cylinder liner inspection kit, fuel injectors x6',
-    estimatedHours: 120,
-    plannedDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString(),
-    status: 'open',
-    createdAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
+// Work orders live in Postgres (see the WorkOrder model). They used to sit in a
+// module-level array, which under the two replicas this runs with meant a board
+// that differed depending on which pod answered and reset on every restart.
+// The two demo orders that array was seeded with are now rows created by
+// prisma/seed.ts.
+
+// The board renders a work order's parts as a list; the column holds them as
+// one comma-separated string, which is how the seeded demo data and the create
+// form both express them.
+function splitParts(requiredParts: string | null): string[] {
+  if (!requiredParts) return [];
+  return requiredParts.split(',').map(p => p.trim()).filter(Boolean);
+}
+
+// The board reads a flat work order. Dates go out as ISO strings, and the
+// parts column is exposed both as the stored string (`requiredParts`, which the
+// create form submits) and as the list the detail panel renders
+// (`partsRequired`), so neither consumer has to know how the column is stored.
+function toWorkOrderResponse(wo: WorkOrder) {
+  return {
+    id: wo.id,
+    vesselId: wo.vesselId,
+    equipmentId: wo.equipmentId,
+    equipmentName: wo.equipmentName,
+    type: wo.type,
+    title: wo.title,
+    description: wo.description,
+    priority: wo.priority,
+    status: wo.status,
+    assignedTo: wo.assignedTo ?? undefined,
+    requiredParts: wo.requiredParts ?? undefined,
+    partsRequired: splitParts(wo.requiredParts),
+    estimatedHours: wo.estimatedHours ?? 0,
+    plannedDate: wo.plannedDate?.toISOString(),
+    completedDate: wo.completedDate?.toISOString(),
+    createdAt: wo.createdAt.toISOString(),
+  };
+}
 
 // GET /api/maintenance/equipment/:vesselId
 router.get('/equipment/:vesselId', authenticate, (req: AuthenticatedRequest, res: Response) => {
@@ -291,8 +286,8 @@ Return JSON: {
 });
 
 // POST /api/maintenance/work-order
-router.post('/work-order', authenticate, validate(WorkOrderSchema), (req: AuthenticatedRequest, res: Response) => {
-  const { equipmentId, vesselId, title, description, priority, assignedTo, requiredParts, estimatedHours, plannedDate } = req.body;
+router.post('/work-order', authenticate, validate(WorkOrderSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const { equipmentId, equipmentName, vesselId, title, description, priority, type, assignedTo, requiredParts, estimatedHours, plannedDate } = req.body;
 
   if (!requireVessel(req, res, vesselId)) return;
 
@@ -303,58 +298,66 @@ router.post('/work-order', authenticate, validate(WorkOrderSchema), (req: Authen
     return;
   }
 
-  const newWorkOrder = {
-    id: `wo-${Date.now()}`,
-    equipmentId,
-    vesselId,
-    title,
-    description,
-    priority,
-    assignedTo: assignedTo || undefined,
-    requiredParts: requiredParts || undefined,
-    estimatedHours: estimatedHours || undefined,
-    plannedDate: plannedDate || undefined,
-    completedDate: undefined,
-    status: 'open',
-    createdAt: new Date().toISOString(),
-  };
-
-  workOrdersStore.push(newWorkOrder);
-  res.status(201).json(newWorkOrder);
+  try {
+    const workOrder = await prisma.workOrder.create({
+      data: {
+        vesselId,
+        equipmentId,
+        equipmentName,
+        type: type ?? 'corrective',
+        title,
+        description,
+        priority,
+        assignedTo: assignedTo ?? null,
+        requiredParts: requiredParts ?? null,
+        estimatedHours: estimatedHours ?? null,
+        plannedDate: plannedDate ? new Date(plannedDate) : null,
+      },
+    });
+    res.status(201).json(toWorkOrderResponse(workOrder));
+  } catch (error) {
+    // A create that cannot reach the database has to say so. Reporting success
+    // here would put the order on the board of whichever replica is rendering
+    // it while the row does not exist, which is the failure this route was
+    // moved out of memory to stop making.
+    logger.error({ err: error }, 'work order create failed');
+    res.status(503).json({ error: 'Work orders unavailable — the order was not saved' });
+  }
 });
 
 // GET /api/maintenance/work-orders/:vesselId
-router.get('/work-orders/:vesselId', authenticate, (req: AuthenticatedRequest, res: Response) => {
+router.get('/work-orders/:vesselId', authenticate, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { vesselId } = req.params;
   const { status } = req.query;
 
   if (!requireVessel(req, res, vesselId)) return;
 
-  let orders = workOrdersStore.filter(wo => wo.vesselId === vesselId);
-
-  if (status) {
-    orders = orders.filter(wo => wo.status === status);
+  let orders: WorkOrder[];
+  try {
+    orders = await prisma.workOrder.findMany({
+      where: {
+        vesselId,
+        ...(typeof status === 'string' && status ? { status } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'work order list failed');
+    res.status(503).json({ error: 'Work orders unavailable' });
+    return;
   }
 
-  const equipment = getEquipmentByVesselId(vesselId);
-
-  const enrichedOrders = orders.map(wo => {
-    const eq = equipment.find(e => e.id === wo.equipmentId);
-    return {
-      ...wo,
-      equipment: eq ? { id: eq.id, name: eq.name, type: eq.type } : null,
-    };
-  });
+  const workOrders = orders.map(toWorkOrderResponse);
 
   res.json({
     vesselId,
-    workOrders: enrichedOrders,
+    workOrders,
     summary: {
-      total: enrichedOrders.length,
-      open: enrichedOrders.filter(wo => wo.status === 'open').length,
-      inProgress: enrichedOrders.filter(wo => wo.status === 'in_progress').length,
-      completed: enrichedOrders.filter(wo => wo.status === 'completed').length,
-      critical: enrichedOrders.filter(wo => wo.priority === 'critical').length,
+      total: workOrders.length,
+      open: workOrders.filter(wo => wo.status === 'open').length,
+      inProgress: workOrders.filter(wo => wo.status === 'in_progress').length,
+      completed: workOrders.filter(wo => wo.status === 'completed').length,
+      critical: workOrders.filter(wo => wo.priority === 'critical').length,
     },
   });
 });

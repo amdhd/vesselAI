@@ -4,7 +4,7 @@ import { ClipboardList, Plus, X, Calendar, User, Wrench, AlertCircle } from 'luc
 import { useFleet } from '@/context/FleetContext'
 import { maintenanceApi } from '@/lib/api'
 import { MOCK_WORK_ORDERS } from '@/lib/mockData'
-import type { WorkOrder, WorkOrderStatus, WorkOrderPriority } from '@/lib/types'
+import type { Equipment, WorkOrder, WorkOrderStatus, WorkOrderPriority } from '@/lib/types'
 import { formatDate, cn } from '@/lib/utils'
 import { describeApiError } from '@/lib/apiError'
 import Badge from '@/components/ui/Badge'
@@ -74,21 +74,35 @@ interface NewWorkOrderModalProps {
 function NewWorkOrderModal({ vesselId, onClose, onSubmit, isSubmitting }: NewWorkOrderModalProps) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [equipmentName, setEquipmentName] = useState('')
+  const [equipmentId, setEquipmentId] = useState('')
   const [priority, setPriority] = useState<WorkOrderPriority>('medium')
   const [assignedTo, setAssignedTo] = useState('')
   const [plannedDate, setPlannedDate] = useState(() => new Date().toISOString().split('T')[0])
   const [estimatedHours, setEstimatedHours] = useState(4)
 
+  // The catalogue the picker offers. A work order has to name an equipment by
+  // id — the API validates it, and the board looks the name up from it — so the
+  // form picks from the vessel's actual equipment rather than accepting any
+  // typed string.
+  const { data: equipment = [] } = useQuery<Equipment[]>({
+    queryKey: ['equipment', vesselId],
+    queryFn: () => maintenanceApi.getEquipment(vesselId),
+  })
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    const selected = equipment.find((eq) => eq.id === equipmentId)
+    if (!selected) return
     onSubmit({
       title,
       description,
-      equipmentName,
+      equipmentId: selected.id,
+      equipmentName: selected.name,
+      // The API takes a full ISO datetime, but <input type="date"> yields a
+      // bare YYYY-MM-DD, which the schema rejects.
+      plannedDate: new Date(`${plannedDate}T00:00:00.000Z`).toISOString(),
       priority,
       assignedTo,
-      plannedDate,
       estimatedHours,
       vesselId,
       status: 'open',
@@ -118,13 +132,17 @@ function NewWorkOrderModal({ vesselId, onClose, onSubmit, isSubmitting }: NewWor
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1.5">Equipment</label>
-            <input
-              value={equipmentName}
-              onChange={(e) => setEquipmentName(e.target.value)}
-              placeholder="Equipment name..."
+            <select
+              value={equipmentId}
+              onChange={(e) => setEquipmentId(e.target.value)}
               className="w-full bg-navy-700 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 transition-colors"
               required
-            />
+            >
+              <option value="">Select equipment...</option>
+              {equipment.map((eq) => (
+                <option key={eq.id} value={eq.id}>{eq.name}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1.5">Description</label>
