@@ -10,6 +10,8 @@ import {
   UploadDocumentSchema,
   GenerateDefectReportSchema,
   HandoverSchema,
+  DefectReportResponseSchema,
+  HandoverResponseSchema,
 } from '../schemas';
 import { generateJson, streamChatResponse } from '../services/aiService';
 import { MOCK_DOCUMENTS } from '../mock/knowledgeDocuments';
@@ -20,11 +22,8 @@ const router = Router();
 router.post('/chat', authenticate, aiLimiter, validate(KnowledgeChatSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { message, vesselId, conversationHistory = [] } = req.body;
 
-  const vessel = resolveFleetVessel(req, vesselId);
-  if (!vessel) {
-    res.status(403).json({ error: 'No accessible vessel for your fleet' });
-    return;
-  }
+  const vessel = resolveFleetVessel(req, res, vesselId);
+  if (!vessel) return;
   const vesselDocs = MOCK_DOCUMENTS[vessel.id] || [];
   const docNames = vesselDocs.map(d => d.name).join(', ');
 
@@ -163,6 +162,7 @@ Return JSON: {
   "urgency": "IMMEDIATE|HIGH|ROUTINE"
 }`,
     maxTokens: 1500,
+    schema: DefectReportResponseSchema,
     fallback: mockReport,
     onError: (error) => logger.error({ err: error }, 'Defect report generation error'),
   });
@@ -227,6 +227,7 @@ Parts on Order: ${partsOnOrder || 'None'}
 
 Return JSON: {"reportText": "full formatted handover report", "summary": "brief 1-2 sentence summary"}`,
     maxTokens: 1500,
+    schema: HandoverResponseSchema,
     fallback: mockHandover,
     onError: (error) => logger.error({ err: error }, 'Handover report generation error'),
   });

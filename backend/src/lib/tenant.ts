@@ -41,16 +41,38 @@ export function requireVessel(
 // Lenient lookup for AI helper routes that take an optional vesselId: return the
 // requested vessel when the caller may access it, otherwise fall back to the
 // caller's first fleet vessel. Never returns a vessel outside the caller's fleet.
+//
+// Omitting vesselId legitimately means "whichever vessel this fleet is on". A
+// vesselId that was *supplied* and resolved to nothing is a different request
+// and must not collapse into that default: every caller reads the result as
+// "the vessel this request is about", so substituting the fleet's first vessel
+// answered a question about vessel-007 with vessel-001's name, IMO number and
+// figures. A supplied id the caller cannot reach now fails the request.
+//
+// On failure it answers the response itself and returns null, like requireVessel
+// above: 404 when a supplied id resolved to nothing, 403 when there was no id
+// and the caller's fleet has no vessel to fall back to.
 export function resolveFleetVessel(
   req: AuthenticatedRequest,
+  res: Response,
   vesselId?: string | null
-): MockVessel | undefined {
+): MockVessel | null {
   const vessels = fleetVessels(req);
   if (vesselId) {
     const match = vessels.find((v) => v.id === vesselId);
     if (match) return match;
+    // "Does not exist" and "belongs to another fleet" get the same answer on
+    // purpose: this lookup only sees the caller's own fleet, so distinguishing
+    // them would mean reporting on vessels outside it.
+    res.status(404).json({ error: 'Vessel not found' });
+    return null;
   }
-  return vessels[0];
+  const fallback = vessels[0];
+  if (!fallback) {
+    res.status(403).json({ error: 'No accessible vessel for your fleet' });
+    return null;
+  }
+  return fallback;
 }
 
 // Enforce that a :fleetId path param matches the caller's fleet.

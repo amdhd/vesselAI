@@ -13,6 +13,9 @@ import {
   FuelAnalysisSchema,
   PredictEtaSchema,
   GenerateAgentMessageSchema,
+  OptimizeRouteResponseSchema,
+  PredictEtaResponseSchema,
+  AgentMessageResponseSchema,
 } from '../schemas';
 import { computeFuelConsumption, buildSpeedPowerCurve, computeAdmiraltyCoefficient } from '../lib/fuelModel';
 import { generateJson } from '../services/aiService';
@@ -30,11 +33,8 @@ router.post('/optimize-route', authenticate, aiLimiter, validate(OptimizeRouteSc
     speedPreference = 'economic',
   } = req.body;
 
-  const vessel = resolveFleetVessel(req, vesselId);
-  if (!vessel) {
-    res.status(403).json({ error: 'No accessible vessel for your fleet' });
-    return;
-  }
+  const vessel = resolveFleetVessel(req, res, vesselId);
+  if (!vessel) return;
   const weatherRoute = getRouteWeather(departurePort, destinationPort) ||
     MOCK_WEATHER_ROUTES.find(r =>
       r.from.toLowerCase().includes((departurePort || '').toLowerCase()) ||
@@ -118,6 +118,7 @@ Respond with JSON only (no markdown): {
   "directRoute": {"distance": number, "fuel": number, "cost": number, "co2": number, "eta": "ISO date string"},
   "aiRoute": {"distance": number, "fuel": number, "cost": number, "co2": number, "eta": "ISO date string", "savings": number, "costSavings": number, "reasoning": "3-4 sentences explaining the AI recommendation"}
 }`,
+    schema: OptimizeRouteResponseSchema,
     fallback: fallbackCore,
     onError: (error) => logger.error({ err: error }, 'Route optimization Claude error'),
   });
@@ -137,11 +138,8 @@ router.post('/agent-plan', authenticate, aiLimiter, validate(OptimizeRouteSchema
     res.status(400).json({ error: 'departurePort and destinationPort are required' });
     return;
   }
-  const vessel = resolveFleetVessel(req, vesselId);
-  if (!vessel) {
-    res.status(403).json({ error: 'No accessible vessel for your fleet' });
-    return;
-  }
+  const vessel = resolveFleetVessel(req, res, vesselId);
+  if (!vessel) return;
   const plan = await runVoyageAgent(vessel as AgentVessel, { departurePort, destinationPort, cargoLoad, speedPreference });
   if (plan.fallback) res.setHeader('X-AI-Fallback', 'true');
   res.json(plan);
@@ -159,11 +157,8 @@ router.post('/agent-plan/stream', authenticate, aiLimiter, validate(OptimizeRout
     res.status(400).json({ error: 'departurePort and destinationPort are required' });
     return;
   }
-  const vessel = resolveFleetVessel(req, vesselId);
-  if (!vessel) {
-    res.status(403).json({ error: 'No accessible vessel for your fleet' });
-    return;
-  }
+  const vessel = resolveFleetVessel(req, res, vesselId);
+  if (!vessel) return;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -220,11 +215,8 @@ router.get('/history/:vesselId', authenticate, (req: AuthenticatedRequest, res: 
 // POST /api/voyage/calculate-speed
 router.post('/calculate-speed', authenticate, validate(CalculateSpeedSchema), (req: AuthenticatedRequest, res: Response) => {
   const { vesselId, targetSpeed, cargoLoad = 80, trimMetres = 0 } = req.body;
-  const vessel = resolveFleetVessel(req, vesselId);
-  if (!vessel) {
-    res.status(403).json({ error: 'No accessible vessel for your fleet' });
-    return;
-  }
+  const vessel = resolveFleetVessel(req, res, vesselId);
+  if (!vessel) return;
 
   // Layer 2 + 3: build full speed-power curve using Admiralty Coefficient model
   const speedCurve = buildSpeedPowerCurve(vessel, cargoLoad, trimMetres, targetSpeed);
@@ -290,11 +282,8 @@ function resolveFleetVoyage(req: AuthenticatedRequest, voyageId?: string | null)
 router.post('/predict-eta', authenticate, aiLimiter, validate(PredictEtaSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { vesselId, voyageId, currentSpeed, weatherConditions } = req.body;
 
-  const vessel = resolveFleetVessel(req, vesselId);
-  if (!vessel) {
-    res.status(403).json({ error: 'No accessible vessel for your fleet' });
-    return;
-  }
+  const vessel = resolveFleetVessel(req, res, vesselId);
+  if (!vessel) return;
   const voyage = resolveFleetVoyage(req, voyageId);
   if (!voyage) {
     res.status(404).json({ error: 'Active voyage not found' });
@@ -332,6 +321,7 @@ Basic ETA: ${etaBasic}
 
 Return JSON: {"basicEta": "ISO", "aiEta": "ISO", "confidence": number, "factors": ["string"], "recommendation": "string"}`,
     maxTokens: 800,
+    schema: PredictEtaResponseSchema,
     fallback: mockEta,
     onError: (error) => logger.error({ err: error }, 'ETA prediction error'),
   });
@@ -342,11 +332,8 @@ Return JSON: {"basicEta": "ISO", "aiEta": "ISO", "confidence": number, "factors"
 router.post('/generate-agent-message', authenticate, aiLimiter, validate(GenerateAgentMessageSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { vesselId, voyageId, portName, messageType = 'pre-arrival', additionalInfo } = req.body;
 
-  const vessel = resolveFleetVessel(req, vesselId);
-  if (!vessel) {
-    res.status(403).json({ error: 'No accessible vessel for your fleet' });
-    return;
-  }
+  const vessel = resolveFleetVessel(req, res, vesselId);
+  if (!vessel) return;
   const voyage = resolveFleetVoyage(req, voyageId);
   if (!voyage) {
     res.status(404).json({ error: 'Active voyage not found' });
@@ -395,6 +382,7 @@ Cargo: ${voyage.cargoLoad || 285000} MT crude oil from ${voyage.departurePort ||
 ${additionalInfo ? `Additional info: ${additionalInfo}` : ''}
 Return JSON: {"subject": "string", "body": "string"}`,
     maxTokens: 1000,
+    schema: AgentMessageResponseSchema,
     fallback: mockMessage,
     onError: (error) => logger.error({ err: error }, 'Agent message generation error'),
   });
@@ -405,11 +393,8 @@ Return JSON: {"subject": "string", "body": "string"}`,
 // Returns the detailed Layer 2 + 3 breakdown for a single operating point.
 router.post('/fuel-analysis', authenticate, validate(FuelAnalysisSchema), (req: AuthenticatedRequest, res: Response) => {
   const { vesselId, speedKnots, cargoLoad = 80, trimMetres = 0 } = req.body;
-  const vessel = resolveFleetVessel(req, vesselId);
-  if (!vessel) {
-    res.status(403).json({ error: 'No accessible vessel for your fleet' });
-    return;
-  }
+  const vessel = resolveFleetVessel(req, res, vesselId);
+  if (!vessel) return;
 
   const result = computeFuelConsumption(vessel, speedKnots, cargoLoad, trimMetres);
 

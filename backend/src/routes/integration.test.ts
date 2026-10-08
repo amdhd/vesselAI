@@ -241,6 +241,46 @@ describe('work orders (persistence)', () => {
   });
 });
 
+describe('POST /api/voyage/fuel-analysis (vessel resolution)', () => {
+  const body = { speedKnots: 14, cargoLoad: 80 };
+
+  it('404s a vesselId it cannot resolve instead of reporting another vessel', async () => {
+    // resolveFleetVessel fell back to the fleet's first vessel, so this request
+    // came back with vessel-001's fuel figures under a vessel that does not
+    // exist — a wrong answer that looked exactly like a right one.
+    const token = await demoToken();
+    const res = await request(app)
+      .post('/api/voyage/fuel-analysis')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ ...body, vesselId: 'no-such-vessel' });
+
+    expect(res.status).toBe(404);
+    expect(res.body.vessel).toBeUndefined();
+  });
+
+  it('still serves the named vessel when the caller may access it', async () => {
+    const token = await demoToken();
+    const res = await request(app)
+      .post('/api/voyage/fuel-analysis')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ ...body, vesselId: 'vessel-001' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.vessel.id).toBe('vessel-001');
+  });
+
+  it('still picks the fleet vessel when vesselId is omitted', async () => {
+    const token = await demoToken();
+    const res = await request(app)
+      .post('/api/voyage/fuel-analysis')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+
+    expect(res.status).toBe(200);
+    expect(res.body.vessel.id).toBeTruthy();
+  });
+});
+
 describe('POST /api/weather/sync (fleet-membership gate)', () => {
   it('blocks a fleetless fleet_manager — the role alone is self-assignable at signup', async () => {
     const res = await request(app)

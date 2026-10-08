@@ -298,11 +298,8 @@ router.post('/generate-mrv-report', authenticate, validate(GenerateMrvReportSche
 router.post('/chat', authenticate, aiLimiter, validate(ComplianceChatSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { message, vesselId, conversationHistory = [] } = req.body;
 
-  const vessel = resolveFleetVessel(req, vesselId);
-  if (!vessel) {
-    res.status(403).json({ error: 'No accessible vessel for your fleet' });
-    return;
-  }
+  const vessel = resolveFleetVessel(req, res, vesselId);
+  if (!vessel) return;
   const ciiData = CII_DATA[vessel.id];
 
   const systemPrompt = `You are VesselMind Compliance AI, an expert in maritime environmental regulations. You assist fleet managers with CII, MARPOL, EU ETS, and MRV compliance.

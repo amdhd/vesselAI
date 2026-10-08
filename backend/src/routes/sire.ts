@@ -7,7 +7,7 @@ import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
 import { requireVessel, resolveFleetVessel } from '../lib/tenant';
 import { SYSTEM_GUARDRAILS } from '../lib/aiGuard';
-import { GeneratePreInspectionSchema, InspectorSimulationSchema } from '../schemas';
+import { GeneratePreInspectionSchema, InspectorSimulationSchema, PreInspectionReportResponseSchema } from '../schemas';
 import { generateJson, streamChatResponse } from '../services/aiService';
 
 const router = Router();
@@ -253,6 +253,7 @@ Return JSON: {
   "overallReadiness": number
 }`,
     maxTokens: 2000,
+    schema: PreInspectionReportResponseSchema,
     fallback: mockReport,
     onError: (error) => logger.error({ err: error }, 'SIRE report generation error'),
   });
@@ -302,11 +303,8 @@ router.get('/documents/:vesselId', authenticate, (req: AuthenticatedRequest, res
 router.post('/inspector-simulation', authenticate, aiLimiter, validate(InspectorSimulationSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { message, vesselId, chapter, conversationHistory = [] } = req.body;
 
-  const vessel = resolveFleetVessel(req, vesselId);
-  if (!vessel) {
-    res.status(403).json({ error: 'No accessible vessel for your fleet' });
-    return;
-  }
+  const vessel = resolveFleetVessel(req, res, vesselId);
+  if (!vessel) return;
   const readiness = SIRE_READINESS[vessel.id];
 
   const systemPrompt = `You are Captain James Mitchell, an experienced SIRE inspector with 15 years of experience conducting vessel inspections for major oil companies (Shell, BP, Total, ExxonMobil).

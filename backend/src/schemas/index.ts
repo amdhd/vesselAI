@@ -202,3 +202,84 @@ export const CreateNotificationSchema = z.object({
   message: z.string().min(1).max(1000),
   link: z.string().max(200).optional(),
 });
+
+// ── AI response shapes ────────────────────────────────────────────────────────
+// What generateJson() expects each model reply to look like. These are not
+// request schemas — nothing arrives here from a client — but model output is
+// untrusted input in the same sense, and every route reads fields off it before
+// anything checks them. Each one below matches the JSON example in the prompt
+// of the handler that passes it, so the two have to move together.
+//
+// The dates are validated as dates on purpose: the frontend parses them with
+// `new Date(...)`, and a model that writes "next Tuesday" or drops the timezone
+// produces an Invalid Date that renders as a plausible-looking blank rather
+// than as an error.
+
+const isoDateTime = z.string().datetime({ offset: true });
+
+const routeOption = z.object({
+  distance: z.number(),
+  fuel: z.number(),
+  cost: z.number(),
+  co2: z.number(),
+  eta: isoDateTime,
+});
+
+// routes/voyage.ts — POST /optimize-route
+export const OptimizeRouteResponseSchema = z.object({
+  directRoute: routeOption,
+  aiRoute: routeOption.extend({
+    savings: z.number(),
+    costSavings: z.number(),
+    reasoning: z.string(),
+  }),
+});
+
+// routes/voyage.ts — POST /predict-eta
+export const PredictEtaResponseSchema = z.object({
+  basicEta: isoDateTime,
+  aiEta: isoDateTime,
+  confidence: z.number(),
+  factors: z.array(z.string()),
+  recommendation: z.string(),
+});
+
+// routes/voyage.ts — POST /generate-agent-message
+export const AgentMessageResponseSchema = z.object({
+  subject: z.string(),
+  body: z.string(),
+});
+
+// routes/knowledge.ts — POST /generate-defect-report
+export const DefectReportResponseSchema = z.object({
+  reportText: z.string(),
+  probableCause: z.string(),
+  recommendedAction: z.string(),
+  partsRequired: z.string(),
+  urgency: z.string(),
+});
+
+// routes/knowledge.ts — POST /handover
+export const HandoverResponseSchema = z.object({
+  reportText: z.string(),
+  summary: z.string(),
+});
+
+// routes/sire.ts — POST /generate-pre-inspection
+export const PreInspectionReportResponseSchema = z.object({
+  reportText: z.string(),
+  priorityActions: z.array(z.string()),
+  overallReadiness: z.number(),
+});
+
+// routes/maintenance.ts — POST /analyze-anomaly
+export const AnomalyAnalysisResponseSchema = z.object({
+  severity: z.string(),
+  probableCause: z.string(),
+  aiAnalysis: z.string(),
+  // Present-but-null is how "no failure predicted" is expressed, so the key is
+  // required and only the value is nullable.
+  daysToFailure: z.number().nullable(),
+  recommendedActions: z.array(z.string()),
+  urgency: z.string(),
+});

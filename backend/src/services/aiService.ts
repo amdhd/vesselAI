@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Response } from 'express';
+import { z } from 'zod';
 import { logger } from '../lib/logger';
 import { aiRequestsTotal } from '../lib/metrics';
 
@@ -80,22 +81,38 @@ function classifyAiError(label: string, error: unknown): { rateLimited: boolean;
  * `X-AI-Fallback` header so a caller (or monitoring) can tell canned data
  * from a real model response instead of the two being indistinguishable.
  *
+ * `schema` is required, and the reply is validated against it before the caller
+ * sees it. A model's reply is text that merely looks like JSON, so without this
+ * a response shaped differently from the prompt's example — a string where a
+ * number belongs, a missing field, a date the UI cannot parse — was returned
+ * `as T` and spread straight into the response body, where the missing fields
+ * reached the frontend as `undefined` and rendered as blank panels that looked
+ * like a successful (but wrong) analysis. A shape mismatch is now treated as
+ * exactly the failure it is: the fallback, flagged by the same header.
+ *
+ * Validation is shape-only, and unknown keys are stripped rather than rejected:
+ * a model volunteering an extra field should not cost us an otherwise good
+ * answer, but it should not be able to widen the response contract either.
+ * Types are not coerced — `"87"` for a confidence score is a contract
+ * violation, not a number to be rescued.
+ *
  * A rate-limit (429) additionally sets `X-AI-Rate-Limited: true` and echoes the
  * upstream `Retry-After` header, so clients can back off and dashboards can
  * distinguish throttling from real model errors. Token usage of successful
  * calls is logged for ITPM/OTPM/cost visibility.
  */
-export async function generateJson<T>(
+export async function generateJson<S extends z.ZodTypeAny>(
   res: Response,
   params: {
     system: string;
     prompt: string;
     maxTokens?: number;
-    fallback: T;
+    schema: S;
+    fallback: z.infer<S>;
     label?: string;
     onError?: (error: unknown) => void;
   }
-): Promise<T> {
+): Promise<z.infer<S>> {
   const label = params.label ?? 'generateJson';
   try {
     const message = await anthropic.messages.create({
@@ -106,7 +123,21 @@ export async function generateJson<T>(
     });
     logUsage(label, message.usage);
     const rawContent = message.content[0].type === 'text' ? message.content[0].text : '';
-    return JSON.parse(stripJsonFences(rawContent)) as T;
+    const parsed = params.schema.safeParse(JSON.parse(stripJsonFences(rawContent)));
+    if (!parsed.success) {
+      // Thrown rather than returned so a shape mismatch travels the same path
+      // as every other model failure — onError, one classifyAiError log, the
+      // X-AI-Fallback header — instead of growing a second fallback route that
+      // would have to remember to set the header too. Only issue paths and
+      // messages go in the text: they name the offending field without copying
+      // model output into the logs.
+      throw new Error(
+        `model response did not match the expected shape: ${parsed.error.issues
+          .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
+          .join('; ')}`
+      );
+    }
+    return parsed.data;
   } catch (error) {
     params.onError?.(error);
     const { rateLimited, retryAfter } = classifyAiError(label, error);
