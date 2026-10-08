@@ -4,6 +4,7 @@ import jwt, { SignOptions } from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../lib/logger';
+import { recordAudit } from '../lib/audit';
 import { validate } from '../middleware/validate';
 import { LoginSchema, RegisterSchema } from '../schemas';
 import { JWT_SECRET, JWT_EXPIRES_IN, DEMO_LOGIN_ENABLED } from '../lib/jwtConfig';
@@ -131,6 +132,17 @@ router.post('/register', validate(RegisterSchema), async (req: Request, res: Res
 
     const token = generateToken(user);
     const { password: _password, ...userWithoutPassword } = user;
+
+    // The account being created is its own actor, so it is its own audit subject.
+    // No email in details: the row already identifies the account by id, and the
+    // trail should not accumulate more personal data than it needs.
+    await recordAudit({
+      userId: user.id,
+      entity: 'User',
+      action: 'create',
+      entityId: user.id,
+      details: { role: safeRole },
+    });
 
     res.status(201).json({
       token,

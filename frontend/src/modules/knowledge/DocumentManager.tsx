@@ -4,7 +4,7 @@ import { Upload, FileText, Search, CheckCircle, Clock, AlertCircle, Database } f
 import { useFleet } from '../../context/FleetContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import { formatDate, toBackendVesselId } from '../../lib/utils'
-import axios from 'axios'
+import { knowledgeApi } from '../../lib/api'
 
 interface KnowledgeDoc {
   id: string
@@ -62,15 +62,11 @@ export default function DocumentManager() {
   const [search, setSearch] = useState('')
   const [isDragging, setIsDragging] = useState(false)
 
-  const { data: docs = DEMO_DOCS, isLoading } = useQuery({
+  const { data: docs = DEMO_DOCS, isLoading } = useQuery<KnowledgeDoc[]>({
     queryKey: ['knowledge-docs', selectedVessel?.id],
-    queryFn: async () => {
-      // Backend wraps the list in { vesselId, vessel, documents, summary }, not a bare array.
-      const { data } = await axios.get<{ documents: KnowledgeDoc[] }>(`/api/knowledge/documents/${toBackendVesselId(selectedVessel?.id)}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('vm_token')}` }
-      })
-      return data.documents
-    },
+    // The client already unwraps the { vesselId, vessel, documents, summary }
+    // envelope the backend replies with.
+    queryFn: () => knowledgeApi.getDocuments(toBackendVesselId(selectedVessel?.id)),
     placeholderData: DEMO_DOCS,
   })
 

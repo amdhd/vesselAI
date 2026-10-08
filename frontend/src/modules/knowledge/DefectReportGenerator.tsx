@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { FileText, Zap, Copy, Download, AlertTriangle } from 'lucide-react'
 import { useFleet } from '../../context/FleetContext'
+import type { DefectReport } from '../../lib/types'
+import { knowledgeApi, type DefectSeverity } from '../../lib/api'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import { printAsPdf } from '../../lib/pdfExport'
 import { toBackendVesselId } from '../../lib/utils'
-import axios from 'axios'
 
 const EQUIPMENT_LIST = [
   'Main Engine', 'Turbocharger #1', 'Turbocharger #2', 'Fuel Oil Purifier',
@@ -20,17 +21,17 @@ const SEVERITY_OPTIONS = [
   { value: 'critical', label: 'Critical — Immediate safety or operational risk' },
 ]
 
-interface DefectReportResult {
-  reportText: string
-  probableCause: string
-  recommendedAction: string
-  partsRequired: string
-  urgency: string
+interface DefectReportForm {
+  equipment: string
+  description: string
+  symptoms: string
+  conditions: string
+  severity: DefectSeverity
 }
 
 export default function DefectReportGenerator() {
   const { selectedVessel } = useFleet()
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<DefectReportForm>({
     equipment: '',
     description: '',
     symptoms: '',
@@ -38,7 +39,7 @@ export default function DefectReportGenerator() {
     severity: 'moderate',
   })
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<DefectReportResult | null>(null)
+  const [result, setResult] = useState<DefectReport | null>(null)
   const [error, setError] = useState('')
 
   const handleSubmit = async () => {
@@ -49,13 +50,17 @@ export default function DefectReportGenerator() {
     setError('')
     setLoading(true)
     try {
-      const { data } = await axios.post('/api/knowledge/generate-defect-report', {
+      // `form.conditions` is deliberately not sent: the backend's
+      // GenerateDefectReportSchema has no such field (it strips it) and the
+      // prompt never reads it, so the textarea collects text nothing consumes.
+      const report = await knowledgeApi.generateDefectReport({
         vesselId: toBackendVesselId(selectedVessel?.id),
-        ...form,
-      }, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('vm_token')}` }
+        equipment: form.equipment,
+        description: form.description,
+        symptoms: form.symptoms,
+        severity: form.severity,
       })
-      setResult(data)
+      setResult(report)
     } catch {
       setError('Failed to generate report. Please try again.')
     } finally {
@@ -129,7 +134,7 @@ export default function DefectReportGenerator() {
               <label className="block text-sm text-gray-400 mb-1">Estimated Severity</label>
               <select
                 value={form.severity}
-                onChange={e => setForm(f => ({ ...f, severity: e.target.value }))}
+                onChange={e => setForm(f => ({ ...f, severity: e.target.value as DefectSeverity }))}
                 className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600"
               >
                 {SEVERITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
