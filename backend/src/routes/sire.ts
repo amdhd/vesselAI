@@ -7,7 +7,7 @@ import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
 import { requireVessel, resolveFleetVessel } from '../lib/tenant';
 import { SYSTEM_GUARDRAILS } from '../lib/aiGuard';
-import { GeneratePreInspectionSchema, InspectorSimulationSchema } from '../schemas';
+import { GeneratePreInspectionSchema, InspectorSimulationSchema, PreInspectionReportResponseSchema } from '../schemas';
 import { generateJson, streamChatResponse } from '../services/aiService';
 
 const router = Router();
@@ -253,6 +253,7 @@ Return JSON: {
   "overallReadiness": number
 }`,
     maxTokens: 2000,
+    schema: PreInspectionReportResponseSchema,
     fallback: mockReport,
     onError: (error) => logger.error({ err: error }, 'SIRE report generation error'),
   });

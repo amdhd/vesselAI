@@ -13,6 +13,9 @@ import {
   FuelAnalysisSchema,
   PredictEtaSchema,
   GenerateAgentMessageSchema,
+  OptimizeRouteResponseSchema,
+  PredictEtaResponseSchema,
+  AgentMessageResponseSchema,
 } from '../schemas';
 import { computeFuelConsumption, buildSpeedPowerCurve, computeAdmiraltyCoefficient } from '../lib/fuelModel';
 import { generateJson } from '../services/aiService';
@@ -118,6 +121,7 @@ Respond with JSON only (no markdown): {
   "directRoute": {"distance": number, "fuel": number, "cost": number, "co2": number, "eta": "ISO date string"},
   "aiRoute": {"distance": number, "fuel": number, "cost": number, "co2": number, "eta": "ISO date string", "savings": number, "costSavings": number, "reasoning": "3-4 sentences explaining the AI recommendation"}
 }`,
+    schema: OptimizeRouteResponseSchema,
     fallback: fallbackCore,
     onError: (error) => logger.error({ err: error }, 'Route optimization Claude error'),
   });
@@ -332,6 +336,7 @@ Basic ETA: ${etaBasic}
 
 Return JSON: {"basicEta": "ISO", "aiEta": "ISO", "confidence": number, "factors": ["string"], "recommendation": "string"}`,
     maxTokens: 800,
+    schema: PredictEtaResponseSchema,
     fallback: mockEta,
     onError: (error) => logger.error({ err: error }, 'ETA prediction error'),
   });
@@ -395,6 +400,7 @@ Cargo: ${voyage.cargoLoad || 285000} MT crude oil from ${voyage.departurePort ||
 ${additionalInfo ? `Additional info: ${additionalInfo}` : ''}
 Return JSON: {"subject": "string", "body": "string"}`,
     maxTokens: 1000,
+    schema: AgentMessageResponseSchema,
     fallback: mockMessage,
     onError: (error) => logger.error({ err: error }, 'Agent message generation error'),
   });

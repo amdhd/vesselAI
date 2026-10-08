@@ -13,7 +13,7 @@ import { logger } from '../lib/logger';
 import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
 import { requireVessel, canAccessVessel } from '../lib/tenant';
-import { AnalyzeAnomalySchema, WorkOrderSchema } from '../schemas';
+import { AnalyzeAnomalySchema, WorkOrderSchema, AnomalyAnalysisResponseSchema } from '../schemas';
 import { generateJson } from '../services/aiService';
 
 const router = Router();
@@ -270,6 +270,7 @@ Return JSON: {
   "urgency": "IMMEDIATE|HIGH|ROUTINE"
 }`,
       maxTokens: 1000,
+      schema: AnomalyAnalysisResponseSchema,
       fallback: mockAnalysis.analysis,
       onError: (error) => logger.error({ err: error }, 'Anomaly analysis Claude error'),
     });

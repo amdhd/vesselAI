@@ -10,6 +10,8 @@ import {
   UploadDocumentSchema,
   GenerateDefectReportSchema,
   HandoverSchema,
+  DefectReportResponseSchema,
+  HandoverResponseSchema,
 } from '../schemas';
 import { generateJson, streamChatResponse } from '../services/aiService';
 import { MOCK_DOCUMENTS } from '../mock/knowledgeDocuments';
@@ -163,6 +165,7 @@ Return JSON: {
   "urgency": "IMMEDIATE|HIGH|ROUTINE"
 }`,
     maxTokens: 1500,
+    schema: DefectReportResponseSchema,
     fallback: mockReport,
     onError: (error) => logger.error({ err: error }, 'Defect report generation error'),
   });
@@ -227,6 +230,7 @@ Parts on Order: ${partsOnOrder || 'None'}
 
 Return JSON: {"reportText": "full formatted handover report", "summary": "brief 1-2 sentence summary"}`,
     maxTokens: 1500,
+    schema: HandoverResponseSchema,
     fallback: mockHandover,
     onError: (error) => logger.error({ err: error }, 'Handover report generation error'),
   });
