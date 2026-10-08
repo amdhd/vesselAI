@@ -22,11 +22,8 @@ const router = Router();
 router.post('/chat', authenticate, aiLimiter, validate(KnowledgeChatSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { message, vesselId, conversationHistory = [] } = req.body;
 
-  const vessel = resolveFleetVessel(req, vesselId);
-  if (!vessel) {
-    res.status(403).json({ error: 'No accessible vessel for your fleet' });
-    return;
-  }
+  const vessel = resolveFleetVessel(req, res, vesselId);
+  if (!vessel) return;
   const vesselDocs = MOCK_DOCUMENTS[vessel.id] || [];
   const docNames = vesselDocs.map(d => d.name).join(', ');
 

@@ -92,22 +92,48 @@ describe('requireVessel', () => {
 
 describe('resolveFleetVessel', () => {
   it('returns the requested vessel when accessible', () => {
-    const vessel = resolveFleetVessel(mockReq(OWN_FLEET_ID), OWN_VESSEL_ID);
+    const res = mockRes();
+    const vessel = resolveFleetVessel(mockReq(OWN_FLEET_ID), res, OWN_VESSEL_ID);
     expect(vessel?.id).toBe(OWN_VESSEL_ID);
+    expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('falls back to the first fleet vessel when the requested one is inaccessible', () => {
-    const vessel = resolveFleetVessel(mockReq(OWN_FLEET_ID), 'not-in-this-fleet');
+  it('falls back to the first fleet vessel when no vessel was requested', () => {
+    const res = mockRes();
+    const vessel = resolveFleetVessel(mockReq(OWN_FLEET_ID), res);
     expect(vessel?.fleetId).toBe(OWN_FLEET_ID);
+    expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('never returns a vessel from another fleet', () => {
-    const vessel = resolveFleetVessel(mockReq(OWN_FLEET_ID), 'vessel-in-another-fleet');
-    expect(vessel?.fleetId).toBe(OWN_FLEET_ID);
+  it('responds 404 rather than another vessel when the requested id does not exist', () => {
+    // The regression: this returned the fleet's first vessel, so a request that
+    // named an unknown vessel was answered with vessel-001's name, IMO number
+    // and figures — the caller could not tell it had been given another ship.
+    const res = mockRes();
+    const vessel = resolveFleetVessel(mockReq(OWN_FLEET_ID), res, OTHER_FLEET_VESSEL_ID);
+    expect(vessel).toBeNull();
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 
-  it('returns undefined when the caller has no accessible vessels', () => {
-    expect(resolveFleetVessel(mockReq(null), OWN_VESSEL_ID)).toBeUndefined();
+  it('never substitutes a vessel for a requested id from another fleet', () => {
+    const res = mockRes();
+    const vessel = resolveFleetVessel(mockReq(OWN_FLEET_ID), res, 'vessel-in-another-fleet');
+    expect(vessel).toBeNull();
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it('responds 403 when the caller has no fleet vessel to fall back to', () => {
+    const res = mockRes();
+    expect(resolveFleetVessel(mockReq(null), res)).toBeNull();
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it('responds 404, not 403, when a fleetless caller names a vessel', () => {
+    // A supplied id always takes the "resolved to nothing" path, so a caller
+    // with no fleet learns nothing about whether that vessel exists.
+    const res = mockRes();
+    expect(resolveFleetVessel(mockReq(null), res, OWN_VESSEL_ID)).toBeNull();
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 });
 
