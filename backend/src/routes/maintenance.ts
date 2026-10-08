@@ -10,6 +10,7 @@ import {
 import { getSensorDataForEquipment } from '../mock/sensorData';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../lib/logger';
+import { recordAudit } from '../lib/audit';
 import { validate } from '../middleware/validate';
 import { aiLimiter } from '../middleware/rateLimiter';
 import { requireVessel, canAccessVessel } from '../lib/tenant';
@@ -313,6 +314,15 @@ router.post('/work-order', authenticate, validate(WorkOrderSchema), async (req: 
         estimatedHours: estimatedHours ?? null,
         plannedDate: plannedDate ? new Date(plannedDate) : null,
       },
+    });
+    // recordAudit never throws, so nothing here can reach the catch below and
+    // turn a saved order into a 503.
+    await recordAudit({
+      userId: req.user?.id,
+      entity: 'WorkOrder',
+      action: 'create',
+      entityId: workOrder.id,
+      details: { vesselId, equipmentId, title, priority },
     });
     res.status(201).json(toWorkOrderResponse(workOrder));
   } catch (error) {

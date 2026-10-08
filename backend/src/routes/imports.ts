@@ -2,6 +2,7 @@ import { Router, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../lib/logger';
+import { recordAudit } from '../lib/audit';
 import { importBunkerCsv } from '../services/bunkerImport';
 
 const router = Router();
@@ -35,6 +36,18 @@ router.post(
       if ('fatal' in result) {
         res.status(400).json({ error: result.fatal });
         return;
+      }
+      // Only a change is worth a trail row — an import that added nothing changed
+      // nothing. It is a bulk insert, so there is no single entityId to point at;
+      // the counts are what identify the action. recordAudit never throws, so it
+      // cannot be mistaken below for an import that failed.
+      if (result.imported > 0) {
+        await recordAudit({
+          userId: req.user?.id,
+          entity: 'BunkerRecord',
+          action: 'import',
+          details: { imported: result.imported, skipped: result.skipped, totalRows: result.totalRows },
+        });
       }
       res.status(result.imported > 0 ? 201 : 200).json(result);
     } catch (err) {

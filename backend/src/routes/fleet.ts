@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import { MOCK_FLEET, MOCK_VESSELS, MockVessel } from '../mock/vessels';
 import { MOCK_EQUIPMENT } from '../mock/equipment';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { recordAudit } from '../lib/audit';
 import { fleetVessels, requireVessel } from '../lib/tenant';
 import { validate } from '../middleware/validate';
 import { VesselCreateSchema, VesselUpdateSchema } from '../schemas';
@@ -128,6 +129,16 @@ router.post('/vessels', authenticate, validate(VesselCreateSchema), async (req: 
     const created = await prisma.vessel.create({
       data: { ...body, fleetId, currentLat: 0, currentLon: 0, currentSpeed: 0 },
     });
+    // Only the persisted path is audited. The fallback below records the vessel
+    // in a module-level array that a restart discards, so an audit row claiming
+    // it exists would outlive the vessel itself.
+    await recordAudit({
+      userId: req.user?.id,
+      entity: 'Vessel',
+      action: 'create',
+      entityId: created.id,
+      details: { name: created.name, imoNumber: created.imoNumber, fleetId },
+    });
     res.status(201).json(created);
     return;
   } catch {
@@ -166,6 +177,14 @@ router.patch('/vessels/:id', authenticate, validate(VesselUpdateSchema), async (
           return;
         }
         const updated = await prisma.vessel.update({ where: { id: req.params.id }, data: patch });
+        await recordAudit({
+          userId: req.user?.id,
+          entity: 'Vessel',
+          action: 'update',
+          entityId: updated.id,
+          // The patch itself, so the trail shows what changed and to what.
+          details: patch,
+        });
         res.json(updated);
         return;
       }
