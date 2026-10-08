@@ -117,7 +117,6 @@ model Equipment {
   status          String             @default("healthy")
   sensorReadings  SensorReading[]
   maintenanceAlerts MaintenanceAlert[]
-  workOrders      WorkOrder[]
   createdAt       DateTime           @default(now())
 }
 
@@ -146,10 +145,19 @@ model MaintenanceAlert {
   createdAt    DateTime  @default(now())
 }
 
+// A work order carries its vessel and equipment name denormalized rather than
+// reaching them through the Equipment relation. Equipment is code, not data in
+// this app: the catalogue is 33 procedurally-generated items in
+// src/mock/equipment.ts and only two of them exist as Equipment rows, so a
+// required `equipmentId` FK made a work order impossible to create for the other
+// 31 — the insert failed on the constraint. equipmentId stays as the catalogue
+// key; equipmentName is what the board renders.
 model WorkOrder {
   id           String    @id @default(uuid())
+  vesselId     String
   equipmentId  String
-  equipment    Equipment @relation(fields: [equipmentId], references: [id])
+  equipmentName String
+  type         String    @default("corrective")
   title        String
   description  String
   priority     String

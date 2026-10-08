@@ -123,10 +123,14 @@ export const AnalyzeAnomalySchema = z.object({
 
 export const WorkOrderSchema = z.object({
   equipmentId: z.string().min(1).max(50),
+  // The catalogue name travels with the order so the board can render it
+  // without resolving equipmentId against a catalogue the DB does not hold.
+  equipmentName: z.string().min(1).max(100),
   vesselId: z.string().min(1).max(50),
   title: z.string().min(1).max(200),
   description: z.string().min(1).max(2000),
   priority: z.enum(['critical', 'high', 'medium', 'low']),
+  type: z.enum(['preventive', 'corrective', 'condition_based']).optional(),
   assignedTo: z.string().max(100).optional(),
   requiredParts: z.string().max(500).optional(),
   estimatedHours: z.number().min(0).max(9999).optional(),

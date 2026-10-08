@@ -179,6 +179,68 @@ describe('POST /api/notifications (tenant scope)', () => {
   });
 });
 
+describe('work orders (persistence)', () => {
+  const validBody = {
+    vesselId: 'vessel-001',
+    equipmentId: 'tc-001',
+    equipmentName: 'Turbocharger #1 (Port)',
+    title: 'Replace bearing',
+    description: 'Vibration climbing.',
+    priority: 'high',
+    estimatedHours: 8,
+    plannedDate: new Date(Date.now() + 3 * 86400000).toISOString(),
+  };
+
+  it('rejects a work order with no equipmentId — the shape the create form used to send', async () => {
+    // WorkOrderSystem posted `equipmentName` as free text and no id at all, so
+    // every create from the UI failed here. The id is required; the name rides
+    // along with it.
+    const token = await demoToken();
+    const { equipmentId, equipmentName, ...withoutId } = validBody;
+    const res = await request(app)
+      .post('/api/maintenance/work-order')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ ...withoutId, equipmentName, type: 'corrective' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.details.equipmentId).toBeTruthy();
+  });
+
+  it('rejects a bare date for plannedDate, which <input type="date"> produces', async () => {
+    const token = await demoToken();
+    const res = await request(app)
+      .post('/api/maintenance/work-order')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ ...validBody, plannedDate: '2026-10-07' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.details.plannedDate).toBeTruthy();
+  });
+
+  it('does not report a work order as created when the database is unreachable', async () => {
+    // The regression this replaces: the order went into a module-level array,
+    // so the request returned 201 while the row did not exist anywhere — and at
+    // two replicas the order appeared on whichever pod served that request.
+    const token = await demoToken();
+    const res = await request(app)
+      .post('/api/maintenance/work-order')
+      .set('Authorization', `Bearer ${token}`)
+      .send(validBody);
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toMatch(/not saved/i);
+  });
+
+  it('does not serve an empty board as though it were the truth when the DB is down', async () => {
+    const token = await demoToken();
+    const res = await request(app)
+      .get('/api/maintenance/work-orders/vessel-001')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(503);
+  });
+});
+
 describe('POST /api/weather/sync (fleet-membership gate)', () => {
   it('blocks a fleetless fleet_manager — the role alone is self-assignable at signup', async () => {
     const res = await request(app)

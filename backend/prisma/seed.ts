@@ -182,6 +182,54 @@ async function main() {
 
   console.log('Maintenance alerts created');
 
+  // Create Work Orders. These two were previously a hardcoded array inside
+  // routes/maintenance.ts, so the board showed them even against an empty
+  // table; now that work orders are real rows they have to be seeded like any
+  // other demo data.
+  await prisma.workOrder.upsert({
+    where: { id: 'wo-001' },
+    update: {},
+    create: {
+      id: 'wo-001',
+      vesselId: 'vessel-001',
+      equipmentId: 'tc-001',
+      equipmentName: 'Turbocharger #1 (Port)',
+      type: 'corrective',
+      title: 'Turbocharger #1 Bearing Inspection & Replacement',
+      description: 'Critical bearing replacement required. Vibration levels at 4.8 mm/s indicating imminent failure. Arrange port call within 4 days.',
+      priority: 'critical',
+      assignedTo: 'Chief Engineer',
+      requiredParts: 'ABB-TCA88-BRG-001 (bearing kit), ABB-TCA88-SEAL-001 (seal kit)',
+      estimatedHours: 16,
+      plannedDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+      status: 'open',
+      createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  await prisma.workOrder.upsert({
+    where: { id: 'wo-002' },
+    update: {},
+    create: {
+      id: 'wo-002',
+      vesselId: 'vessel-002',
+      equipmentId: 'me-002',
+      equipmentName: 'Main Engine',
+      type: 'preventive',
+      title: 'Main Engine Major Overhaul - Cylinder Units',
+      description: 'Overdue cylinder unit overhaul. 2,100 running hours past manufacturer interval. Schedule drydock.',
+      priority: 'high',
+      assignedTo: 'Technical Superintendent',
+      requiredParts: 'Piston rings set x6, cylinder liner inspection kit, fuel injectors x6',
+      estimatedHours: 120,
+      plannedDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000),
+      status: 'open',
+      createdAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  console.log('Work orders created');
+
   // Create Emission Logs for vessel-001
   const emissionData = [
     { route: 'Port Dickson - Fujairah', fuelConsumed: 1820, co2Tonnes: 5733, soxTonnes: 5.46, noxTonnes: 91.0 },
