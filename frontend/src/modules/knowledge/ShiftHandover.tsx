@@ -7,11 +7,11 @@ import { formatDateTime } from '../../lib/utils'
 import { printAsPdf } from '../../lib/pdfExport'
 import { toBackendVesselId } from '../../lib/utils'
 import { describeApiError } from '../../lib/apiError'
-import axios from 'axios'
+import type { HandoverReport } from '../../lib/types'
+import { knowledgeApi } from '../../lib/api'
 
 const WATCH_OPTIONS = ['00-04 / 12-16', '04-08 / 16-20', '08-12 / 20-24']
 
-interface HandoverResult { reportText: string; summary: string }
 interface HandoverRecord { id: string; watch: string; engineer: string; aiSummary: string; createdAt: string }
 
 export default function ShiftHandover() {
@@ -25,7 +25,7 @@ export default function ShiftHandover() {
     pendingOrders: '',
   })
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<HandoverResult | null>(null)
+  const [result, setResult] = useState<HandoverReport | null>(null)
   const [error, setError] = useState('')
 
   const { data: history = [] } = useQuery<HandoverRecord[]>({
@@ -40,11 +40,19 @@ export default function ShiftHandover() {
     setLoading(true)
     setError('')
     try {
-      const { data } = await axios.post('/api/knowledge/handover', {
+      // The client sends `engineer`, which is what the backend's HandoverSchema
+      // requires — the old call posted it as `engineerName` alongside its own
+      // hand-attached token, which is why it never went near the shared client.
+      // `form.pendingOrders` is not sent: the schema has no such field.
+      const report = await knowledgeApi.createHandover({
         vesselId: toBackendVesselId(selectedVessel?.id),
-        ...form,
-      }, { headers: { Authorization: `Bearer ${localStorage.getItem('vm_token')}` } })
-      setResult(data)
+        watch: form.watch,
+        engineer: form.engineer,
+        ongoingJobs: form.ongoingJobs,
+        abnormalReadings: form.abnormalReadings,
+        partsOnOrder: form.partsOnOrder,
+      })
+      setResult(report)
     } catch (err) {
       // This used to synthesise a report on failure, ending with "Vessel in
       // normal operational condition" — a claim about the ship that no AI ever

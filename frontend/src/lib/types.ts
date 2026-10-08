@@ -302,34 +302,33 @@ export interface KnowledgeDocument {
   tags: string[]
 }
 
+// Shapes below mirror what POST /api/knowledge/generate-defect-report and
+// /api/knowledge/handover actually return (backend/src/routes/knowledge.ts).
+// They previously described an imagined API — `defectDescription`, `reportNumber`,
+// `engineerName`, `reportContent` — none of which the server has ever sent, which
+// is why the two screens using them declared their own local interfaces and
+// posted with axios directly instead of through the shared client.
 export interface DefectReport {
-  id: string
+  reportText: string
+  probableCause: string
+  recommendedAction: string
+  partsRequired: string
+  urgency: string
+  reportId: string
   vesselId: string
   equipment: string
-  defectDescription: string
-  symptoms: string
-  conditions: string
-  severity: 'low' | 'medium' | 'high' | 'critical'
-  generatedAt: string
-  reportNumber: string
-  probableCause?: string
-  recommendedAction?: string
-  partsRequired?: string[]
-  urgency?: string
-  aiGenerated?: string
+  severity: string
+  createdAt: string
 }
 
 export interface HandoverReport {
-  id: string
+  reportText: string
+  summary: string
+  reportId: string
   vesselId: string
   watch: string
-  engineerName: string
-  ongoingJobs: string
-  abnormalReadings: string
-  partsOnOrder: string
-  pendingWorkOrders: string
-  generatedAt: string
-  reportContent?: string
+  engineer: string
+  createdAt: string
 }
 
 // ─── SIRE ───────────────────────────────────────────────────────────────────────

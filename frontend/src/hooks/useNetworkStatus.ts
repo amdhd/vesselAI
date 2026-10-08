@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { offlineQueue, currentUserId } from '@/lib/offlineQueue'
+import { replayQueuedMutation } from '@/lib/api'
 
 interface NetworkStatus {
   isOnline: boolean
@@ -20,27 +21,19 @@ export function useNetworkStatus(): NetworkStatus {
     const items = offlineQueue.getAllFor(currentUserId())
     if (items.length === 0) return
     setIsSyncing(true)
-    const token = localStorage.getItem('vm_token')
-    const BASE_URL = (import.meta.env.VITE_API_URL as string) || '/api'
 
     for (const item of items) {
-      try {
-        const res = await fetch(`${BASE_URL}${item.url}`, {
-          method: item.method,
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: item.data ? JSON.stringify(item.data) : undefined,
-        })
-        if (res.ok || res.status < 500) {
-          // Success or a client error (4xx) — remove from queue either way
-          offlineQueue.remove(item.id)
-        }
-      } catch {
-        // Still offline — stop and try later
+      const decision = await replayQueuedMutation(item)
+      if (decision === 'drop') {
+        offlineQueue.remove(item.id)
+      } else if (decision === 'stop') {
+        // Still offline, or the token was rejected. Leave every remaining entry
+        // queued — including this one. A rejected token is transient, and the
+        // queue is keyed per user, so the write replays under the same account
+        // once they sign in again.
         break
       }
+      // 'keep': the server failed on this one; leave it and try the next.
     }
     setIsSyncing(false)
     refreshCount()

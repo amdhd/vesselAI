@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import axios from 'axios'
-import { offlineQueue } from './offlineQueue'
+import { offlineQueue, type QueuedMutation } from './offlineQueue'
 import type {
   AuthResponse,
   User,
@@ -26,6 +26,17 @@ import type {
 
 const BASE_URL = (import.meta.env.VITE_API_URL as string) || '/api'
 
+declare module 'axios' {
+  export interface AxiosRequestConfig {
+    /**
+     * Marks a background replay of a queued write, rather than a user action.
+     * A 401 on one of these must not tear down the session and redirect — see
+     * replayQueuedMutation.
+     */
+    skipAuthRedirect?: boolean
+  }
+}
+
 const api = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
@@ -44,13 +55,58 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (error) => {
-    if (error.response?.status === 401) {
+    // A 401 to a replayed write is not "your session ended". The token simply
+    // expired, possibly while the user was offline, and the write is still owed
+    // to them — redirecting to /login mid-flush would strand it silently.
+    if (error.response?.status === 401 && !error.config?.skipAuthRedirect) {
       localStorage.removeItem('vm_token')
       window.location.href = '/login'
     }
     return Promise.reject(error)
   },
 )
+
+// ─── Offline replay ───────────────────────────────────────────────────────────
+
+export type ReplayDecision =
+  /** Accepted, or rejected in a way that can never succeed — forget the entry. */
+  | 'drop'
+  /** The server failed transiently — leave it queued and try the next entry. */
+  | 'keep'
+  /** The request never landed, or the token was rejected — stop the flush. */
+  | 'stop'
+
+/**
+ * Replays one queued write through the shared client and reports what the caller
+ * should do with the entry.
+ *
+ * This exists so the queue reuses the client's base URL, token handling and
+ * error shape instead of hand-rolling them (useNetworkStatus used to build its
+ * own fetch with its own BASE_URL), while still being able to say "not this
+ * time" about the client's 401 handling, which is written for user actions.
+ *
+ * A rejected write is only dropped when retrying could never help: a 5xx is the
+ * server's problem, not the payload's, and a 401 is an expired token, so both
+ * keep the entry. Treating every status below 500 as final — which is what the
+ * flush did — quietly deleted the user's write on an expired token.
+ */
+export async function replayQueuedMutation(item: QueuedMutation): Promise<ReplayDecision> {
+  try {
+    await api.request({
+      method: item.method,
+      url: item.url,
+      data: item.data,
+      skipAuthRedirect: true,
+    })
+    return 'drop'
+  } catch (error) {
+    // Not an HTTP response at all: still offline, or the request never landed.
+    if (!axios.isAxiosError(error) || error.response === undefined) return 'stop'
+    const { status } = error.response
+    if (status === 401) return 'stop'
+    return status < 500 ? 'drop' : 'keep'
+  }
+}
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -71,14 +127,74 @@ export const authApi = {
 
 // ─── Fleet ────────────────────────────────────────────────────────────────────
 
+// The backend's vessel shape (Prisma schema + mock fixtures) never matched the
+// frontend's Vessel type — e.g. flat currentLat/currentLon/currentSpeed instead
+// of a nested `position` object, `imoNumber` instead of `imo`. Reading a response
+// as a Vessel left `vessel.position` undefined, which crashed any screen touching
+// `.position.lat` (CII tracker, live fleet map, port scheduling). Normalize here,
+// at the boundary, so getFleet()/getVessel() return the Vessel they claim to.
+interface BackendVessel {
+  id: string
+  name: string
+  imoNumber: string
+  type: string
+  flag: string
+  builtYear: number
+  dwt: number
+  currentLat?: number
+  currentLon?: number
+  currentSpeed?: number
+  status: string
+  fleetId: string
+}
+
+function normalizeVessel(v: BackendVessel): Vessel {
+  return {
+    id: v.id,
+    name: v.name,
+    imo: v.imoNumber,
+    type: v.type as Vessel['type'],
+    flag: v.flag,
+    yearBuilt: v.builtYear,
+    grossTonnage: v.dwt,
+    deadweightTonnage: v.dwt,
+    status: v.status as Vessel['status'],
+    position: {
+      lat: v.currentLat ?? 0,
+      lng: v.currentLon ?? 0,
+      heading: 0,
+      speed: v.currentSpeed ?? 0,
+      timestamp: new Date().toISOString(),
+    },
+    fleetId: v.fleetId,
+    // Not returned by /api/fleet (that's a compliance-domain concern served by
+    // /api/compliance/*) — default to neutral values so KPI math doesn't NaN.
+    ciiRating: 'C',
+    fuelEfficiencyScore: 70,
+  }
+}
+
 export const fleetApi = {
   getFleet: async (): Promise<Fleet> => {
-    const { data } = await api.get<Fleet>('/fleet')
-    return data
+    // The response wraps flat backend vessels; the Fleet type promises Vessels.
+    const { data } = await api.get<{
+      id: string
+      name: string
+      operator: string
+      vessels: BackendVessel[]
+    }>('/fleet')
+    const vessels = data.vessels.map(normalizeVessel)
+    return {
+      id: data.id,
+      name: data.name,
+      company: data.operator,
+      vessels,
+      totalVessels: vessels.length,
+    }
   },
   getVessel: async (id: string): Promise<Vessel> => {
-    const { data } = await api.get<Vessel>(`/fleet/vessels/${id}`)
-    return data
+    const { data } = await api.get<BackendVessel>(`/fleet/vessels/${id}`)
+    return normalizeVessel(data)
   },
 }
 
@@ -314,6 +430,20 @@ export const portsApi = {
 
 // ─── Knowledge ────────────────────────────────────────────────────────────────
 
+// The defect form's severity picker and the backend's GenerateDefectReportSchema
+// use different vocabularies. Only 'critical' overlapped, so picking Minor,
+// Moderate or Serious failed the schema and came back 400 — the report form only
+// ever worked on its most severe setting. Translate at the boundary, the way
+// SPEED_PREFERENCE_TO_BACKEND does for voyage speeds.
+const SEVERITY_TO_BACKEND = {
+  minor: 'low',
+  moderate: 'medium',
+  serious: 'high',
+  critical: 'critical',
+} as const
+
+export type DefectSeverity = keyof typeof SEVERITY_TO_BACKEND
+
 /**
  * One chunk of a streamed chat reply.
  *
@@ -335,12 +465,14 @@ export const knowledgeApi = {
   generateDefectReport: async (params: {
     vesselId: string
     equipment: string
-    defectDescription: string
+    description: string
     symptoms: string
-    conditions: string
-    severity: string
+    severity: DefectSeverity
   }): Promise<DefectReport> => {
-    const { data } = await api.post<DefectReport>('/knowledge/generate-defect-report', params)
+    const { data } = await api.post<DefectReport>('/knowledge/generate-defect-report', {
+      ...params,
+      severity: SEVERITY_TO_BACKEND[params.severity],
+    })
     return data
   },
   getDocuments: async (vesselId: string): Promise<KnowledgeDocument[]> => {
@@ -351,11 +483,13 @@ export const knowledgeApi = {
   createHandover: async (params: {
     vesselId: string
     watch: string
-    engineerName: string
+    // `engineer` here, not `engineerName`: the backend's HandoverSchema requires
+    // `engineer` (min 1) and strips unknown keys, so the old name failed
+    // validation on every call — the reason ShiftHandover bypassed this client.
+    engineer: string
     ongoingJobs: string
     abnormalReadings: string
     partsOnOrder: string
-    pendingWorkOrders: string
   }): Promise<HandoverReport> => {
     const { data } = await api.post<HandoverReport>('/knowledge/handover', params)
     return data
