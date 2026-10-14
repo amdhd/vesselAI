@@ -18,7 +18,7 @@
 # never at /app directly.
 
 # ---- build: run the pipeline, produce data/vesselmind.duckdb ----
-FROM python:3.10-slim AS build
+FROM python:3.14.8-slim-bookworm AS build
 WORKDIR /app/data-platform
 
 # Patch OS packages here too. This stage is not just a build artifact — the
@@ -31,7 +31,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# dbt-core ships no wheels for the newest Python; 3.10 matches requirements.txt.
+# Python 3.14 is validated with the pinned pipeline dependencies.
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -67,11 +67,11 @@ RUN cd dbt && dbt build --profiles-dir .
 # The rm is belt-and-braces: uninstall removes what pip recorded, and this
 # guarantees no vendored file survives it.
 RUN pip uninstall -y pip \
-    && rm -rf /usr/local/lib/python3.10/site-packages/pip \
-              /usr/local/lib/python3.10/site-packages/pip-*.dist-info
+    && rm -rf /usr/local/lib/python3.14/site-packages/pip \
+              /usr/local/lib/python3.14/site-packages/pip-*.dist-info
 
 # ---- runtime: slim, non-root ----
-FROM python:3.10-slim AS runtime
+FROM python:3.14.8-slim-bookworm AS runtime
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app/data-platform

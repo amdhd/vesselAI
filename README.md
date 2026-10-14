@@ -87,7 +87,7 @@ cd data-platform && .venv/bin/uvicorn api.main:app --port 8000
 - **Frontend:** React 18 + TypeScript + Vite + Tailwind CSS + Recharts + Leaflet
 - **Backend:** Node.js + Express + TypeScript + Prisma ORM
 - **Database:** PostgreSQL 16 (operational) · DuckDB (analytical warehouse)
-- **Data platform:** Python 3.10 + dbt Core (bronze/silver/gold medallion) + FastAPI serving layer + Streamlit dashboard
+- **Data platform:** Python 3.14.8 + dbt Core (bronze/silver/gold medallion) + FastAPI serving layer + Streamlit dashboard
 - **AI:** Anthropic Claude API, streamed (SSE) for chat, structured JSON for domain tasks
 - **Testing:** Vitest everywhere — backend unit tests (tenant isolation, JWT auth middleware, ingestion pipelines, voyage agent) plus supertest route-integration tests exercising the real Express app over HTTP; frontend unit + Testing Library component tests; dbt data tests and pytest on the data platform
 - **Real-time:** Socket.io · **Auth:** JWT
@@ -210,11 +210,11 @@ npm run dev          # http://localhost:5173
 
 ### 4. Build the analytics warehouse (optional — powers the Fleet Analytics page)
 
-Needs Python 3.10 (dbt doesn't support 3.14 yet). Full detail in [`data-platform/README.md`](data-platform/README.md).
+Needs Python 3.14.8 (validated with the pinned dbt and DuckDB stack). Full detail in [`data-platform/README.md`](data-platform/README.md).
 
 ```bash
 cd data-platform
-python3.10 -m venv .venv && .venv/bin/pip install -r requirements.txt
+python3.14 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python notebooks_or_scripts/generate_sample_ais.py   # or drop a NOAA daily CSV in data/raw/
 .venv/bin/python ingestion/load_bronze.py                      # bronze
 cd dbt && ../.venv/bin/dbt build --profiles-dir . && cd ..     # silver + gold + 21 data tests

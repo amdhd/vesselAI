@@ -31,21 +31,22 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(import.meta.dirname, './src'),
     },
   },
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          // Core React — always needed, cache aggressively
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          // Heavy map lib — only needed on fleet/ports pages
-          'vendor-map': ['leaflet', 'react-leaflet'],
-          // Charting lib — used across several modules
-          'vendor-charts': ['recharts'],
-          // Query + axios — needed everywhere but separate from React
-          'vendor-query': ['@tanstack/react-query', '@tanstack/react-query-persist-client', 'axios'],
+        manualChunks(id) {
+          const groups = {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-map': ['leaflet', 'react-leaflet'],
+            'vendor-charts': ['recharts'],
+            'vendor-query': ['@tanstack/react-query', '@tanstack/react-query-persist-client', 'axios'],
+          }
+          for (const [chunk, packages] of Object.entries(groups)) {
+            if (packages.some(pkg => id.includes(`/node_modules/${pkg}/`))) return chunk
+          }
         },
       },
     },

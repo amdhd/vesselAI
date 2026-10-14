@@ -17,10 +17,10 @@
 #   runtime — slim, non-root final image
 
 # ---- deps ----
-FROM node:20-alpine AS deps
+FROM node:24.21.0-alpine AS deps
 WORKDIR /app
 # Prisma's schema + query engines are dynamically linked against OpenSSL, which
-# node:20-alpine does not ship. Without it `prisma migrate deploy` dies with
+# node:24.21.0-alpine does not ship. Without it `prisma migrate deploy` dies with
 # "Could not parse schema engine response", so migrations — and therefore the
 # whole prod stack — never come up.
 RUN apk add --no-cache openssl
@@ -64,7 +64,7 @@ FROM build AS prune
 RUN npm prune --omit=dev
 
 # ---- runtime: slim, non-root ----
-FROM node:20-alpine AS runtime
+FROM node:24.21.0-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 
@@ -88,7 +88,7 @@ ARG APK_REFRESH=0
 RUN apk add --no-cache dumb-init openssl && apk upgrade --no-cache
 
 # Remove npm and npx from the runtime image. The container's command is
-# `node dist/server.js` — npm is never invoked, but node:20-alpine ships it
+# `node dist/server.js` — npm is never invoked, but node:24.21.0-alpine ships it
 # along with its own bundled dependency tree, which is where a Trivy scan found
 # six vulnerable packages including the image's only CRITICAL (node-tar).
 # Deleting an unused tool is a better fix than patching it: the vulnerabilities

@@ -55,7 +55,7 @@ vessels sitting near-stationary for extended periods (fuel burn / port congestio
 |------|------|--------------|
 | **DuckDB** | The warehouse engine (an embedded OLAP database, "SQLite for analytics") | Zero setup — it's just a file. Reads CSVs directly and processes data larger than RAM, so a full daily file loads fine on 16GB. |
 | **dbt Core** (+ dbt-duckdb) | Transform bronze → silver → gold in SQL | Industry-standard for versioned, tested, documented SQL transformations. *(Phase 2)* |
-| **Python 3.10** | The ingestion loader | Simple, and the venv is pinned to 3.10 because dbt does not yet support 3.14. |
+| **Python 3.14** | The ingestion loader | Python 3.14.8 is validated with the pinned dbt and DuckDB stack. |
 | **Streamlit** | The dashboard | Turns gold tables into a UI in ~100 lines, no frontend build. *(Phase 4)* |
 
 ---
@@ -65,8 +65,8 @@ vessels sitting near-stationary for extended periods (fuel burn / port congestio
 ```bash
 cd data-platform             # this project lives inside the vesselAI repo
 
-# 1) Create the environment (Python 3.10 — see note above)
-python3.10 -m venv .venv
+# 1) Create the environment (Python 3.14 — see note above)
+python3.14 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
@@ -93,7 +93,7 @@ cd dbt
 cd ..
 
 # 6) Launch the dashboard (its own venv — see "Dashboard" below for why)
-python3.10 -m venv .venv-dashboard
+python3.14 -m venv .venv-dashboard
 source .venv-dashboard/bin/activate
 pip install -r requirements-dashboard.txt
 streamlit run dashboard.py                # opens http://localhost:8501
@@ -148,7 +148,7 @@ latest position, a **bar chart** of distance travelled per vessel, and the
 **idling report** table. A sidebar filters by vessel type.
 
 ```bash
-python3.10 -m venv .venv-dashboard && source .venv-dashboard/bin/activate
+python3.14 -m venv .venv-dashboard && source .venv-dashboard/bin/activate
 pip install -r requirements-dashboard.txt
 streamlit run dashboard.py    # http://localhost:8501
 ```
