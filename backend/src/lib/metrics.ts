@@ -27,8 +27,8 @@ export const aiRequestsTotal = new Counter({
 // over the raw URL so metric cardinality stays bounded — a per-id path would
 // otherwise explode the label set.
 function routeLabel(req: Request): string {
-  const base = (req.baseUrl || '') + ((req.route && req.route.path) || '');
-  return base || req.path || 'unknown';
+  if (!req.route?.path) return 'unmatched';
+  return (req.baseUrl || '') + req.route.path;
 }
 
 /** Times every request and records it into the latency histogram on finish. */

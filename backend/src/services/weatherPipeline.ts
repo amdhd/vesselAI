@@ -44,7 +44,8 @@ export async function syncWeather(locations: MonitoredPoint[] = MARINE_LOCATIONS
         });
         ingested += 1;
       } catch (err) {
-        errors.push({ location: loc.name ?? `${loc.latitude},${loc.longitude}`, error: err instanceof Error ? err.message : String(err) });
+        log.warn({ err }, 'weather location ingestion failed');
+        errors.push({ location: loc.name ?? `${loc.latitude},${loc.longitude}`, error: 'Weather ingestion failed' });
       }
     })
   );

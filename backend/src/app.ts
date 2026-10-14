@@ -10,6 +10,7 @@ import pinoHttp from 'pino-http';
 import type { Server as SocketIOServer } from 'socket.io';
 import { env } from './config/env';
 import { logger } from './lib/logger';
+import { safeLogSerializers } from './lib/diagnostics';
 import { prisma } from './lib/prisma';
 import { metricsMiddleware, registry } from './lib/metrics';
 import { apiLimiter, authLimiter } from './middleware/rateLimiter';
@@ -58,6 +59,8 @@ export function createApp(io?: SocketIOServer): Application {
   app.use(
     pinoHttp({
       logger,
+      wrapSerializers: false,
+      serializers: safeLogSerializers,
       customLogLevel: (req, res, err) => {
         if (req.url === '/api/health' || req.url === '/metrics') return 'debug';
         if (res.statusCode >= 500 || err) return 'error';
@@ -70,9 +73,13 @@ export function createApp(io?: SocketIOServer): Application {
   // Record request latency into the Prometheus histogram.
   app.use(metricsMiddleware);
 
-  // Metrics scrape endpoint. Optionally protected with a bearer token — set
-  // METRICS_TOKEN in production so the series aren't world-readable.
+  // Production metrics stay disabled until a scrape credential is configured.
+  // Local development can scrape without a token.
   app.get('/metrics', async (req: Request, res: Response) => {
+    if (env.NODE_ENV === 'production' && !env.METRICS_TOKEN) {
+      res.status(404).end();
+      return;
+    }
     if (env.METRICS_TOKEN && req.headers.authorization !== `Bearer ${env.METRICS_TOKEN}`) {
       res.status(401).end();
       return;

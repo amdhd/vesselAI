@@ -125,7 +125,7 @@ describe('runVoyageAgent — loop mechanics (mocked model)', () => {
 
     expect(plan.fallback).toBe(false);
     expect(plan.toolCalls[0].tool).toBe('compute_fuel');
-    expect(plan.toolCalls[0].output).toHaveProperty('error');
+    expect(plan.toolCalls[0].output).toEqual({ error: 'Tool execution failed' });
     expect(plan.recommendation).toContain('gracefully');
   });
 
