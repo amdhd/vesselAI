@@ -14,11 +14,15 @@ export const errorHandler = (
   _next: NextFunction
 ): void => {
   const statusCode = err.statusCode || 500;
-  const message = err.message || 'Internal Server Error';
+  const publicMessages: Record<number, string> = {
+    400: 'Invalid request', 401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found',
+    409: 'Conflict', 413: 'Request body too large', 429: 'Too many requests',
+  };
+  const message = publicMessages[statusCode] || 'Request failed';
 
-  // Log server errors with structured fields (stack included for debugging).
+  // Log a safe error category; raw messages and stacks can contain private data.
   if (statusCode >= 500) {
-    logger.error({ err, code: err.code }, 'unhandled request error');
+    logger.error({ err }, 'unhandled request error');
   }
 
   // Prisma-specific error handling
@@ -41,14 +45,13 @@ export const errorHandler = (
   res.status(statusCode).json({
     error: statusCode >= 500 ? 'Internal Server Error' : message,
     message: statusCode >= 500 ? 'An unexpected error occurred' : message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack, details: err.details }),
   });
 };
 
-export const notFound = (req: Request, res: Response): void => {
+export const notFound = (_req: Request, res: Response): void => {
   res.status(404).json({
     error: 'Not Found',
-    message: `Route ${req.method} ${req.path} not found`,
+    message: 'Route not found',
   });
 };
 

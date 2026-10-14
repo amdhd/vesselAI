@@ -1,6 +1,8 @@
 import axios from 'axios'
 import type { AxiosAdapter, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('idb-keyval', () => ({ del: vi.fn().mockResolvedValue(undefined) }))
 
 // These tests exercise the real client — real axios instance, real interceptors —
 // and replace only the transport, so the 401 handling under test is the code that
@@ -16,6 +18,7 @@ interface Captured {
 }
 
 const captured: Captured[] = []
+let beforeReply: (() => void) | undefined
 let nextReply: { status: number; data?: unknown; networkFailure?: boolean } = { status: 200, data: {} }
 
 function reply(status: number, data?: unknown) {
@@ -39,6 +42,7 @@ beforeAll(async () => {
       skipAuthRedirect: config.skipAuthRedirect,
     })
 
+    beforeReply?.()
     const error = new Error('Request failed') as Error & {
       isAxiosError: boolean
       response?: AxiosResponse
@@ -71,6 +75,7 @@ afterAll(() => {
 
 beforeEach(() => {
   captured.length = 0
+  beforeReply = undefined
   reply(200, {})
   localStorage.clear()
 })
@@ -217,6 +222,7 @@ describe('fleetApi.getFleet', () => {
 })
 
 describe('replayQueuedMutation', () => {
+  beforeEach(() => localStorage.setItem('vm_user', JSON.stringify({ id: 'user-1' })))
   const entry = {
     id: 'queued-1',
     method: 'POST' as const,
@@ -271,11 +277,43 @@ describe('replayQueuedMutation', () => {
 
   it('still signs the user out on a 401 that is not a replay', async () => {
     localStorage.setItem('vm_token', 'expired-token')
+    localStorage.setItem('vm_knowledge_chat_vessel-001', 'private A chat')
+    localStorage.setItem('vm_session_id', 'session-a')
     reply(401, { error: 'Unauthorized' })
 
     await expect(api.fleetApi.getFleet()).rejects.toThrow()
 
     // The replay opt-out must not have weakened the ordinary path.
     expect(localStorage.getItem('vm_token')).toBeNull()
+    expect(localStorage.getItem('vm_user')).toBeNull()
+    expect(localStorage.getItem('vm_knowledge_chat_vessel-001')).toBeNull()
   })
+
+  it('does not replay a captured prior-account write with the replacement credentials', async () => {
+    localStorage.setItem('vm_user', JSON.stringify({ id: 'user-2' }))
+    localStorage.setItem('vm_token', 'user-2-token')
+    await expect(api.replayQueuedMutation(entry)).resolves.toBe('stop')
+    expect(captured).toHaveLength(0)
+  })
+
+  it('ignores a late 401 from the previous login instead of clearing the replacement session', async () => {
+    localStorage.setItem('vm_session_id', 'session-a')
+    localStorage.setItem('vm_token', 'token-a')
+    reply(401, { error: 'Unauthorized' })
+    beforeReply = () => {
+      localStorage.setItem('vm_session_id', 'session-b')
+      localStorage.setItem('vm_token', 'token-b')
+    }
+    await expect(api.fleetApi.getFleet()).rejects.toThrow()
+    expect(localStorage.getItem('vm_token')).toBe('token-b')
+    expect(localStorage.getItem('vm_session_id')).toBe('session-b')
+  })
+
+  it('rechecks queued-write ownership when the async request interceptor runs', async () => {
+    const pending = api.replayQueuedMutation(entry)
+    localStorage.setItem('vm_user', JSON.stringify({ id: 'user-2' }))
+    await expect(pending).resolves.toBe('stop')
+    expect(captured).toHaveLength(0)
+  })
+
 })

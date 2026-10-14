@@ -11,22 +11,9 @@ export default defineConfig({
       workbox: {
         // Cache static assets (cache-first, long TTL)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        // Cache API GET responses (network-first, fall back to cache when offline)
-        runtimeCaching: [
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'vm-api-cache',
-              networkTimeoutSeconds: 8,
-              expiration: {
-                maxEntries: 150,
-                maxAgeSeconds: 60 * 60 * 24, // 24 hours
-              },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-        ],
+        // Private API responses must never enter an origin-wide service-worker
+        // cache. Offline query persistence is scoped to the authenticated session.
+        runtimeCaching: [],
       },
       manifest: {
         name: 'VesselMind AI',

@@ -1,5 +1,6 @@
 import pino from 'pino';
 import { env, resolvedLogLevel, isProduction } from '../config/env';
+import { safeLogSerializers } from './diagnostics';
 
 // Single structured (JSON) logger for the whole process. JSON in every
 // environment so logs are machine-parseable by whatever ships them in
@@ -10,6 +11,7 @@ import { env, resolvedLogLevel, isProduction } from '../config/env';
 // stray request-log or error never leaks a credential.
 export const logger = pino({
   level: resolvedLogLevel,
+  serializers: safeLogSerializers,
   base: { service: 'vesselmind-api', env: env.NODE_ENV },
   redact: {
     paths: [

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import type { WorkOrder } from '@prisma/client';
+import type { Prisma, WorkOrder } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import {
   MOCK_MAINTENANCE_ALERTS,
@@ -88,6 +88,17 @@ function toWorkOrderResponse(wo: WorkOrder) {
     completedDate: wo.completedDate?.toISOString(),
     createdAt: wo.createdAt.toISOString(),
   };
+}
+
+// Keep ownership stable until the persisted read/write completes. Unlike the
+// demo catalogue, this checks the current database owner and fails closed.
+async function lockOwnedVessel(tx: Prisma.TransactionClient, vesselId: string, fleetId: string): Promise<boolean> {
+  const vessels = await tx.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "Vessel"
+    WHERE "id" = ${vesselId} AND "fleetId" = ${fleetId}
+    FOR SHARE
+  `;
+  return vessels.length > 0;
 }
 
 // GET /api/maintenance/equipment/:vesselId
@@ -291,7 +302,11 @@ Return JSON: {
 router.post('/work-order', authenticate, validate(WorkOrderSchema), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const { equipmentId, equipmentName, vesselId, title, description, priority, type, assignedTo, requiredParts, estimatedHours, plannedDate } = req.body;
 
-  if (!requireVessel(req, res, vesselId)) return;
+  const fleetId = req.user?.fleetId;
+  if (!fleetId) {
+    res.status(403).json({ error: 'You are not assigned to a fleet' });
+    return;
+  }
 
   // The equipment, if it exists, must belong to the target vessel.
   const equipment = getEquipmentById(equipmentId);
@@ -301,21 +316,28 @@ router.post('/work-order', authenticate, validate(WorkOrderSchema), async (req: 
   }
 
   try {
-    const workOrder = await prisma.workOrder.create({
-      data: {
-        vesselId,
-        equipmentId,
-        equipmentName,
-        type: type ?? 'corrective',
-        title,
-        description,
-        priority,
-        assignedTo: assignedTo ?? null,
-        requiredParts: requiredParts ?? null,
-        estimatedHours: estimatedHours ?? null,
-        plannedDate: plannedDate ? new Date(plannedDate) : null,
-      },
+    const workOrder = await prisma.$transaction(async (tx) => {
+      if (!await lockOwnedVessel(tx, vesselId, fleetId)) return null;
+      return tx.workOrder.create({
+        data: {
+          vesselId,
+          equipmentId,
+          equipmentName,
+          type: type ?? 'corrective',
+          title,
+          description,
+          priority,
+          assignedTo: assignedTo ?? null,
+          requiredParts: requiredParts ?? null,
+          estimatedHours: estimatedHours ?? null,
+          plannedDate: plannedDate ? new Date(plannedDate) : null,
+        },
+      });
     });
+    if (!workOrder) {
+      res.status(403).json({ error: 'Access to this vessel is not permitted' });
+      return;
+    }
     // recordAudit never throws, so nothing here can reach the catch below and
     // turn a saved order into a 503.
     await recordAudit({
@@ -341,16 +363,23 @@ router.get('/work-orders/:vesselId', authenticate, async (req: AuthenticatedRequ
   const { vesselId } = req.params;
   const { status } = req.query;
 
-  if (!requireVessel(req, res, vesselId)) return;
+  const fleetId = req.user?.fleetId;
+  if (!fleetId) {
+    res.status(403).json({ error: 'You are not assigned to a fleet' });
+    return;
+  }
 
-  let orders: WorkOrder[];
+  let orders: WorkOrder[] | null;
   try {
-    orders = await prisma.workOrder.findMany({
-      where: {
-        vesselId,
-        ...(typeof status === 'string' && status ? { status } : {}),
-      },
-      orderBy: { createdAt: 'desc' },
+    orders = await prisma.$transaction(async (tx) => {
+      if (!await lockOwnedVessel(tx, vesselId, fleetId)) return null;
+      return tx.workOrder.findMany({
+        where: {
+          vesselId,
+          ...(typeof status === 'string' && status ? { status } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+      });
     });
   } catch (error) {
     logger.error({ err: error }, 'work order list failed');
@@ -358,6 +387,10 @@ router.get('/work-orders/:vesselId', authenticate, async (req: AuthenticatedRequ
     return;
   }
 
+  if (!orders) {
+    res.status(403).json({ error: 'Access to this vessel is not permitted' });
+    return;
+  }
   const workOrders = orders.map(toWorkOrderResponse);
 
   res.json({

@@ -328,6 +328,7 @@ GET    /api/sire/findings/:vesselId
 |----------|----------|-------------|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `JWT_SECRET` | Yes in production | Min 32 chars — the app refuses to boot without one in production rather than fall back to an insecure default |
+| `METRICS_TOKEN` | Required to enable production metrics | Dedicated bearer credential for the scraper; production `/metrics` is disabled when unset |
 | `ANTHROPIC_API_KEY` | Yes | Anthropic Claude API key |
 | `FRONTEND_URL` | Yes | Frontend origin, for CORS |
 | `AISSTREAM_API_KEY` | No | Free key from [aisstream.io](https://aisstream.io) — enables the live AIS stream. Omit and the fleet map falls back to fixture positions |
@@ -972,6 +973,13 @@ Scoped, understood, and not yet built — I'd rather name these than imply they'
 Already shipped and covered above: CI on every PR (`.github/workflows/ci.yml` — backend, frontend, Angular, data platform, and build/scan/publish for all three runtime images), Trivy scanning that gates on fixable HIGH/CRITICAL, frontend component tests, backend route-integration tests, deployable production images, and the full Kubernetes deployment with autoscaling, observability, tested backups, enforced Pod Security Standards and GitOps reconciliation.
 
 ---
+
+## Security and data handling
+
+See [SECURITY_DATA_HANDLING.md](docs/SECURITY_DATA_HANDLING.md) for authenticated
+Socket.io subscriptions, production metrics credentials, diagnostic sanitization,
+and AI/log/audit/backup access and retention rules. Provider and deployment retention
+controls require operator configuration; they are not inferred from source code.
 
 ## License
 

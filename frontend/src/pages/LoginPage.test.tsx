@@ -8,6 +8,7 @@ import LoginPage from './LoginPage'
 // authApi.login is the one network seam this page has; mocking it lets the
 // test exercise the real form, real AuthContext, and real navigation without
 // a backend.
+vi.mock('idb-keyval', () => ({ del: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/lib/api', () => ({
   authApi: { login: vi.fn() },
 }))

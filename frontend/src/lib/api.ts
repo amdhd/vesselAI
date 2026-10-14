@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import axios from 'axios'
-import { offlineQueue, type QueuedMutation } from './offlineQueue'
+import { offlineQueue, currentUserId, type QueuedMutation } from './offlineQueue'
+import { clearSessionData } from './sessionData'
 import type {
   AuthResponse,
   User,
@@ -34,6 +35,8 @@ declare module 'axios' {
      * replayQueuedMutation.
      */
     skipAuthRedirect?: boolean
+    sessionId?: string | null
+    queueUserId?: string
   }
 }
 
@@ -44,6 +47,10 @@ const api = axios.create({
 
 // Request interceptor: attach token
 api.interceptors.request.use((config) => {
+  if (config.queueUserId && config.queueUserId !== currentUserId()) {
+    throw new axios.CanceledError('Queued write belongs to another account')
+  }
+  config.sessionId = localStorage.getItem('vm_session_id')
   const token = localStorage.getItem('vm_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
@@ -54,12 +61,13 @@ api.interceptors.request.use((config) => {
 // Response interceptor: handle 401
 api.interceptors.response.use(
   (res) => res,
-  (error) => {
+  async (error) => {
     // A 401 to a replayed write is not "your session ended". The token simply
     // expired, possibly while the user was offline, and the write is still owed
     // to them — redirecting to /login mid-flush would strand it silently.
-    if (error.response?.status === 401 && !error.config?.skipAuthRedirect) {
-      localStorage.removeItem('vm_token')
+    if (error.response?.status === 401 && !error.config?.skipAuthRedirect
+      && error.config?.sessionId === localStorage.getItem('vm_session_id')) {
+      await clearSessionData()
       window.location.href = '/login'
     }
     return Promise.reject(error)
@@ -91,12 +99,15 @@ export type ReplayDecision =
  * flush did — quietly deleted the user's write on an expired token.
  */
 export async function replayQueuedMutation(item: QueuedMutation): Promise<ReplayDecision> {
+  // The account may have changed after a flush captured its queue.
+  if (!item.userId || item.userId !== currentUserId()) return 'stop'
   try {
     await api.request({
       method: item.method,
       url: item.url,
       data: item.data,
       skipAuthRedirect: true,
+      queueUserId: item.userId,
     })
     return 'drop'
   } catch (error) {
@@ -106,6 +117,16 @@ export async function replayQueuedMutation(item: QueuedMutation): Promise<Replay
     if (status === 401) return 'stop'
     return status < 500 ? 'drop' : 'keep'
   }
+}
+
+async function sessionFetch(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
+  const sessionId = localStorage.getItem('vm_session_id')
+  const response = await fetch(input, init)
+  if (response.status === 401 && sessionId === localStorage.getItem('vm_session_id')) {
+    await clearSessionData()
+    window.location.href = '/login'
+  }
+  return response
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -268,7 +289,7 @@ export const voyageApi = {
     signal?: AbortSignal
   }) => {
     const token = localStorage.getItem('vm_token')
-    return fetch(`${BASE_URL}/voyage/agent-plan/stream`, {
+    return sessionFetch(`${BASE_URL}/voyage/agent-plan/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -511,7 +532,7 @@ export const knowledgeApi = {
     signal?: AbortSignal
   }) => {
     const token = localStorage.getItem('vm_token')
-    return fetch(`${BASE_URL}/knowledge/chat`, {
+    return sessionFetch(`${BASE_URL}/knowledge/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -561,7 +582,7 @@ export const sireApi = {
     signal?: AbortSignal
   }) => {
     const token = localStorage.getItem('vm_token')
-    return fetch(`${BASE_URL}/sire/inspector-simulation`, {
+    return sessionFetch(`${BASE_URL}/sire/inspector-simulation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -583,7 +604,7 @@ export const sireApi = {
     signal?: AbortSignal
   }) => {
     const token = localStorage.getItem('vm_token')
-    return fetch(`${BASE_URL}/compliance/chat`, {
+    return sessionFetch(`${BASE_URL}/compliance/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -625,9 +646,22 @@ const analyticsHttp = axios.create({
   baseURL: (import.meta.env.VITE_ANALYTICS_API_URL as string) || 'http://localhost:8000',
 })
 
+analyticsHttp.interceptors.response.use(
+  (res) => res,
+  async (error) => {
+    if (error.response?.status === 401
+      && error.config?.sessionId === localStorage.getItem('vm_session_id')) {
+      await clearSessionData()
+      window.location.href = '/login'
+    }
+    return Promise.reject(error)
+  },
+)
+
 // The analytics service now verifies the app-issued JWT, so attach the same
 // bearer token the main API client uses.
 analyticsHttp.interceptors.request.use((config) => {
+  config.sessionId = localStorage.getItem('vm_session_id')
   const token = localStorage.getItem('vm_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`

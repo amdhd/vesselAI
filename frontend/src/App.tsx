@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
+import { SessionDataProvider } from '@/context/SessionDataProvider'
 import { FleetProvider } from '@/context/FleetContext'
 import MainLayout from '@/components/layout/MainLayout'
 import ErrorBoundary from '@/components/ErrorBoundary'
@@ -77,7 +78,9 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppRoutes />
+      <SessionDataProvider>
+        <AppRoutes />
+      </SessionDataProvider>
     </AuthProvider>
   )
 }

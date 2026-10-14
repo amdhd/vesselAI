@@ -7,6 +7,7 @@ import { prisma } from './lib/prisma';
 import { createApp } from './app';
 import { syncWeather } from './services/weatherPipeline';
 import { startAisStream } from './services/aisStream';
+import { registerFleetSockets } from './lib/fleetSockets';
 
 // Socket.io needs the httpServer before the Express app can wire up the
 // req.io middleware, so the server is built bare and the app attached as its
@@ -23,16 +24,7 @@ const io = new Server(httpServer, {
 const app = createApp(io);
 httpServer.on('request', app);
 
-// Socket.io for real-time vessel tracking
-io.on('connection', (socket) => {
-  logger.debug({ socketId: socket.id }, 'socket client connected');
-  socket.on('subscribe:fleet', (fleetId: string) => {
-    socket.join(`fleet:${fleetId}`);
-  });
-  socket.on('disconnect', () => {
-    logger.debug({ socketId: socket.id }, 'socket client disconnected');
-  });
-});
+registerFleetSockets(io);
 
 // Simulate vessel position updates every 30 seconds
 setInterval(() => {

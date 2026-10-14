@@ -334,7 +334,8 @@ export async function runVoyageAgent(
           try {
             output = await execTool(ctx, block.name, block.input);
           } catch (err) {
-            output = { error: err instanceof Error ? err.message : 'tool execution failed' };
+            logger.warn({ err }, 'voyage tool execution failed');
+            output = { error: 'Tool execution failed' };
           }
           toolCalls.push({ tool: block.name, input: block.input, output });
           onEvent?.({ type: 'tool', index: toolCalls.length, tool: block.name, input: block.input, output });
