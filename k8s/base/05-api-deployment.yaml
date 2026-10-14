@@ -237,7 +237,7 @@ spec:
           # *config* failure, not a crash: no container ever ran, so
           # `kubectl logs` has nothing to show you. Only `describe` explains it.
           #
-          # 1000 is the `node` user's real uid in node:20-alpine (verified with
+          # 1000 is the `node` user's real uid in node:24.21.0-alpine (verified with
           # `docker run --rm --entrypoint id vesselmind/api:0.5.1`), not a guess.
           #
           # ALTERNATIVE, arguably better: change the Dockerfile to

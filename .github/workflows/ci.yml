@@ -54,7 +54,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24.21.0
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
@@ -90,7 +90,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24.21.0
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -114,9 +114,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # Angular 22's CLI requires Node >= 24.15 (the other jobs pin 20);
-          # setup-node resolves "24" to the latest 24.x, which satisfies it.
-          node-version: 24
+          # Keep Angular on the same patched Node LTS as the other jobs.
+          node-version: 24.21.0
           cache: npm
           cache-dependency-path: frontend-angular/package-lock.json
 
@@ -126,7 +125,7 @@ jobs:
       # runner exits instead of watching. `npm run build` runs `ng build`, which
       # includes the strict-template typecheck.
       - name: Test
-        run: npx ng test --watch=false
+        run: npm test -- --watch=false
 
       - name: Build
         run: npm run build
@@ -143,9 +142,8 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          # 3.10 to match requirements.txt: dbt-core has no wheels for the
-          # newest Python, so the whole toolchain is pinned to it.
-          python-version: '3.10'
+          # Match the analytics and warehouse-builder runtime.
+          python-version: '3.14.8'
           cache: pip
           cache-dependency-path: |
             data-platform/requirements.txt

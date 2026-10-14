@@ -10,7 +10,7 @@
 #   PORT=8080 ./run-api.sh       # serve on a custom port
 #
 # One-time prereqs (see README.md for detail):
-#   * Python 3.10 venv at .venv/  (dbt-core has no wheels for newer Pythons)
+#   * Python 3.14 venv at .venv/  (matches the production image)
 #   * the built DuckDB warehouse at data/vesselmind.duckdb  (via the dbt build)
 #
 set -euo pipefail
@@ -26,7 +26,7 @@ DB_PATH="data/vesselmind.duckdb"
 if [[ ! -x "$VENV_UVICORN" ]]; then
   echo "error: Python venv not found at .venv/ (looked for $VENV_UVICORN)" >&2
   echo "  create it first, e.g.:" >&2
-  echo "    python3.10 -m venv .venv && .venv/bin/pip install -r requirements.txt" >&2
+  echo "    python3.14 -m venv .venv && .venv/bin/pip install -r requirements.txt" >&2
   exit 1
 fi
 

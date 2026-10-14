@@ -261,7 +261,7 @@ jobs:
         if: steps.changed.outputs.any == 'true'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20
+          node-version: 24.21.0
           cache: npm
           # BOTH lockfiles, and the paths are required. This is a monorepo with
           # no root lockfile, so a bare `cache: npm` fails the step outright --
