@@ -1,18 +1,18 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { del } from 'idb-keyval'
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import type { User } from '@/lib/types'
 import { MOCK_USER } from '@/lib/mockData'
 import { authApi } from '@/lib/api'
-import { queryClient, QUERY_CACHE_KEY } from '@/lib/queryClient'
+import { clearSessionData, currentSessionScope, SESSION_CLEARED_EVENT } from '@/lib/sessionData'
 
 interface AuthContextType {
   user: User | null
   token: string | null
+  sessionId: string | null
   isAuthenticated: boolean
   isLoading: boolean
   login: (email: string, password: string) => Promise<void>
   loginDemo: () => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -21,33 +21,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const sessionChange = useRef(0)
 
-  // Initialize from localStorage
   useEffect(() => {
-    const storedToken = localStorage.getItem('vm_token')
-    const storedUser = localStorage.getItem('vm_user')
-    if (storedToken && storedUser) {
-      setToken(storedToken)
-      try {
-        setUser(JSON.parse(storedUser) as User)
-      } catch {
-        localStorage.removeItem('vm_user')
-      }
+    const reset = () => {
+      sessionChange.current++
+      setUser(null)
+      setToken(null)
+      setSessionId(null)
     }
-    setIsLoading(false)
+    const restore = () => {
+      sessionChange.current++
+      if (!currentSessionScope()) {
+        reset()
+        return
+      }
+      setToken(localStorage.getItem('vm_token'))
+      setUser(JSON.parse(localStorage.getItem('vm_user')!) as User)
+      setSessionId(localStorage.getItem('vm_session_id'))
+    }
+    window.addEventListener(SESSION_CLEARED_EVENT, reset)
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === null || ['vm_token', 'vm_user', 'vm_session_id'].includes(event.key)) restore()
+    }
+    window.addEventListener('storage', handleStorage)
+    // Old unscoped sessions cannot prove who owns their retained data. Require
+    // a fresh login once, rather than migrating private data to an assumed owner.
+    if (currentSessionScope()) {
+      restore()
+      setIsLoading(false)
+    } else {
+      // No authenticated subtree mounts while unowned legacy data is removed.
+      void clearSessionData().catch(() => {})
+      setIsLoading(false)
+    }
+    return () => {
+      window.removeEventListener(SESSION_CLEARED_EVENT, reset)
+      window.removeEventListener('storage', handleStorage)
+    }
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {
+    const cleanup = clearSessionData()
+    const attempt = ++sessionChange.current
+    await cleanup
+    if (attempt !== sessionChange.current) throw new Error('Session changed during login')
+    const saveSession = (nextToken: string, nextUser: User) => {
+      if (attempt !== sessionChange.current) throw new Error('Session changed during login')
+      const nextSessionId = crypto.randomUUID()
+      localStorage.setItem('vm_token', nextToken)
+      localStorage.setItem('vm_user', JSON.stringify(nextUser))
+      localStorage.setItem('vm_session_id', nextSessionId)
+      setToken(nextToken)
+      setUser(nextUser)
+      setSessionId(nextSessionId)
+    }
     // Try real API first, fall back to demo mode. Use authApi (the shared axios
     // instance) so login hits the SAME backend/base URL as every other request —
     // a hardcoded '/api/auth/login' would bypass VITE_API_URL and could sign the
     // token on a different backend than the one that later verifies it (→ 401).
     try {
       const data = await authApi.login(email, password)
-      setToken(data.token)
-      setUser(data.user)
-      localStorage.setItem('vm_token', data.token)
-      localStorage.setItem('vm_user', JSON.stringify(data.user))
+      saveSession(data.token, data.user)
       return
     } catch (err) {
       // Production has the demo account seeded into the database, so a failure
@@ -64,10 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Demo fallback (development only — see above)
     if (email === 'demo@petronas.com' && password === 'demo123') {
       const demoToken = 'demo_token_' + Date.now()
-      setToken(demoToken)
-      setUser(MOCK_USER)
-      localStorage.setItem('vm_token', demoToken)
-      localStorage.setItem('vm_user', JSON.stringify(MOCK_USER))
+      saveSession(demoToken, MOCK_USER)
     } else {
       throw new Error('Invalid credentials. Use demo@petronas.com / demo123')
     }
@@ -77,31 +110,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await login('demo@petronas.com', 'demo123')
   }, [login])
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    sessionChange.current++
     setUser(null)
     setToken(null)
-
-    // Purge every client-side store that outlives the session. The token and
-    // user are the obvious ones; without the rest, the next person to use this
-    // browser can read the previous user's fleet data, cached sensor/compliance
-    // responses, AI chat and agent state — or have the previous user's queued
-    // offline writes replayed. localStorage is shared by every session on the
-    // origin, so anything under the app's `vm_`/`vm-` prefix is session data.
-    for (const key of Object.keys(localStorage)) {
-      if (key.startsWith('vm_') || key.startsWith('vm-')) {
-        localStorage.removeItem(key)
-      }
-    }
-    queryClient.clear()
-    // The persisted copy lives in IndexedDB, outside the localStorage sweep.
-    void del(QUERY_CACHE_KEY)
-    // Service worker's API response cache (see vite.config.ts runtimeCaching).
-    if (typeof caches !== 'undefined') void caches.delete('vm-api-cache')
+    setSessionId(null)
+    await clearSessionData()
   }, [])
 
   const value: AuthContextType = {
     user,
     token,
+    sessionId,
     isAuthenticated: !!user && !!token,
     isLoading,
     login,

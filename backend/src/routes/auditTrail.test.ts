@@ -11,6 +11,8 @@ vi.mock('../lib/prisma', () => ({
     user: { findUnique: vi.fn(), create: vi.fn() },
     vessel: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
     workOrder: { create: vi.fn() },
+    $queryRaw: vi.fn(),
+    $transaction: vi.fn(),
     bunkerRecord: { createMany: vi.fn() },
     auditLog: { create: vi.fn() },
   },
@@ -56,6 +58,8 @@ function auditRows() {
 beforeEach(() => {
   vi.clearAllMocks();
   auditLog.mockResolvedValue({} as never);
+  vi.mocked(prisma.$queryRaw).mockResolvedValue([{ id: 'vessel-001' }]);
+  vi.mocked(prisma.$transaction).mockImplementation(async (run: any) => run(prisma));
 });
 
 describe('audit trail', () => {

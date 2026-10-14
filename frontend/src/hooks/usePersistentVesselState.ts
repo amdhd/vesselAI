@@ -1,7 +1,9 @@
 import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react'
+import { useAuth } from '@/context/AuthContext'
+import { currentSessionScope, sessionScope } from '@/lib/sessionData'
 
 /**
- * A `useState` whose value is persisted to localStorage, namespaced per vessel.
+ * A `useState` whose value is persisted to localStorage, namespaced per account, fleet, login and vessel.
  *
  * Why this exists: several AI surfaces (Knowledge chat, Compliance chat, the
  * Voyage agent) render conditionally inside tabbed pages, so switching tabs or
@@ -23,7 +25,9 @@ export function usePersistentVesselState<T>(
   vesselId: string | undefined,
   fallback: T,
 ): [T, Dispatch<SetStateAction<T>>] {
-  const storageKey = `${keyPrefix}${vesselId || 'default'}`
+  const { user, sessionId } = useAuth()
+  const scope = user && sessionId ? sessionScope(user, sessionId) : null
+  const storageKey = scope ? `${keyPrefix}${scope}:${vesselId || 'default'}` : null
   const fallbackRef = useRef(fallback)
 
   const [value, setValue] = useState<T>(() => readJSON(storageKey, fallbackRef.current))
@@ -43,16 +47,19 @@ export function usePersistentVesselState<T>(
       return
     }
     try {
-      localStorage.setItem(storageKey, JSON.stringify(value))
+      if (scope && storageKey && currentSessionScope() === scope) {
+        localStorage.setItem(storageKey, JSON.stringify(value))
+      }
     } catch {
       /* localStorage full/unavailable — non-fatal, state still works in-session */
     }
-  }, [value, storageKey])
+  }, [value, storageKey, scope])
 
   return [value, setValue]
 }
 
-function readJSON<T>(key: string, fallback: T): T {
+function readJSON<T>(key: string | null, fallback: T): T {
+  if (!key) return fallback
   try {
     const raw = localStorage.getItem(key)
     return raw !== null ? (JSON.parse(raw) as T) : fallback
