@@ -103,7 +103,7 @@ export const PredictEtaSchema = z.object({
   vesselId: z.string().max(50).optional(),
   voyageId: z.string().max(50).optional(),
   currentSpeed: z.number().min(0).max(30).optional(),
-  weatherConditions: z.record(z.unknown()).optional(),
+  weatherConditions: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const GenerateAgentMessageSchema = z.object({
@@ -117,7 +117,7 @@ export const GenerateAgentMessageSchema = z.object({
 // ── Maintenance ───────────────────────────────────────────────────────────────
 export const AnalyzeAnomalySchema = z.object({
   equipmentId: z.string().min(1).max(50),
-  sensorStats: z.record(z.unknown()).optional(),
+  sensorStats: z.record(z.string(), z.unknown()).optional(),
   symptoms: z.string().max(1000).optional(),
 });
 
