@@ -1,0 +1,101 @@
+# Automated dependency updates.
+#
+# The CI advisory gate (ci.yml, the `dependencies` and `python-dependencies`
+# jobs) tells you a dependency has become vulnerable. It does not fix anything,
+# and on a repository nobody is actively upgrading, a gate on its own just turns
+# red and stays red. This file is the other half: it opens the PRs that keep the
+# gate green.
+#
+# GROUPING IS THE POINT. Ungrouped, this config would open a dozen PRs a week
+# and every one of them would need its own CI run and review — the standard way
+# Dependabot gets switched off. Patch and minor updates are therefore batched
+# into one PR per ecosystem, which is also what makes them reviewable: a single
+# lockfile diff with one test run against it.
+#
+# Majors are deliberately NOT grouped. react-router 6 -> 7 and
+# vite-plugin-pwa 0.x -> 1.x are migrations with real work in them, and each
+# deserves its own PR that can sit unmerged without blocking the routine ones.
+version: 2
+updates:
+  # --- JavaScript -----------------------------------------------------------
+  # One entry per package.json; Dependabot does not recurse.
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      backend-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      frontend-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend-angular
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      # The @angular/* packages pin each other with EXACT peer dependencies, and
+      # the framework and CLI lines publish at different patch levels (22.2.5 vs
+      # 22.2.6 at the time of writing). Bumping one at a time is unresolvable —
+      # npm fails with ERESOLVE — so they have to move as a single PR.
+      angular:
+        patterns: ['@angular/*']
+        update-types: [minor, patch]
+      frontend-angular-minor-patch:
+        patterns: ['*']
+        exclude-patterns: ['@angular/*']
+        update-types: [minor, patch]
+
+  # --- Python ---------------------------------------------------------------
+  - package-ecosystem: pip
+    directory: /data-platform
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      data-platform-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  # --- Containers -----------------------------------------------------------
+  # Base-image digests rot between releases, which is the whole reason
+  # Dockerfile.prod runs `apk upgrade` / `apt-get upgrade` on every build. This
+  # keeps the pinned tags themselves current so that upgrade has less to do.
+  - package-ecosystem: docker
+    directories:
+      - /backend
+      - /frontend
+      - /data-platform
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+
+  # --- GitHub Actions -------------------------------------------------------
+  # Third-party actions run arbitrary code with access to the job token, so they
+  # are pinned to commit SHAs (see the Trivy step in ci.yml). A SHA pin never
+  # receives upstream security fixes on its own; this is what moves it.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ['*']

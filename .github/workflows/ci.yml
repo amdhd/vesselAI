@@ -169,9 +169,95 @@ jobs:
       - name: API auth tests
         # Set explicitly so the suite tests a known secret rather than depending
         # on main.py's dev-only fallback, which exists for local convenience.
+        #
+        # MUST BE >=32 CHARS. _resolve_jwt_secret() treats a shorter secret as no
+        # secret at all and returns DEV_FALLBACK_SECRET — so a short value here
+        # silently does the opposite of what this env var is for, and the suite
+        # goes green having tested the fallback path this line exists to avoid.
         env:
-          JWT_SECRET: ci-test-secret
+          JWT_SECRET: ci-test-secret-at-least-32-chars-long
         run: pytest api/test_auth.py
+
+  # ---------------------------------------------------------------------------
+  # Dependency advisory gate.
+  #
+  # WHY THIS EXISTS, given the Trivy step further down already scans images:
+  # Trivy can only report what is IN an image. The web image is
+  # `nginx-unprivileged` plus /app/dist (frontend/Dockerfile.prod) — the build
+  # stage's node_modules never reaches the final layer, so NOTHING scanned the
+  # two frontends' JavaScript dependencies. That gap shipped a HIGH
+  # (follow-redirects, reachable through axios) and a second HIGH in the Angular
+  # toolchain, neither of which any gate in this repo could have caught.
+  #
+  # The API image DOES copy node_modules, so backend advisories were already
+  # covered — it is included here anyway because this job answers in seconds
+  # what an image build and scan takes minutes to reach.
+  #
+  # --omit=dev: a devDependency advisory does not ship. It is still worth
+  # knowing, but it must not block a release.
+  # --audit-level=high: moderates that need a breaking major (react-router 6->7)
+  # would otherwise make this gate permanently red, and a permanently red gate
+  # is one people learn to skip — the same reasoning as ignore-unfixed on Trivy.
+  # ---------------------------------------------------------------------------
+  dependencies:
+    name: Dependencies — advisory gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      # One tree's advisories must not hide another's.
+      fail-fast: false
+      matrix:
+        dir: [backend, frontend, frontend-angular]
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: npm
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
+
+      # Audits the lockfile directly — no install needed, so this gate reports
+      # even when `npm ci` would fail.
+      - name: npm audit
+        run: npm audit --omit=dev --audit-level=high
+
+  python-dependencies:
+    name: Dependencies — Python advisory gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: data-platform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14.8'
+
+      - run: pip install pip-audit
+
+      # --no-deps audits the pinned lines rather than resolving the full tree:
+      # both requirements files pin with ==, and the installed transitive tree is
+      # what the image scan already covers.
+      #
+      # The suppressed ids are all sqlparse, which .trivyignore already accepts
+      # with a written justification: dbt-core 1.12.0 pins sqlparse<0.6.0 so the
+      # fix cannot be installed, and sqlparse parses only this repo's own model
+      # SQL at build time — it is absent from the runtime image entirely. Keep
+      # this list and that file in step; when dbt relaxes its pin, both go.
+      - name: pip-audit
+        run: |
+          pip-audit --no-deps -r requirements.txt -r api/requirements.txt \
+            --ignore-vuln PYSEC-2026-3696 \
+            --ignore-vuln PYSEC-2026-3697 \
+            --ignore-vuln PYSEC-2026-3698 \
+            --ignore-vuln PYSEC-2026-3699 \
+            --ignore-vuln PYSEC-2026-3923
 
   docker:
     name: Docker — build images
