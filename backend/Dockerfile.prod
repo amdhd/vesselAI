@@ -17,7 +17,7 @@
 #   runtime — slim, non-root final image
 
 # ---- deps ----
-FROM node:24.22.1-alpine AS deps
+FROM node:26.13.0-alpine AS deps
 WORKDIR /app
 # Prisma's schema + query engines are dynamically linked against OpenSSL, which
 # node:24.22.1-alpine does not ship. Without it `prisma migrate deploy` dies with
@@ -64,7 +64,7 @@ FROM build AS prune
 RUN npm prune --omit=dev
 
 # ---- runtime: slim, non-root ----
-FROM node:24.22.1-alpine AS runtime
+FROM node:26.13.0-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 
