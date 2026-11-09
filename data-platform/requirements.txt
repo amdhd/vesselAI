@@ -6,7 +6,7 @@
 #   pip install -r requirements.txt
 
 # --- Warehouse engine (Phase 1: ingestion) ---
-duckdb==1.5.4
+duckdb==2.0.0
 
 # --- Transformations (Phase 2 silver, Phase 3 gold) via dbt ---
 # dbt-duckdb pulls in a compatible dbt-core automatically; both are pinned here

@@ -4,7 +4,7 @@
 #   pip install -r api/requirements.txt
 fastapi==0.141.1
 uvicorn==0.34.0
-duckdb==1.5.4
+duckdb==2.0.0
 # 2.13.0 carried one CRITICAL and five HIGH advisories, all fixed in 2.14.0 —
 # including an HMAC-key-substitution class that directly targets the verification
 # this file's service performs. _resolve_jwt_secret() in main.py never hands
