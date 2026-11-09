@@ -5,12 +5,22 @@
 fastapi==0.141.1
 uvicorn==0.34.0
 duckdb==1.5.4
-# 2.13.0 carries one CRITICAL and five HIGH advisories, all fixed in 2.14.0 —
+# 2.13.0 carried one CRITICAL and five HIGH advisories, all fixed in 2.14.0 —
 # including an HMAC-key-substitution class that directly targets the verification
 # this file's service performs. _resolve_jwt_secret() in main.py never hands
 # PyJWT an empty or attacker-supplied key, so the bypass was not reachable here,
 # but the library itself has to be patched.
-PyJWT==2.14.0
+#
+# 2.14.0 in turn carries two advisories, both fixed in 2.15.0:
+#   - PYSEC-2026-4141: RecursionError escapes _decode_payload on a deeply-nested
+#     payload, reached via PyJWKClient.get_signing_key_from_jwt (the JWKS flow).
+#   - PYSEC-2026-4183: OKPAlgorithm.from_jwk does not check that an OKP private
+#     JWK's x matches the public key derived from d.
+# Neither is reachable here — require_auth() verifies HS256 against a symmetric
+# secret, so this service never constructs a PyJWKClient and never imports an
+# OKP JWK. Pinned forward anyway, for the same reason as the 2.14.0 bump above:
+# "not reachable today" is a property of our call sites, not of the library.
+PyJWT==2.15.0
 # Pinned explicitly: fastapi allows starlette>=0.46.0 with no upper bound, and
 # the 0.4x line carries advisories fixed only in 1.x. Pinning forces the patched
 # major rather than whatever the resolver happens to pick.
