@@ -43,11 +43,11 @@ jobs:
     name: fmt · validate · tflint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # terraform_wrapper: false — the wrapper script mangles exit codes and
       # stdout, which matters the moment you pipe or check the output of a step.
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.15.8
           terraform_wrapper: false
@@ -69,7 +69,7 @@ jobs:
       - name: terraform validate
         run: terraform validate -no-color
 
-      - uses: terraform-linters/setup-tflint@v4
+      - uses: terraform-linters/setup-tflint@v6
         with:
           tflint_version: v0.53.0
 
@@ -85,7 +85,7 @@ jobs:
     name: trivy misconfiguration scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # exit-code: 1 on HIGH/CRITICAL only. MEDIUM and below are reported in
       # the log but do not fail the build: this config makes several deliberate
