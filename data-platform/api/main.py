@@ -227,10 +227,16 @@ def health():
 def summary(fleet_id: str = Depends(fleet_scope)):
     """Top-line KPIs over the vessels this fleet may see (a single row).
 
-    Every sub-select is scoped, including the raw position count from silver —
-    a KPI computed over the whole warehouse would report another fleet's
-    activity in aggregate even with each row hidden. The scope is computed once
-    in `visible` and bound once.
+    Every sub-select is scoped — a KPI computed over the whole warehouse would
+    report another fleet's activity in aggregate even with each row hidden. The
+    scope is computed once in `visible` and bound once.
+
+    Gold only. position_reports used to be count(*) over silver: a scan of
+    every raw ping on every page load, which at NOAA scale is millions of rows
+    a day. It is now sum(ping_count) over fct_vessel_daily, one row per vessel
+    per day, which is the same number by construction. The dbt test
+    assert_fct_ping_count_matches_silver fails the build if that ever stops
+    being true. No endpoint in this service reads silver.
     """
     return query(
         f"""
@@ -239,7 +245,7 @@ def summary(fleet_id: str = Depends(fleet_scope)):
         )
         select
             (select count(*) from visible)                                         as vessels,
-            (select count(*) from silver.silver_ais_positions
+            (select coalesce(sum(ping_count), 0) from gold.fct_vessel_daily
               where mmsi in (select mmsi from visible))                            as position_reports,
             -- coalesce: sum() over no rows is NULL, and the contract is a number.
             (select coalesce(round(sum(distance_nm)), 0) from gold.fct_vessel_daily

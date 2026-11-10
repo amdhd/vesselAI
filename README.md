@@ -233,7 +233,7 @@ npm test             # Vitest + Testing Library
 
 cd data-platform     # after step 4
 .venv/bin/pytest api/                                # analytics API auth + tenant isolation
-cd dbt && ../.venv/bin/dbt build --profiles-dir .    # 29 warehouse data tests
+cd dbt && ../.venv/bin/dbt build --profiles-dir .    # 30 warehouse data tests
 ```
 
 ---

@@ -40,7 +40,7 @@ FLEET_B_NAMES = {"BRAVO ONE"}
 PUBLIC_NAMES = {"PUBLIC ONE"}
 
 
-def _build_warehouse(path, vessels):
+def _build_warehouse(path, vessels, with_silver=True):
     """Create the subset of the warehouse the endpoints read, then fill it."""
     con = duckdb.connect(str(path))
     con.execute("create schema gold")
@@ -54,12 +54,13 @@ def _build_warehouse(path, vessels):
     con.execute("""create table gold.gold_vessel_idling (
         mmsi varchar, idle_start timestamp, idle_end timestamp,
         idle_minutes integer, avg_lat double, avg_lon double)""")
-    con.execute("create table silver.silver_ais_positions (mmsi varchar)")
+    if with_silver:
+        con.execute("create table silver.silver_ais_positions (mmsi varchar)")
     for mmsi, name, vtype, owner, dist, pings, idle in vessels:
         con.execute("insert into gold.dim_vessel values (?, ?, ?, ?)", [mmsi, owner, name, vtype])
         con.execute("insert into gold.fct_vessel_daily values (?, date '2024-01-15', ?, 10.0, ?)",
                     [mmsi, pings, dist])
-        for _ in range(pings):
+        for _ in range(pings if with_silver else 0):
             con.execute("insert into silver.silver_ais_positions values (?)", [mmsi])
         if idle is not None:
             con.execute(
@@ -165,6 +166,20 @@ def test_summary_of_an_empty_scope_keeps_its_numeric_contract(tmp_path, monkeypa
     assert _get("top-vessels", "fleet-z") == []
     assert _get("idling", "fleet-z") == []
     assert _get("vessel-types", "fleet-z") == []
+
+
+def test_summary_does_not_read_raw_silver(tmp_path, monkeypatch):
+    # Review item #7: the summary used to count(*) every raw ping in silver on
+    # each request. It now sums fct_vessel_daily.ping_count instead. A warehouse
+    # with NO silver table proves no query touches it, and the counts must be
+    # the same ones the full fixture gives.
+    path = tmp_path / "gold_only.duckdb"
+    _build_warehouse(path, VESSELS, with_silver=False)
+    monkeypatch.setattr(main, "DB_PATH", path)
+
+    a = _get("summary", "fleet-a")
+    assert a["position_reports"] == 3 + 2 + 1
+    assert a["vessels"] == 3
 
 
 # --- The tenant key is bound, typed, and required on every route --------------
