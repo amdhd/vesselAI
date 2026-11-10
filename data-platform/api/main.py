@@ -12,7 +12,10 @@ Run (from the data-platform/ directory):
     uvicorn api.main:app --port 8000
 """
 
+import math
 import os
+import threading
+import time
 from pathlib import Path
 
 import duckdb
@@ -171,7 +174,87 @@ def require_auth(
     return claims
 
 
-def fleet_scope(claims: dict = Depends(require_auth)) -> str:
+# --- Per-user rate limit -----------------------------------------------------
+#
+# WHY. Every analytics request opens the warehouse and runs aggregate SQL, and
+# nothing bounded how often one caller could do that. The analytics page makes
+# four requests per load, so 60 a minute allows 15 page loads a minute per user:
+# far above real use, far below a loop.
+#
+# WHY IN-PROCESS. The backend's limiters count in Redis so replicas share them
+# (backend/src/middleware/rateLimiter.ts). This service deliberately has no
+# network dependencies, and runs a single fixed replica (k8s/base/13-analytics.yaml,
+# no HPA), so a per-process counter is exact. If it is ever scaled out, each
+# replica counts on its own and the effective limit becomes N x 60.
+#
+# KEYED BY USER, after authentication, so the limit follows the account rather
+# than an IP. Unauthenticated requests are refused at token decode, before this,
+# and never reach the warehouse.
+ANALYTICS_RATE_LIMIT = 60
+ANALYTICS_RATE_WINDOW_S = 60.0
+_RATE_MAX_KEYS = 10_000
+
+
+def _now() -> float:
+    """Monotonic clock, as a module function so tests can move time."""
+    return time.monotonic()
+
+
+class FixedWindowLimiter:
+    """Counts requests per key in fixed windows. Thread-safe: FastAPI runs these
+    sync endpoints in a thread pool."""
+
+    def __init__(self, limit: int, window_s: float, max_keys: int = _RATE_MAX_KEYS):
+        self.limit = limit
+        self.window_s = window_s
+        self.max_keys = max_keys
+        self._lock = threading.Lock()
+        self._windows: dict[str, tuple[float, int]] = {}
+
+    def hit(self, key: str, now: float) -> float | None:
+        """Count one request. Returns seconds until the window resets when the
+        key is over its limit, or None when the request is allowed."""
+        with self._lock:
+            start, count = self._windows.get(key, (now, 0))
+            if now - start >= self.window_s:
+                start, count = now, 0
+            count += 1
+            self._windows[key] = (start, count)
+            self._evict(now)
+            if count > self.limit:
+                return self.window_s - (now - start)
+            return None
+
+    def _evict(self, now: float) -> None:
+        # Bounded memory: drop finished windows first, then the oldest entries.
+        if len(self._windows) <= self.max_keys:
+            return
+        for key in [k for k, (start, _) in self._windows.items() if now - start >= self.window_s]:
+            del self._windows[key]
+        while len(self._windows) > self.max_keys:
+            del self._windows[next(iter(self._windows))]
+
+    def reset(self) -> None:
+        with self._lock:
+            self._windows.clear()
+
+
+_limiter = FixedWindowLimiter(ANALYTICS_RATE_LIMIT, ANALYTICS_RATE_WINDOW_S)
+
+
+def rate_limited(claims: dict = Depends(require_auth)) -> dict:
+    """Refuse a caller over its per-user limit, before any query runs."""
+    retry_after = _limiter.hit(str(claims.get("id") or claims["fleetId"]), _now())
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many analytics requests, please wait",
+            headers={"Retry-After": str(max(1, math.ceil(retry_after)))},
+        )
+    return claims
+
+
+def fleet_scope(claims: dict = Depends(rate_limited)) -> str:
     """The caller's fleet id — the tenant key every query below is scoped by.
 
     TENANCY MODEL. A vessel is visible to a fleet when that fleet owns it, or

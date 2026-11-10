@@ -204,6 +204,12 @@ restricted to `ANALYTICS_ALLOWED_ORIGINS` (comma-separated; defaults to the loca
 Vite dev + preview ports). `/health` stays open. Auth is covered by
 `api/test_auth.py` (`pip install -r api/requirements.txt httpx pytest && pytest api/`).
 
+**Rate limit:** 60 requests a minute per user (the analytics page makes 4 per
+load), answered with 429 and `Retry-After` past that, before any query runs.
+Counted in-process: this service has no network dependencies and runs one
+replica, so the count is exact. Scaling it out would multiply the limit by the
+replica count. Covered by `api/test_rate_limit.py`.
+
 **Tenancy:** a caller sees the vessels their fleet owns plus public ones, and
 never a vessel another fleet owns. AIS can't say who owns a vessel, so
 ownership is declared in `dbt/seeds/vessel_fleet_registry.csv` and lands in
