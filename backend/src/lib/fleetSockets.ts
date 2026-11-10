@@ -1,6 +1,6 @@
 import type { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from './jwtConfig';
+import { JWT_SECRET, JWT_VERIFY_OPTIONS } from './jwtConfig';
 import { logger } from './logger';
 
 // Socket.io bypasses Express authentication. Use the same signed fleet claim,
@@ -13,7 +13,7 @@ export function registerFleetSockets(io: Server): void {
       return;
     }
     try {
-      const claims = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+      const claims = jwt.verify(token, JWT_SECRET, JWT_VERIFY_OPTIONS);
       if (typeof claims === 'string' || typeof claims.id !== 'string' || !claims.id
         || typeof claims.fleetId !== 'string' || !claims.fleetId
         || typeof claims.exp !== 'number' || !Number.isFinite(claims.exp)) {

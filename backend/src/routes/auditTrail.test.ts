@@ -19,7 +19,7 @@ vi.mock('../lib/prisma', () => ({
 }));
 
 import { createApp } from '../app';
-import { JWT_SECRET } from '../lib/jwtConfig';
+import { JWT_SECRET, JWT_ISSUER, JWT_AUDIENCE } from '../lib/jwtConfig';
 import { prisma } from '../lib/prisma';
 
 const app = createApp();
@@ -46,7 +46,7 @@ function managerToken(): string {
       name: 'Fleet Manager',
     },
     JWT_SECRET,
-    { algorithm: 'HS256', expiresIn: '1h' }
+    { algorithm: 'HS256', expiresIn: '1h', issuer: JWT_ISSUER, audience: JWT_AUDIENCE }
   );
 }
 

@@ -81,7 +81,7 @@ def warehouse(tmp_path, monkeypatch):
 def _token(fleet_id) -> str:
     return jwt.encode(
         {"id": "u1", "role": "fleet_manager", "fleetId": fleet_id,
-         "exp": int(time.time()) + 600},
+         "exp": int(time.time()) + 600, "iss": main.JWT_ISSUER, "aud": main.JWT_AUDIENCE},
         JWT_SECRET,
         algorithm="HS256",
     )

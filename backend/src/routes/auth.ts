@@ -7,13 +7,21 @@ import { logger } from '../lib/logger';
 import { recordAudit } from '../lib/audit';
 import { validate } from '../middleware/validate';
 import { LoginSchema, RegisterSchema } from '../schemas';
-import { JWT_SECRET, JWT_EXPIRES_IN, DEMO_LOGIN_ENABLED } from '../lib/jwtConfig';
+import { JWT_SECRET, JWT_EXPIRES_IN, JWT_ISSUER, JWT_AUDIENCE, DEMO_LOGIN_ENABLED } from '../lib/jwtConfig';
 
 const router = Router();
 
 // Roles a self-service registrant is permitted to request. Privileged roles
 // (e.g. admin) must never be assignable from a public signup payload.
 const SELF_REGISTER_ROLES = new Set(['fleet_manager', 'engineer', 'viewer']);
+
+// What an unknown email's password is compared against, so login costs the
+// same whether or not the account exists. A real bcrypt hash of random bytes
+// nobody kept. It must use the SAME cost factor as stored passwords (12, in
+// /register below and prisma/seed.ts), or the two paths still differ in time;
+// the authTiming test checks that. Precomputed rather than hashed at startup so
+// it adds nothing to boot time.
+export const TIMING_EQUALISER_HASH = '$2a$12$DnX6R4fdsMxEDF3saPlulu6CrJD9iG.rCg8l00kQnnQtx0om/GMKy';
 
 function generateToken(user: { id: string; email: string; role: string; fleetId?: string | null; name: string }): string {
   return jwt.sign(
@@ -25,7 +33,8 @@ function generateToken(user: { id: string; email: string; role: string; fleetId?
       name: user.name,
     },
     JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN } as SignOptions
+    // issuer/audience: the claim contract every gate verifies (lib/jwtConfig.ts).
+    { expiresIn: JWT_EXPIRES_IN, issuer: JWT_ISSUER, audience: JWT_AUDIENCE } as SignOptions
   );
 }
 
@@ -70,6 +79,13 @@ router.post('/login', validate(LoginSchema), async (req: Request, res: Response)
     if (!user) {
       // DB connected but not seeded — still allow demo credentials (non-production only)
       if (tryDemoLogin(email, password, res)) return;
+      // Pay for a bcrypt compare even though there is nothing to compare
+      // against. Without it, an unknown email is rejected in about a
+      // millisecond while a known email with a wrong password takes a full
+      // cost-12 compare. The 401 text was already identical, but the timing
+      // answered "does this email have an account?" for anyone who measured it.
+      // The result is ignored, so the request stays a 401 whatever the password.
+      await bcrypt.compare(password, TIMING_EQUALISER_HASH);
       res.status(401).json({ error: 'Invalid email or password' });
       return;
     }

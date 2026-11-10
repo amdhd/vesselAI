@@ -7,26 +7,39 @@ it verifies auth + wiring rather than the warehouse. Run from data-platform/:
     pip install -r api/requirements.txt httpx pytest
     pytest api/test_auth.py
 """
+import time
+
 import jwt
 import pytest
 from fastapi.testclient import TestClient
 
 from api import main
-from api.main import JWT_SECRET, app
+from api.main import JWT_AUDIENCE, JWT_ISSUER, JWT_SECRET, app
 
 client = TestClient(app)
 
+# Pass as a claim value to leave that claim out of the token entirely.
+OMIT = object()
+
 
 def _token(secret: str = JWT_SECRET, **claims) -> str:
-    # Mirrors what the Express /api/auth/login endpoint mints: a fleet member.
-    # Override any claim (e.g. fleetId=None) to exercise the gate.
+    # Mirrors what the Express /api/auth/login endpoint mints: a fleet member
+    # with an expiry. This helper used to set no exp at all, and
+    # test_valid_token_passes_auth asserted 200 on it, so the suite was pinning
+    # down "a never-expiring token is accepted" as correct behaviour.
+    # Override any claim (e.g. fleetId=None) to exercise the gate, or pass OMIT
+    # to drop it.
     payload = {
         "id": "u1",
         "email": "demo@petronas.com",
         "role": "fleet_manager",
         "fleetId": "fleet-001",
+        "exp": int(time.time()) + 600,
+        "iss": JWT_ISSUER,
+        "aud": JWT_AUDIENCE,
     }
     payload.update(claims)
+    payload = {k: v for k, v in payload.items() if v is not OMIT}
     return jwt.encode(payload, secret, algorithm="HS256")
 
 
@@ -80,3 +93,55 @@ def test_valid_token_passes_auth(monkeypatch):
     )
     assert r.status_code == 200
     assert r.json()["vessels"] == 3
+
+
+def test_analytics_rejects_token_without_expiry():
+    # Correctly signed and fleet-bearing, but with no exp. PyJWT checks exp
+    # only when present, so this verified (and never expired) until the gate
+    # required the claim.
+    r = client.get(
+        "/api/analytics/summary",
+        headers={"Authorization": f"Bearer {_token(exp=OMIT)}"},
+    )
+    assert r.status_code == 401
+
+
+def test_analytics_rejects_expired_token():
+    r = client.get(
+        "/api/analytics/summary",
+        headers={"Authorization": f"Bearer {_token(exp=int(time.time()) - 10)}"},
+    )
+    assert r.status_code == 401
+
+
+@pytest.mark.parametrize(
+    "claims",
+    [
+        {"aud": "some-other-service"},
+        {"iss": "some-other-issuer"},
+        {"aud": OMIT},
+        {"iss": OMIT},
+    ],
+    ids=["wrong-audience", "wrong-issuer", "no-audience", "no-issuer"],
+)
+def test_analytics_rejects_token_outside_the_claim_contract(claims):
+    # Correct secret, fleet and expiry. Only who-issued / who-for is wrong, which
+    # is exactly the token the contract exists to refuse: signed by something
+    # holding the secret, but not a user session for this app.
+    r = client.get(
+        "/api/analytics/summary",
+        headers={"Authorization": f"Bearer {_token(**claims)}"},
+    )
+    assert r.status_code == 401
+
+
+def test_claim_contract_matches_the_backend_signer():
+    # The two services share these strings across a language boundary, so no
+    # compiler links them. If the backend's copy changes alone, every analytics
+    # call 401s in production; this makes that a failing test instead.
+    import re
+    from pathlib import Path
+
+    ts = (Path(__file__).resolve().parents[2] / "backend/src/lib/jwtConfig.ts").read_text()
+    backend = dict(re.findall(r"export const (JWT_ISSUER|JWT_AUDIENCE) = '([^']+)'", ts))
+    assert backend == {"JWT_ISSUER": JWT_ISSUER, "JWT_AUDIENCE": JWT_AUDIENCE}
