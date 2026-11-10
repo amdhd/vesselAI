@@ -82,12 +82,20 @@ def _resolve_jwt_secret() -> str:
 
 JWT_SECRET = _resolve_jwt_secret()
 
-# The claim contract — MUST match JWT_ISSUER / JWT_AUDIENCE in
+# The claim contract — MUST match JWT_ISSUER / JWT_ANALYTICS_AUDIENCE in
 # backend/src/lib/jwtConfig.ts, which signs every token this service accepts.
 # If they drift, every analytics call 401s; test_auth.py pins these values so a
 # one-sided change fails here rather than in production.
+#
+# The audience is the ANALYTICS one, not the login token's. This service has no
+# connection to Postgres, so it cannot check whether a login token's session has
+# since been revoked, or whether the user's fleet has changed. It accepts only
+# the 5-minute token the backend issues from POST /api/auth/analytics-token,
+# which the backend hands out only after that live check passes. So revocation
+# and fleet changes reach this service within 5 minutes, not the 7 days a login
+# token lives. A login token presented here is refused.
 JWT_ISSUER = "vesselmind-api"
-JWT_AUDIENCE = "vesselmind-app"
+JWT_AUDIENCE = "vesselmind-analytics"
 
 # Restrict CORS to the app origin(s). Override with ANALYTICS_ALLOWED_ORIGINS
 # (comma-separated) in production; defaults to the local Vite dev + preview ports.
@@ -126,8 +134,9 @@ def require_auth(
     """Reject any request without a valid app-issued JWT that carries a fleet.
 
     Runs as a route dependency before the query functions, so an unauthenticated
-    caller never reaches DuckDB. A token minted by the Express /api/auth/login
-    endpoint is accepted here unchanged because both sides share JWT_SECRET.
+    caller never reaches DuckDB. The token is the short-lived analytics token
+    the Express backend issues from POST /api/auth/analytics-token (see
+    JWT_AUDIENCE above), verified with the shared JWT_SECRET.
 
     A valid signature is not enough on its own. The Express API scopes every
     read to the caller's fleet and treats "no fleet" as "no access"

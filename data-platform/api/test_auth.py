@@ -23,7 +23,7 @@ OMIT = object()
 
 
 def _token(secret: str = JWT_SECRET, **claims) -> str:
-    # Mirrors what the Express /api/auth/login endpoint mints: a fleet member
+    # Mirrors what the Express /api/auth/analytics-token endpoint mints: a fleet member
     # with an expiry. This helper used to set no exp at all, and
     # test_valid_token_passes_auth asserted 200 on it, so the suite was pinning
     # down "a never-expiring token is accepted" as correct behaviour.
@@ -143,5 +143,17 @@ def test_claim_contract_matches_the_backend_signer():
     from pathlib import Path
 
     ts = (Path(__file__).resolve().parents[2] / "backend/src/lib/jwtConfig.ts").read_text()
-    backend = dict(re.findall(r"export const (JWT_ISSUER|JWT_AUDIENCE) = '([^']+)'", ts))
-    assert backend == {"JWT_ISSUER": JWT_ISSUER, "JWT_AUDIENCE": JWT_AUDIENCE}
+    backend = dict(re.findall(r"export const (JWT_ISSUER|JWT_ANALYTICS_AUDIENCE) = '([^']+)'", ts))
+    assert backend == {"JWT_ISSUER": JWT_ISSUER, "JWT_ANALYTICS_AUDIENCE": JWT_AUDIENCE}
+
+
+def test_analytics_refuses_a_login_token():
+    # A login token is valid for 7 days, and this service cannot check whether
+    # its session has been revoked since. It must be refused even though it is
+    # correctly signed, unexpired, from the right issuer and fleet-bearing:
+    # only the 5-minute analytics token, issued after a live check, gets in.
+    r = client.get(
+        "/api/analytics/summary",
+        headers={"Authorization": f"Bearer {_token(aud='vesselmind-app')}"},
+    )
+    assert r.status_code == 401

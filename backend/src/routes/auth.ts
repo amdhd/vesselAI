@@ -8,7 +8,10 @@ import { recordAudit } from '../lib/audit';
 import { revokeSessions } from '../lib/session';
 import { validate } from '../middleware/validate';
 import { LoginSchema, RegisterSchema } from '../schemas';
-import { JWT_SECRET, JWT_EXPIRES_IN, JWT_ISSUER, JWT_AUDIENCE, DEMO_LOGIN_ENABLED, DEMO_USER_ID } from '../lib/jwtConfig';
+import {
+  JWT_SECRET, JWT_EXPIRES_IN, JWT_ISSUER, JWT_AUDIENCE, JWT_ANALYTICS_AUDIENCE,
+  ANALYTICS_TOKEN_TTL_SECONDS, DEMO_LOGIN_ENABLED, DEMO_USER_ID,
+} from '../lib/jwtConfig';
 
 const router = Router();
 
@@ -169,6 +172,29 @@ router.post('/register', validate(RegisterSchema), async (req: Request, res: Res
     logger.error({ err: error }, 'Register error');
     res.status(500).json({ error: 'Registration failed' });
   }
+});
+
+// POST /api/auth/analytics-token
+//
+// Exchange a login token for a short-lived token the analytics service accepts.
+// See JWT_ANALYTICS_AUDIENCE in lib/jwtConfig.ts for why analytics does not take
+// the login token itself. `authenticate` has already run the live-session check,
+// so the role and fleet signed in here are the current ones, and a revoked or
+// deleted account cannot obtain one.
+router.post('/analytics-token', authenticate, (req: AuthenticatedRequest, res: Response): void => {
+  const user = req.user!;
+  // The analytics gate refuses a token with no fleet; refuse here first, so the
+  // client gets a clear 403 instead of a token that can never be used.
+  if (!user.fleetId) {
+    res.status(403).json({ error: 'Analytics requires a fleet assignment' });
+    return;
+  }
+  const token = jwt.sign(
+    { id: user.id, role: user.role, fleetId: user.fleetId },
+    JWT_SECRET,
+    { expiresIn: ANALYTICS_TOKEN_TTL_SECONDS, issuer: JWT_ISSUER, audience: JWT_ANALYTICS_AUDIENCE }
+  );
+  res.json({ token, expiresIn: ANALYTICS_TOKEN_TTL_SECONDS });
 });
 
 // POST /api/auth/logout-all

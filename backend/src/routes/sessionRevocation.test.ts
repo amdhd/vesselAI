@@ -25,7 +25,9 @@ vi.mock('../lib/prisma', () => ({
 import { createApp } from '../app';
 import { prisma } from '../lib/prisma';
 import { clearSessionCache } from '../lib/session';
-import { JWT_SECRET, JWT_ISSUER, JWT_AUDIENCE } from '../lib/jwtConfig';
+import {
+  JWT_SECRET, JWT_ISSUER, JWT_AUDIENCE, JWT_ANALYTICS_AUDIENCE, ANALYTICS_TOKEN_TTL_SECONDS,
+} from '../lib/jwtConfig';
 
 const app = createApp();
 const CLAIMS = { id: 'u1', email: 'u1@example.com', name: 'U1', role: 'fleet_manager', fleetId: 'fleet-001' };
@@ -101,5 +103,42 @@ describe('changes to the account apply to tokens already issued', () => {
     db.row = null;
     clearSessionCache();
     expect((await me(t)).status).toBe(401);
+  });
+});
+
+describe('analytics token exchange', () => {
+  const exchange = (t: string) =>
+    request(app).post('/api/auth/analytics-token').set('Authorization', `Bearer ${t}`);
+
+  it('issues a short-lived analytics-audience token carrying the LIVE fleet', async () => {
+    // The login token says fleet-001; the account has since moved. The
+    // analytics token must carry where the user is now.
+    db.row = { ...db.row, fleetId: 'fleet-777', role: 'viewer' };
+    const res = await exchange(token(60));
+    expect(res.status).toBe(200);
+    expect(res.body.expiresIn).toBe(ANALYTICS_TOKEN_TTL_SECONDS);
+
+    const claims = jwt.verify(res.body.token, JWT_SECRET, {
+      algorithms: ['HS256'], issuer: JWT_ISSUER, audience: JWT_ANALYTICS_AUDIENCE,
+    }) as jwt.JwtPayload;
+    expect(claims).toMatchObject({ id: 'u1', fleetId: 'fleet-777', role: 'viewer' });
+    expect((claims.exp as number) - (claims.iat as number)).toBe(ANALYTICS_TOKEN_TTL_SECONDS);
+  });
+
+  it('will not issue one to a revoked session', async () => {
+    const old = token(60);
+    await request(app).post('/api/auth/logout-all').set('Authorization', `Bearer ${old}`);
+    expect((await exchange(old)).status).toBe(401);
+  });
+
+  it('will not issue one to an account with no fleet', async () => {
+    db.row = { ...db.row, fleetId: null };
+    expect((await exchange(token(60))).status).toBe(403);
+  });
+
+  it('an analytics token is not a login token: the REST gate refuses it', async () => {
+    const { body } = await exchange(token(60));
+    const res = await me(body.token);
+    expect(res.status).toBe(401);
   });
 });

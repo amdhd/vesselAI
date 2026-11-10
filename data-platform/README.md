@@ -191,10 +191,15 @@ The frontend points at it via `VITE_ANALYTICS_API_URL` (default
 `http://localhost:8000`). Every endpoint is aggregated / top-N, so responses stay
 small no matter how big the raw feed is.
 
-**Auth:** the `/api/analytics/*` endpoints require the same JWT the app issues —
-verified with the shared `JWT_SECRET` (HS256), so a token from the Express
-`/api/auth/login` is accepted here unchanged. Set `JWT_SECRET` to the same value
-the backend signs with (it falls back to the dev-only secret locally). CORS is
+**Auth:** the `/api/analytics/*` endpoints take a short-lived (5-minute)
+analytics token, not the login token. This service has no database, so it can't
+tell whether a login token's session has been revoked since it was issued. The
+Express backend can, so the frontend exchanges its login token at
+`POST /api/auth/analytics-token`, which runs that live check first and returns a
+token with the `vesselmind-analytics` audience. A login token presented here is
+refused. Revocation and fleet changes therefore reach analytics within 5 minutes.
+Tokens are verified with the shared `JWT_SECRET` (HS256), so set it to the same
+value the backend signs with (it falls back to the dev-only secret locally). CORS is
 restricted to `ANALYTICS_ALLOWED_ORIGINS` (comma-separated; defaults to the local
 Vite dev + preview ports). `/health` stays open. Auth is covered by
 `api/test_auth.py` (`pip install -r api/requirements.txt httpx pytest && pytest api/`).

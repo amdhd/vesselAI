@@ -37,6 +37,10 @@ declare module 'axios' {
     skipAuthRedirect?: boolean
     sessionId?: string | null
     queueUserId?: string
+    /** Set on a request that reached the analytics service with an analytics token attached. */
+    analyticsRequest?: boolean
+    /** Set on an analytics request already retried once with a fresh analytics token. */
+    analyticsRetried?: boolean
   }
 }
 
@@ -646,28 +650,90 @@ const analyticsHttp = axios.create({
   baseURL: (import.meta.env.VITE_ANALYTICS_API_URL as string) || 'http://localhost:8000',
 })
 
+// THE ANALYTICS TOKEN. The analytics service has no database, so it cannot tell
+// whether a login token's session has since been revoked. It therefore refuses
+// the login token and accepts only a 5-minute token the main backend issues
+// from POST /auth/analytics-token, after running that live check itself
+// (backend/src/lib/jwtConfig.ts, JWT_ANALYTICS_AUDIENCE). This client fetches
+// one, reuses it until shortly before it expires, and refetches after.
+//
+// The exchange goes through `api`, the main client, on purpose. If the login
+// session has been revoked, that call 401s and the main client's interceptor
+// signs the user out, which is the correct response to a revoked session.
+// A 401 from analytics itself is NOT that: it means the analytics token was
+// stale or rejected, so it is refreshed and retried once rather than treated
+// as a sign-out.
+
+interface CachedAnalyticsToken {
+  token: string
+  expiresAt: number
+  /** The login session it was issued for; a new login must not reuse it. */
+  sessionId: string | null
+}
+
+/** Refresh this long before expiry, so a request never sets off with a token about to lapse. */
+const ANALYTICS_TOKEN_REFRESH_MARGIN_MS = 30_000
+
+let analyticsToken: CachedAnalyticsToken | null = null
+// One exchange in flight at a time: the analytics page fires four requests at
+// once, and without this each would fetch its own token.
+let analyticsTokenRequest: Promise<string> | null = null
+
+export async function getAnalyticsToken(): Promise<string> {
+  const sessionId = localStorage.getItem('vm_session_id')
+  if (analyticsToken && analyticsToken.sessionId === sessionId
+    && Date.now() < analyticsToken.expiresAt - ANALYTICS_TOKEN_REFRESH_MARGIN_MS) {
+    return analyticsToken.token
+  }
+  if (!analyticsTokenRequest) {
+    analyticsTokenRequest = api
+      .post<{ token: string; expiresIn: number }>('/auth/analytics-token')
+      .then(({ data }) => {
+        analyticsToken = { token: data.token, expiresAt: Date.now() + data.expiresIn * 1000, sessionId }
+        return data.token
+      })
+      .finally(() => {
+        analyticsTokenRequest = null
+      })
+  }
+  return analyticsTokenRequest
+}
+
+/** Forget the cached analytics token (a rejected one, or for tests). */
+export function clearAnalyticsToken(): void {
+  analyticsToken = null
+}
+
+analyticsHttp.interceptors.request.use(async (config) => {
+  config.sessionId = localStorage.getItem('vm_session_id')
+  config.headers.Authorization = `Bearer ${await getAnalyticsToken()}`
+  // Marked only once a token is attached, i.e. only for a request that will
+  // actually go to the analytics service. See the response interceptor.
+  config.analyticsRequest = true
+  return config
+})
+
 analyticsHttp.interceptors.response.use(
   (res) => res,
   async (error) => {
-    if (error.response?.status === 401
-      && error.config?.sessionId === localStorage.getItem('vm_session_id')) {
-      await clearSessionData()
-      window.location.href = '/login'
+    const config = error.config
+    // ONLY a 401 from the analytics service itself. When the token EXCHANGE is
+    // refused (a revoked login session), axios routes that error through this
+    // handler too, because the request interceptor above rejects with it. That
+    // error carries the exchange's own config, which never has analyticsRetried,
+    // so retrying it looped forever: retry, exchange refused, a fresh error,
+    // retry. A revoked session must end in the main client's sign-out, not a
+    // request loop.
+    if (error.response?.status === 401 && config?.analyticsRequest && !config.analyticsRetried) {
+      // Stale or rejected analytics token: drop it and try once with a fresh
+      // one. The retry re-runs the request interceptor, which fetches it.
+      clearAnalyticsToken()
+      config.analyticsRetried = true
+      return analyticsHttp.request(config)
     }
     return Promise.reject(error)
   },
 )
-
-// The analytics service now verifies the app-issued JWT, so attach the same
-// bearer token the main API client uses.
-analyticsHttp.interceptors.request.use((config) => {
-  config.sessionId = localStorage.getItem('vm_session_id')
-  const token = localStorage.getItem('vm_token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
 
 export interface FleetSummary {
   vessels: number

@@ -1,6 +1,6 @@
 import axios from 'axios'
 import type { AxiosAdapter, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('idb-keyval', () => ({ del: vi.fn().mockResolvedValue(undefined) }))
 
@@ -15,6 +15,7 @@ interface Captured {
   url?: string
   body: Record<string, unknown> | undefined
   skipAuthRedirect?: boolean
+  authorization?: string
 }
 
 const captured: Captured[] = []
@@ -40,6 +41,7 @@ beforeAll(async () => {
       url: config.url,
       body: typeof config.data === 'string' ? JSON.parse(config.data) : config.data,
       skipAuthRedirect: config.skipAuthRedirect,
+      authorization: config.headers?.Authorization as string | undefined,
     })
 
     beforeReply?.()
@@ -316,4 +318,100 @@ describe('replayQueuedMutation', () => {
     expect(captured).toHaveLength(0)
   })
 
+})
+
+describe('analytics token exchange', () => {
+  // The analytics service refuses the login token and accepts only a 5-minute
+  // analytics token the backend issues after a live session check. Route the
+  // fake transport by URL: the exchange answers with a numbered token, and
+  // analytics answers 200 (or what a test sets in analyticsStatus).
+  let issued = 0
+  let analyticsStatus: number[] = []
+
+  beforeEach(() => {
+    issued = 0
+    analyticsStatus = []
+    api.clearAnalyticsToken()
+    localStorage.setItem('vm_token', 'login-token')
+    localStorage.setItem('vm_session_id', 'session-a')
+    beforeReply = () => {
+      const last = captured[captured.length - 1]
+      if (last.url?.includes('/auth/analytics-token')) {
+        issued += 1
+        nextReply = { status: 200, data: { token: `analytics-${issued}`, expiresIn: 300 } }
+      } else {
+        nextReply = { status: analyticsStatus.shift() ?? 200, data: { vessels: 1 } }
+      }
+    }
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const exchanges = () => captured.filter((c) => c.url?.includes('/auth/analytics-token'))
+  const analyticsCalls = () => captured.filter((c) => c.url?.startsWith('/api/analytics/'))
+
+  it('sends analytics the exchanged token, never the login token', async () => {
+    await api.analyticsApi.getSummary()
+    expect(exchanges()).toHaveLength(1)
+    expect(exchanges()[0].authorization).toBe('Bearer login-token') // the exchange itself is a normal API call
+    expect(analyticsCalls()[0].authorization).toBe('Bearer analytics-1')
+  })
+
+  it('fetches one token for the four parallel requests the page makes', async () => {
+    await Promise.all([
+      api.analyticsApi.getSummary(),
+      api.analyticsApi.getVesselTypes(),
+      api.analyticsApi.getTopVessels(),
+      api.analyticsApi.getIdling(),
+    ])
+    expect(exchanges()).toHaveLength(1)
+    expect(analyticsCalls().map((c) => c.authorization)).toEqual(Array(4).fill('Bearer analytics-1'))
+  })
+
+  it('reuses the token until shortly before it expires, then fetches a new one', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-11T00:00:00Z'))
+    await api.analyticsApi.getSummary()
+    vi.setSystemTime(new Date('2026-11-11T00:04:00Z')) // 4 of 5 minutes: still fresh
+    await api.analyticsApi.getSummary()
+    expect(exchanges()).toHaveLength(1)
+
+    vi.setSystemTime(new Date('2026-11-11T00:04:40Z')) // inside the 30s refresh margin
+    await api.analyticsApi.getSummary()
+    expect(exchanges()).toHaveLength(2)
+    expect(analyticsCalls()[2].authorization).toBe('Bearer analytics-2')
+  })
+
+  it('does not carry a token over to a new login session', async () => {
+    await api.analyticsApi.getSummary()
+    localStorage.setItem('vm_session_id', 'session-b')
+    await api.analyticsApi.getSummary()
+    expect(exchanges()).toHaveLength(2)
+  })
+
+  it('on a 401 from analytics, refreshes the token and retries once, without signing out', async () => {
+    analyticsStatus = [401]
+    const summary = await api.analyticsApi.getSummary()
+    expect(summary).toEqual({ vessels: 1 })
+    expect(exchanges()).toHaveLength(2)
+    expect(analyticsCalls().map((c) => c.authorization)).toEqual(['Bearer analytics-1', 'Bearer analytics-2'])
+    expect(localStorage.getItem('vm_token')).toBe('login-token')
+  })
+
+  it('gives up after one retry, and still does not sign out', async () => {
+    // Two 401s in a row mean analytics rejects tokens the backend issues, which
+    // is a configuration fault (secret or audience), not an ended session.
+    analyticsStatus = [401, 401]
+    await expect(api.analyticsApi.getSummary()).rejects.toThrow()
+    expect(analyticsCalls()).toHaveLength(2)
+    expect(localStorage.getItem('vm_token')).toBe('login-token')
+  })
+
+  it('signs out when the exchange itself is refused: the login session was revoked', async () => {
+    beforeReply = () => {
+      nextReply = { status: 401, data: { error: 'Session revoked' } }
+    }
+    await expect(api.analyticsApi.getSummary()).rejects.toThrow()
+    expect(analyticsCalls()).toHaveLength(0)
+    expect(localStorage.getItem('vm_token')).toBeNull()
+  })
 })
