@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 vi.mock('../lib/prisma', () => ({ prisma: {} }));
-import { createApp } from '../app';
+import { bearerMatches, createApp } from '../app';
 import { env } from '../config/env';
 import { registry } from '../lib/metrics';
 import { createError, errorHandler } from '../middleware/errorHandler';
@@ -22,6 +22,17 @@ describe('private diagnostics', () => {
     env.METRICS_TOKEN = 'dummy-scrape-token';
     expect((await request(app).get('/metrics')).status).toBe(401);
     expect((await request(app).get('/metrics').set('Authorization', 'Bearer wrong')).status).toBe(401);
+    // Near misses: the cases a character-by-character compare is fastest to
+    // reject, and so the ones a timing attack learns from. All must still fail.
+    for (const near of [
+      'Bearer dummy-scrape-tokeN',   // same length, last character off
+      'Bearer dummy-scrape',         // a prefix
+      'Bearer dummy-scrape-token2',  // the token plus one character
+      'dummy-scrape-token',          // right token, no scheme
+      'Basic dummy-scrape-token',    // right token, wrong scheme
+    ]) {
+      expect((await request(app).get('/metrics').set('Authorization', near)).status).toBe(401);
+    }
     const allowed = await request(app).get('/metrics').set('Authorization', 'Bearer dummy-scrape-token');
     expect(allowed.status).toBe(200);
     expect(allowed.text).toContain('http_request_duration_seconds');
@@ -49,5 +60,17 @@ describe('private diagnostics', () => {
     expect(JSON.stringify(res.body)).not.toContain('DUMMY_SECRET');
     expect(res.body.stack).toBeUndefined();
     expect(res.body.details).toBeUndefined();
+  });
+});
+
+describe('bearerMatches', () => {
+  it('accepts only the exact header, and never throws on a length mismatch', () => {
+    // timingSafeEqual throws on unequal-length buffers; hashing first is what
+    // makes a short or long guess a plain false instead of an exception.
+    expect(bearerMatches('Bearer t0ken', 't0ken')).toBe(true);
+    expect(bearerMatches(undefined, 't0ken')).toBe(false);
+    expect(bearerMatches('', 't0ken')).toBe(false);
+    expect(bearerMatches('Bearer t0ke', 't0ken')).toBe(false);
+    expect(bearerMatches(`Bearer ${'x'.repeat(10_000)}`, 't0ken')).toBe(false);
   });
 });

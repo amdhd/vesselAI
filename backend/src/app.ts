@@ -2,6 +2,7 @@
 // time (aiService constructs the Anthropic client, jwtConfig reads JWT_SECRET).
 // A later dotenv.config() would run after those and leave the values undefined.
 import 'dotenv/config';
+import { createHash, timingSafeEqual } from 'crypto';
 import express, { Application, Request, Response } from 'express';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -27,6 +28,23 @@ import notificationRoutes from './routes/notifications';
 import weatherRoutes from './routes/weather';
 import aisRoutes from './routes/ais';
 import importRoutes from './routes/imports';
+
+/**
+ * Constant-time check of an `Authorization: Bearer <token>` header.
+ *
+ * `!==` on strings returns at the first differing character, so the time a
+ * rejection takes says how much of a guess was right, which lets the token be
+ * recovered one character at a time. timingSafeEqual compares every byte
+ * regardless, but it THROWS on unequal lengths, and checking lengths first
+ * would leak the token's length instead. Hashing both sides first gives two
+ * 32-byte digests, so the comparison is constant-time and length-blind.
+ */
+export function bearerMatches(header: string | undefined, token: string): boolean {
+  if (typeof header !== 'string') return false;
+  const given = createHash('sha256').update(header).digest();
+  const expected = createHash('sha256').update(`Bearer ${token}`).digest();
+  return timingSafeEqual(given, expected);
+}
 
 /**
  * Builds the Express app in isolation from the HTTP/Socket.io server so it
@@ -80,7 +98,7 @@ export function createApp(io?: SocketIOServer): Application {
       res.status(404).end();
       return;
     }
-    if (env.METRICS_TOKEN && req.headers.authorization !== `Bearer ${env.METRICS_TOKEN}`) {
+    if (env.METRICS_TOKEN && !bearerMatches(req.headers.authorization, env.METRICS_TOKEN)) {
       res.status(401).end();
       return;
     }
