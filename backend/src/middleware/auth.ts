@@ -38,7 +38,16 @@ export const authenticate = (
     // Pin the algorithm: tokens are HMAC-signed (jwtConfig uses a symmetric
     // secret), so only HS256 is ever valid. Restricting the accepted set is
     // defence-in-depth against algorithm-confusion tricks.
-    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as JwtPayload;
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as JwtPayload & { exp?: unknown };
+    // jsonwebtoken enforces `exp` only when the token HAS one — a token signed
+    // without it verifies, and is valid forever. generateToken always sets it,
+    // so a token without one was not minted by this app's login path. The
+    // socket gate (lib/fleetSockets.ts) already refuses these; this brings the
+    // REST gate to the same rule.
+    if (typeof decoded.exp !== 'number' || !Number.isFinite(decoded.exp)) {
+      res.status(401).json({ error: 'Invalid token' });
+      return;
+    }
     req.user = {
       id: decoded.id,
       email: decoded.email,

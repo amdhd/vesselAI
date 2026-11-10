@@ -138,7 +138,14 @@ def require_auth(
     if credentials is None:
         raise HTTPException(status_code=401, detail="Missing bearer token")
     try:
-        claims = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=["HS256"])
+        # require=["exp"]: PyJWT validates exp only when the token carries one,
+        # so without this a token signed with no expiry is accepted forever. The
+        # Express signer always sets exp, so a token lacking it did not come
+        # from the app's login path. Same rule as the REST and socket gates.
+        claims = jwt.decode(
+            credentials.credentials, JWT_SECRET, algorithms=["HS256"],
+            options={"require": ["exp"]},
+        )
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     fleet_id = claims.get("fleetId")

@@ -68,6 +68,21 @@ describe('authenticate', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  it('rejects a correctly signed token that has no expiry', () => {
+    // jsonwebtoken only checks exp when it is present, so without the explicit
+    // check this token would verify and never expire.
+    const token = jwt.sign(PAYLOAD, JWT_SECRET);
+    const req = mockReq(`Bearer ${token}`);
+    const res = mockRes();
+    const next: NextFunction = vi.fn();
+
+    authenticate(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Invalid token' });
+    expect(next).not.toHaveBeenCalled();
+  });
+
   it('rejects a token signed with a different secret — cannot be forged', () => {
     const token = jwt.sign(PAYLOAD, 'a-completely-different-secret-that-is-long-enough', { expiresIn: '1h' });
     const req = mockReq(`Bearer ${token}`);

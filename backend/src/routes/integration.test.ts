@@ -119,7 +119,11 @@ describe('POST /api/voyage/calculate-speed', () => {
 function noFleetToken(): string {
   return jwt.sign(
     { id: 'u-nofleet', email: 'nofleet@x.com', role: 'fleet_manager', name: 'No Fleet', fleetId: null },
-    JWT_SECRET
+    JWT_SECRET,
+    // Must expire, like every token the app mints. Without exp the auth gate
+    // now 401s before the fleet gate is reached, and these tests would pass
+    // or fail for the wrong reason.
+    { expiresIn: '1h' }
   );
 }
 
