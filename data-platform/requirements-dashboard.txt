@@ -9,4 +9,4 @@
 #   streamlit run dashboard.py
 
 streamlit==1.59.2
-duckdb==1.5.4
+duckdb==2.0.0
