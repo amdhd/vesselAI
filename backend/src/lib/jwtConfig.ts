@@ -50,3 +50,8 @@ export const JWT_VERIFY_OPTIONS = {
 
 // Demo credentials are only honoured outside production.
 export const DEMO_LOGIN_ENABLED = process.env.NODE_ENV !== 'production';
+
+// The demo account's id: the hardcoded fallback payload in routes/auth.ts and
+// the seeded row in prisma/seed.ts both use it. lib/session.ts needs it to
+// recognise a demo token on a database that was never seeded.
+export const DEMO_USER_ID = 'user-001';

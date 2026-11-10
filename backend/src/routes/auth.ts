@@ -7,7 +7,7 @@ import { logger } from '../lib/logger';
 import { recordAudit } from '../lib/audit';
 import { validate } from '../middleware/validate';
 import { LoginSchema, RegisterSchema } from '../schemas';
-import { JWT_SECRET, JWT_EXPIRES_IN, JWT_ISSUER, JWT_AUDIENCE, DEMO_LOGIN_ENABLED } from '../lib/jwtConfig';
+import { JWT_SECRET, JWT_EXPIRES_IN, JWT_ISSUER, JWT_AUDIENCE, DEMO_LOGIN_ENABLED, DEMO_USER_ID } from '../lib/jwtConfig';
 
 const router = Router();
 
@@ -41,7 +41,7 @@ function generateToken(user: { id: string; email: string; role: string; fleetId?
 // The demo account is honoured on two paths — DB unreachable, and DB reachable
 // but unseeded — so keep the credential check and canned payload in one place.
 const DEMO_USER = {
-  id: 'user-001',
+  id: DEMO_USER_ID,
   email: 'demo@petronas.com',
   name: 'Captain Ahmad Fauzi',
   role: 'fleet_manager',

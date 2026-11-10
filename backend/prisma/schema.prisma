@@ -15,6 +15,10 @@ model User {
   role      String   @default("fleet_manager")
   fleetId   String?
   fleet     Fleet?   @relation(fields: [fleetId], references: [id])
+  // Tokens issued before this instant are rejected (lib/session.ts). Null means
+  // never revoked. Setting it is how "sign out everywhere" works without
+  // tracking every token issued.
+  tokensValidAfter DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
