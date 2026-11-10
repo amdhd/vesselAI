@@ -14,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api import main
-from api.main import JWT_SECRET, app
+from api.main import JWT_AUDIENCE, JWT_ISSUER, JWT_SECRET, app
 
 client = TestClient(app)
 
@@ -35,6 +35,8 @@ def _token(secret: str = JWT_SECRET, **claims) -> str:
         "role": "fleet_manager",
         "fleetId": "fleet-001",
         "exp": int(time.time()) + 600,
+        "iss": JWT_ISSUER,
+        "aud": JWT_AUDIENCE,
     }
     payload.update(claims)
     payload = {k: v for k, v in payload.items() if v is not OMIT}
@@ -110,3 +112,36 @@ def test_analytics_rejects_expired_token():
         headers={"Authorization": f"Bearer {_token(exp=int(time.time()) - 10)}"},
     )
     assert r.status_code == 401
+
+
+@pytest.mark.parametrize(
+    "claims",
+    [
+        {"aud": "some-other-service"},
+        {"iss": "some-other-issuer"},
+        {"aud": OMIT},
+        {"iss": OMIT},
+    ],
+    ids=["wrong-audience", "wrong-issuer", "no-audience", "no-issuer"],
+)
+def test_analytics_rejects_token_outside_the_claim_contract(claims):
+    # Correct secret, fleet and expiry. Only who-issued / who-for is wrong, which
+    # is exactly the token the contract exists to refuse: signed by something
+    # holding the secret, but not a user session for this app.
+    r = client.get(
+        "/api/analytics/summary",
+        headers={"Authorization": f"Bearer {_token(**claims)}"},
+    )
+    assert r.status_code == 401
+
+
+def test_claim_contract_matches_the_backend_signer():
+    # The two services share these strings across a language boundary, so no
+    # compiler links them. If the backend's copy changes alone, every analytics
+    # call 401s in production; this makes that a failing test instead.
+    import re
+    from pathlib import Path
+
+    ts = (Path(__file__).resolve().parents[2] / "backend/src/lib/jwtConfig.ts").read_text()
+    backend = dict(re.findall(r"export const (JWT_ISSUER|JWT_AUDIENCE) = '([^']+)'", ts))
+    assert backend == {"JWT_ISSUER": JWT_ISSUER, "JWT_AUDIENCE": JWT_AUDIENCE}

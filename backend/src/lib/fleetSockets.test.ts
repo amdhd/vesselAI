@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import jwt from 'jsonwebtoken';
 import type { Server, Socket } from 'socket.io';
 import { registerFleetSockets } from './fleetSockets';
-import { JWT_SECRET } from './jwtConfig';
+import { JWT_SECRET, JWT_ISSUER, JWT_AUDIENCE } from './jwtConfig';
+
+const CONTRACT = { issuer: JWT_ISSUER, audience: JWT_AUDIENCE };
 
 type Next = (error?: Error) => void;
 let authorize: (socket: Socket, next: Next) => void;
@@ -17,7 +19,7 @@ function socket(token: unknown) {
   } as unknown as Socket;
 }
 function sign(fleetId: unknown = 'fleet-a', expiresIn = 60) {
-  return jwt.sign({ id: 'dummy-user', fleetId }, JWT_SECRET, { expiresIn });
+  return jwt.sign({ id: 'dummy-user', fleetId }, JWT_SECRET, { expiresIn, ...CONTRACT });
 }
 function accepted(token: string) {
   const client = socket(token);
@@ -51,10 +53,13 @@ describe('fleet socket authorization', () => {
 
   it('rejects wrong signatures, expired tokens and fleetless or unbounded identities', () => {
     for (const token of [
-      jwt.sign({ id: 'dummy-user', fleetId: 'fleet-a' }, 'a-different-dummy-secret', { expiresIn: 60 }),
+      jwt.sign({ id: 'dummy-user', fleetId: 'fleet-a' }, 'a-different-dummy-secret', { expiresIn: 60, ...CONTRACT }),
       sign('fleet-a', -1), sign(null),
-      jwt.sign({ id: 'dummy-user', fleetId: 'fleet-a' }, JWT_SECRET),
-      jwt.sign({ fleetId: 'fleet-a' }, JWT_SECRET, { expiresIn: 60 }),
+      jwt.sign({ id: 'dummy-user', fleetId: 'fleet-a' }, JWT_SECRET, CONTRACT),
+      jwt.sign({ fleetId: 'fleet-a' }, JWT_SECRET, { expiresIn: 60, ...CONTRACT }),
+      // Valid in every respect except the contract: meant for something else.
+      jwt.sign({ id: 'dummy-user', fleetId: 'fleet-a' }, JWT_SECRET, { expiresIn: 60, issuer: JWT_ISSUER, audience: 'some-other-service' }),
+      jwt.sign({ id: 'dummy-user', fleetId: 'fleet-a' }, JWT_SECRET, { expiresIn: 60 }),
     ]) {
       const next = vi.fn();
       authorize(socket(token), next);

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '../lib/jwtConfig';
+import { JWT_SECRET, JWT_VERIFY_OPTIONS } from '../lib/jwtConfig';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -37,8 +37,9 @@ export const authenticate = (
   try {
     // Pin the algorithm: tokens are HMAC-signed (jwtConfig uses a symmetric
     // secret), so only HS256 is ever valid. Restricting the accepted set is
-    // defence-in-depth against algorithm-confusion tricks.
-    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as JwtPayload & { exp?: unknown };
+    // defence-in-depth against algorithm-confusion tricks. Issuer and audience
+    // are checked too: the shared claim contract in lib/jwtConfig.ts.
+    const decoded = jwt.verify(token, JWT_SECRET, JWT_VERIFY_OPTIONS) as JwtPayload & { exp?: unknown };
     // jsonwebtoken enforces `exp` only when the token HAS one — a token signed
     // without it verifies, and is valid forever. generateToken always sets it,
     // so a token without one was not minted by this app's login path. The

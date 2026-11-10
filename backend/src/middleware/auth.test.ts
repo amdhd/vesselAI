@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import jwt from 'jsonwebtoken';
 import { Response, NextFunction } from 'express';
-import { JWT_SECRET } from '../lib/jwtConfig';
+import { JWT_SECRET, JWT_ISSUER, JWT_AUDIENCE } from '../lib/jwtConfig';
+
+const CONTRACT = { issuer: JWT_ISSUER, audience: JWT_AUDIENCE };
 import { authenticate, requireRole, AuthenticatedRequest } from './auth';
 
 const PAYLOAD = { id: 'u1', email: 'demo@petronas.com', role: 'fleet_manager', fleetId: 'fleet-001', name: 'Demo' };
@@ -20,7 +22,7 @@ function mockReq(authHeader?: string): AuthenticatedRequest {
 
 describe('authenticate', () => {
   it('attaches req.user and calls next() for a valid token', () => {
-    const token = jwt.sign(PAYLOAD, JWT_SECRET, { expiresIn: '1h' });
+    const token = jwt.sign(PAYLOAD, JWT_SECRET, { expiresIn: '1h', ...CONTRACT });
     const req = mockReq(`Bearer ${token}`);
     const res = mockRes();
     const next: NextFunction = vi.fn();
@@ -56,7 +58,7 @@ describe('authenticate', () => {
   });
 
   it('rejects an expired token distinctly from an invalid one', () => {
-    const token = jwt.sign(PAYLOAD, JWT_SECRET, { expiresIn: -1 });
+    const token = jwt.sign(PAYLOAD, JWT_SECRET, { expiresIn: -1, ...CONTRACT });
     const req = mockReq(`Bearer ${token}`);
     const res = mockRes();
     const next: NextFunction = vi.fn();
@@ -71,7 +73,7 @@ describe('authenticate', () => {
   it('rejects a correctly signed token that has no expiry', () => {
     // jsonwebtoken only checks exp when it is present, so without the explicit
     // check this token would verify and never expire.
-    const token = jwt.sign(PAYLOAD, JWT_SECRET);
+    const token = jwt.sign(PAYLOAD, JWT_SECRET, CONTRACT);
     const req = mockReq(`Bearer ${token}`);
     const res = mockRes();
     const next: NextFunction = vi.fn();
@@ -84,7 +86,7 @@ describe('authenticate', () => {
   });
 
   it('rejects a token signed with a different secret — cannot be forged', () => {
-    const token = jwt.sign(PAYLOAD, 'a-completely-different-secret-that-is-long-enough', { expiresIn: '1h' });
+    const token = jwt.sign(PAYLOAD, 'a-completely-different-secret-that-is-long-enough', { expiresIn: '1h', ...CONTRACT });
     const req = mockReq(`Bearer ${token}`);
     const res = mockRes();
     const next: NextFunction = vi.fn();
@@ -127,6 +129,27 @@ describe('requireRole', () => {
     const next: NextFunction = vi.fn();
 
     requireRole(['fleet_manager'])(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(next).not.toHaveBeenCalled();
+  });
+});
+
+describe('authenticate — claim contract', () => {
+  // Right secret, real expiry; only who-issued / who-for is wrong. That is a
+  // token signed by something holding the secret, but not a session this app
+  // minted — the case the contract exists to refuse.
+  it.each([
+    ['wrong audience', { issuer: JWT_ISSUER, audience: 'some-other-service' }],
+    ['wrong issuer', { issuer: 'some-other-issuer', audience: JWT_AUDIENCE }],
+    ['no audience', { issuer: JWT_ISSUER }],
+    ['no issuer', { audience: JWT_AUDIENCE }],
+  ])('rejects a token with %s', (_label, contract) => {
+    const token = jwt.sign(PAYLOAD, JWT_SECRET, { expiresIn: '1h', ...contract });
+    const res = mockRes();
+    const next: NextFunction = vi.fn();
+
+    authenticate(mockReq(`Bearer ${token}`), res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();

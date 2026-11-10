@@ -82,6 +82,13 @@ def _resolve_jwt_secret() -> str:
 
 JWT_SECRET = _resolve_jwt_secret()
 
+# The claim contract — MUST match JWT_ISSUER / JWT_AUDIENCE in
+# backend/src/lib/jwtConfig.ts, which signs every token this service accepts.
+# If they drift, every analytics call 401s; test_auth.py pins these values so a
+# one-sided change fails here rather than in production.
+JWT_ISSUER = "vesselmind-api"
+JWT_AUDIENCE = "vesselmind-app"
+
 # Restrict CORS to the app origin(s). Override with ANALYTICS_ALLOWED_ORIGINS
 # (comma-separated) in production; defaults to the local Vite dev + preview ports.
 ALLOWED_ORIGINS = [
@@ -138,13 +145,14 @@ def require_auth(
     if credentials is None:
         raise HTTPException(status_code=401, detail="Missing bearer token")
     try:
-        # require=["exp"]: PyJWT validates exp only when the token carries one,
-        # so without this a token signed with no expiry is accepted forever. The
-        # Express signer always sets exp, so a token lacking it did not come
-        # from the app's login path. Same rule as the REST and socket gates.
+        # require exp: PyJWT validates exp only when the token carries one, so
+        # without this a token signed with no expiry is accepted forever. iss
+        # and aud are required and checked for the same reason as in Express:
+        # the secret proves who could have signed a token, not what it is for.
         claims = jwt.decode(
             credentials.credentials, JWT_SECRET, algorithms=["HS256"],
-            options={"require": ["exp"]},
+            issuer=JWT_ISSUER, audience=JWT_AUDIENCE,
+            options={"require": ["exp", "iss", "aud"]},
         )
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")

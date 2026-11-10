@@ -13,7 +13,7 @@ vi.mock('../lib/prisma', () => ({ prisma: db }));
 vi.mock('../lib/audit', () => ({ recordAudit: vi.fn() }));
 vi.mock('../services/aiService', () => ({ generateJson: vi.fn() }));
 import maintenance from './maintenance';
-import { JWT_SECRET } from '../lib/jwtConfig';
+import { JWT_SECRET, JWT_ISSUER, JWT_AUDIENCE } from '../lib/jwtConfig';
 
 const app = express();
 app.use(express.json());
@@ -25,7 +25,7 @@ const order = {
   plannedDate: null, completedDate: null, createdAt: new Date('2026-10-01'),
 };
 function token(fleetId: string | null) {
-  return jwt.sign({ id: 'dummy-user', fleetId, role: 'fleet_manager' }, JWT_SECRET, { expiresIn: '1h' });
+  return jwt.sign({ id: 'dummy-user', fleetId, role: 'fleet_manager' }, JWT_SECRET, { expiresIn: '1h', issuer: JWT_ISSUER, audience: JWT_AUDIENCE });
 }
 const list = (fleetId: string | null) => request(app).get('/api/maintenance/work-orders/vessel-001')
   .set('Authorization', `Bearer ${token(fleetId)}`);

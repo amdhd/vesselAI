@@ -7,7 +7,7 @@ import { logger } from '../lib/logger';
 import { recordAudit } from '../lib/audit';
 import { validate } from '../middleware/validate';
 import { LoginSchema, RegisterSchema } from '../schemas';
-import { JWT_SECRET, JWT_EXPIRES_IN, DEMO_LOGIN_ENABLED } from '../lib/jwtConfig';
+import { JWT_SECRET, JWT_EXPIRES_IN, JWT_ISSUER, JWT_AUDIENCE, DEMO_LOGIN_ENABLED } from '../lib/jwtConfig';
 
 const router = Router();
 
@@ -25,7 +25,8 @@ function generateToken(user: { id: string; email: string; role: string; fleetId?
       name: user.name,
     },
     JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN } as SignOptions
+    // issuer/audience: the claim contract every gate verifies (lib/jwtConfig.ts).
+    { expiresIn: JWT_EXPIRES_IN, issuer: JWT_ISSUER, audience: JWT_AUDIENCE } as SignOptions
   );
 }
 
