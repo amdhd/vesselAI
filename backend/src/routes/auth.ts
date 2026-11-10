@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../lib/logger';
 import { recordAudit } from '../lib/audit';
+import { revokeSessions } from '../lib/session';
 import { validate } from '../middleware/validate';
 import { LoginSchema, RegisterSchema } from '../schemas';
 import { JWT_SECRET, JWT_EXPIRES_IN, JWT_ISSUER, JWT_AUDIENCE, DEMO_LOGIN_ENABLED, DEMO_USER_ID } from '../lib/jwtConfig';
@@ -168,6 +169,29 @@ router.post('/register', validate(RegisterSchema), async (req: Request, res: Res
     logger.error({ err: error }, 'Register error');
     res.status(500).json({ error: 'Registration failed' });
   }
+});
+
+// POST /api/auth/logout-all
+//
+// Sign out everywhere: every token this account holds stops working, on every
+// device, including the one that sent this request. The client should discard
+// its token afterwards. Tokens issued from now on (a fresh login) are fine.
+//
+// There is no single-device logout on the server: without a per-token id
+// there is nothing to revoke one token by. The app's ordinary logout clears
+// the token client-side, as before.
+router.post('/logout-all', authenticate, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const userId = req.user!.id;
+  try {
+    await revokeSessions(userId);
+  } catch (error) {
+    // Includes the no-database demo mode, where there is no row to stamp.
+    logger.error({ err: error }, 'Revoke sessions failed');
+    res.status(503).json({ error: 'Database unavailable' });
+    return;
+  }
+  await recordAudit({ userId, entity: 'User', action: 'revoke_sessions', entityId: userId });
+  res.status(204).end();
 });
 
 // GET /api/auth/me
