@@ -23,6 +23,20 @@ services:
       timeout: 5s
       retries: 5
 
+  # Shared rate-limit store. One backend replica here doesn't strictly need it,
+  # but it keeps this stack's limiter behaviour the same as Kubernetes, where
+  # several replicas must share counters. Counters only, so no volume and no
+  # persistence; if it is down, the backend keeps limiting per process.
+  redis:
+    image: redis:8.2.3-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--save', '', '--appendonly', 'no', '--maxmemory', '48mb', '--maxmemory-policy', 'volatile-ttl']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   # One-off: apply migrations against a fresh/updated DB, then exit. Uses the
   # `build` stage because it still has the Prisma CLI (pruned from runtime).
   migrate:
@@ -72,6 +86,7 @@ services:
       TRUST_PROXY: '1'
       LOG_LEVEL: ${LOG_LEVEL:-info}
       METRICS_TOKEN: ${METRICS_TOKEN:-}
+      REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,6 +94,8 @@ services:
         condition: service_completed_successfully
       seed:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
 
   # Gold-layer serving API (FastAPI over DuckDB). Independent of Postgres and the
   # Express backend — it only reads the warehouse baked into its own image.

@@ -59,6 +59,12 @@ data:
   # its own IP, which defeats the limiter in the opposite direction.
   TRUST_PROXY: '1'
 
+  # Shared rate-limit store (20-redis.yaml). Every API replica counts against
+  # the same limits through it; without it each replica counts on its own and
+  # every ceiling is multiplied by the HPA's replica count. If Redis is down the
+  # API keeps limiting per pod, so this is never a hard dependency.
+  REDIS_URL: 'redis://redis:6379'
+
   # The SAFE default lives in the base. The dev overlay raises it so k6 measures
   # the application rather than the rate limiter; the prod overlay restates this
   # value explicitly so the intended production setting is visible in the file

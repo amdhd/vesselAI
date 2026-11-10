@@ -1,0 +1,123 @@
+# Redis — the shared store for the API's rate limiters.
+#
+# WHY IT EXISTS. Each API replica used to count rate limits in its own memory,
+# so with the HPA at 2–8 replicas every ceiling was multiplied by the replica
+# count: 5 failed logins per 15 minutes was really 10–40. Pointing every replica
+# at one Redis makes the configured number the real one
+# (backend/src/middleware/rateLimiter.ts).
+#
+# WHAT IT HOLDS: rate-limit counters only — keys like rl:auth:<ip> with a TTL no
+# longer than the longest window (15 minutes). No sessions, no secrets, nothing
+# that must survive a restart. That one fact drives most of the choices below.
+#
+#   - NO PERSISTENCE (save "" and appendonly no) and NO PVC. A restart resets
+#     current windows, which is the same as what happens today when an API pod
+#     restarts. Persisting counters would buy nothing and cost a volume.
+#   - ONE REPLICA. If it is down, the API does not fail and does not stop
+#     limiting: lib/fallbackStore.ts counts per pod until Redis is back. So
+#     Redis availability affects how TIGHT the limits are, never whether login
+#     works, and HA Redis (Sentinel, replicas) would be cost without a matching
+#     risk.
+#   - NO PASSWORD; access is the NetworkPolicy instead (17-networkpolicies.yaml
+#     admits only API pods). For counters that is proportionate. If Redis ever
+#     holds anything sensitive, add requirepass via the sealed secret.
+#   - maxmemory with volatile-ttl. Every key has a TTL, so under memory pressure
+#     Redis drops the keys closest to expiring anyway. Sized far above need:
+#     a counter is well under 100 bytes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: vesselmind
+  labels:
+    app: vesselmind-redis
+    app.kubernetes.io/component: rate-limit-store
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vesselmind-redis
+  template:
+    metadata:
+      labels:
+        app: vesselmind-redis
+        app.kubernetes.io/component: rate-limit-store
+    spec:
+      # PSS `restricted` (00-namespace.yaml): non-root, no privilege escalation,
+      # all capabilities dropped, RuntimeDefault seccomp. The official image
+      # runs redis-server directly when started as non-root; uid 999 is its
+      # built-in `redis` user.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      automountServiceAccountToken: false
+      containers:
+        - name: redis
+          # Exact patch tag; overlays/prod pins the multi-arch index digest.
+          image: redis:8.2.3-alpine
+          imagePullPolicy: IfNotPresent
+          args:
+            - --save
+            - ''
+            - --appendonly
+            - 'no'
+            - --maxmemory
+            - 48mb
+            - --maxmemory-policy
+            - volatile-ttl
+            - --protected-mode
+            - 'no' # no password (see header); the NetworkPolicy is the access control
+          ports:
+            - name: redis
+              containerPort: 6379
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ['ALL']
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              # Headroom over maxmemory for Redis' own overhead.
+              memory: 96Mi
+          readinessProbe:
+            exec:
+              command: ['redis-cli', 'ping']
+            periodSeconds: 10
+            timeoutSeconds: 2
+          livenessProbe:
+            exec:
+              command: ['redis-cli', 'ping']
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 2
+          volumeMounts:
+            # Redis needs a writable working directory even with persistence
+            # off. emptyDir, so the root filesystem can stay read-only.
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir:
+            sizeLimit: 16Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: vesselmind
+  labels:
+    app: vesselmind-redis
+spec:
+  selector:
+    app: vesselmind-redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
