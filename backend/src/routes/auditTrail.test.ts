@@ -21,6 +21,7 @@ vi.mock('../lib/prisma', () => ({
 import { createApp } from '../app';
 import { JWT_SECRET, JWT_ISSUER, JWT_AUDIENCE } from '../lib/jwtConfig';
 import { prisma } from '../lib/prisma';
+import { clearSessionCache } from '../lib/session';
 
 const app = createApp();
 const auditLog = vi.mocked(prisma.auditLog.create);
@@ -57,6 +58,15 @@ function auditRows() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clearSessionCache();
+  // The auth gate reads the caller's live role and fleet from the User row
+  // (lib/session.ts). With this double the database is "reachable", so the
+  // manager has to exist in it; without a row the gate rightly treats the
+  // token as belonging to a deleted account and refuses it.
+  vi.mocked(prisma.user.findUnique).mockImplementation((async ({ where }: { where: { id?: string } }) =>
+    where.id === 'user-1'
+      ? { role: 'fleet_manager', fleetId: 'fleet-001', tokensValidAfter: null }
+      : null) as never);
   auditLog.mockResolvedValue({} as never);
   vi.mocked(prisma.$queryRaw).mockResolvedValue([{ id: 'vessel-001' }]);
   vi.mocked(prisma.$transaction).mockImplementation(async (run: any) => run(prisma));

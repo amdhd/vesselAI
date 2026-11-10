@@ -41,6 +41,20 @@ export const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 export const JWT_ISSUER = 'vesselmind-api';
 export const JWT_AUDIENCE = 'vesselmind-app';
 
+// THE ANALYTICS TOKEN. The analytics service (data-platform/api/main.py) has no
+// connection to Postgres, so it cannot run the live-session check that makes
+// revocation work (lib/session.ts). Rather than trust a 7-day login token
+// there, it accepts only a short-lived token of its own audience, which this
+// backend issues from POST /api/auth/analytics-token AFTER that check passes.
+// Revocation therefore reaches analytics within ANALYTICS_TOKEN_TTL_SECONDS,
+// with no database or network dependency added to the Python service.
+//
+// A different audience on purpose: a login token is refused by analytics, and
+// an analytics token is refused by every gate here (JWT_VERIFY_OPTIONS names
+// JWT_AUDIENCE). Neither can be used as the other.
+export const JWT_ANALYTICS_AUDIENCE = 'vesselmind-analytics';
+export const ANALYTICS_TOKEN_TTL_SECONDS = 300;
+
 /** Options every verifier passes to jwt.verify. One definition, three callers. */
 export const JWT_VERIFY_OPTIONS = {
   algorithms: ['HS256'] as jwt.Algorithm[],
@@ -50,3 +64,8 @@ export const JWT_VERIFY_OPTIONS = {
 
 // Demo credentials are only honoured outside production.
 export const DEMO_LOGIN_ENABLED = process.env.NODE_ENV !== 'production';
+
+// The demo account's id: the hardcoded fallback payload in routes/auth.ts and
+// the seeded row in prisma/seed.ts both use it. lib/session.ts needs it to
+// recognise a demo token on a database that was never seeded.
+export const DEMO_USER_ID = 'user-001';

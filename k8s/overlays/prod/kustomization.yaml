@@ -436,6 +436,12 @@ images:
   - name: postgres
     digest: sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
 
+  # Redis (the rate-limit store) under the same rule: the multi-arch INDEX digest
+  # of redis:8.2.3-alpine, resolved from Docker Hub when this pin was added. It
+  # carries the same Docker Hub rate-limit exposure as postgres, noted below.
+  - name: redis
+    digest: sha256:08ad0b1d280850169a790dba1393ff7a90aef951fc19632cf4d3ce4f78e679ba
+
 # KEEPING THESE CURRENT is manual today, and that is the honest remaining gap.
 # CI publishes ghcr.io/amdhd/vesselai-*:<commit-sha> on every merge, but nothing
 # writes the resulting digest back here — so a deploy means resolving digests and

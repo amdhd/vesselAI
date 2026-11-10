@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET, JWT_VERIFY_OPTIONS } from '../lib/jwtConfig';
+import { authorizeClaims, type Authorization } from '../lib/session';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -20,11 +21,22 @@ interface JwtPayload {
   name: string;
 }
 
-export const authenticate = (
+/**
+ * Two questions, in order:
+ *   1. Is this a token the app minted? (signature, algorithm, expiry, claim
+ *      contract) Answered from the token alone.
+ *   2. Is it still a valid session, and with what role and fleet? Answered
+ *      from the database by lib/session.ts, because a token is a snapshot
+ *      from login. role and fleetId on req.user are the LIVE values, so a
+ *      demotion, a fleet change, a deleted account or a "sign out everywhere"
+ *      takes effect within the session cache window, not when the token
+ *      happens to expire.
+ */
+export const authenticate = async (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
-): void => {
+): Promise<void> => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -34,29 +46,13 @@ export const authenticate = (
 
   const token = authHeader.split(' ')[1];
 
+  let decoded: JwtPayload & { exp?: unknown; iat?: number };
   try {
     // Pin the algorithm: tokens are HMAC-signed (jwtConfig uses a symmetric
     // secret), so only HS256 is ever valid. Restricting the accepted set is
     // defence-in-depth against algorithm-confusion tricks. Issuer and audience
     // are checked too: the shared claim contract in lib/jwtConfig.ts.
-    const decoded = jwt.verify(token, JWT_SECRET, JWT_VERIFY_OPTIONS) as JwtPayload & { exp?: unknown };
-    // jsonwebtoken enforces `exp` only when the token HAS one — a token signed
-    // without it verifies, and is valid forever. generateToken always sets it,
-    // so a token without one was not minted by this app's login path. The
-    // socket gate (lib/fleetSockets.ts) already refuses these; this brings the
-    // REST gate to the same rule.
-    if (typeof decoded.exp !== 'number' || !Number.isFinite(decoded.exp)) {
-      res.status(401).json({ error: 'Invalid token' });
-      return;
-    }
-    req.user = {
-      id: decoded.id,
-      email: decoded.email,
-      role: decoded.role,
-      fleetId: decoded.fleetId,
-      name: decoded.name,
-    };
-    next();
+    decoded = jwt.verify(token, JWT_SECRET, JWT_VERIFY_OPTIONS) as typeof decoded;
   } catch (err) {
     if (err instanceof jwt.TokenExpiredError) {
       res.status(401).json({ error: 'Token expired' });
@@ -65,7 +61,37 @@ export const authenticate = (
     } else {
       res.status(500).json({ error: 'Authentication error' });
     }
+    return;
   }
+
+  // jsonwebtoken enforces `exp` only when the token HAS one — a token signed
+  // without it verifies, and is valid forever. generateToken always sets it,
+  // so a token without one was not minted by this app's login path.
+  if (typeof decoded.exp !== 'number' || !Number.isFinite(decoded.exp)) {
+    res.status(401).json({ error: 'Invalid token' });
+    return;
+  }
+
+  // Express 4 does not catch a rejected promise from async middleware: an
+  // unexpected throw here would leave the request hanging. authorizeClaims
+  // reports a database outage as a result rather than throwing, so this catch
+  // is only for the unexpected.
+  let auth: Authorization;
+  try {
+    auth = await authorizeClaims(decoded);
+  } catch {
+    res.status(500).json({ error: 'Authentication error' });
+    return;
+  }
+  if (!auth.ok) {
+    res.status(auth.status).json({ error: auth.error });
+    return;
+  }
+
+  req.user = auth.user;
+  // Outside every try: an error thrown by a downstream handler must reach the
+  // central error handler, not be reported as an authentication failure.
+  next();
 };
 
 export const requireRole = (roles: string[]) => {

@@ -12,7 +12,10 @@ Run (from the data-platform/ directory):
     uvicorn api.main:app --port 8000
 """
 
+import math
 import os
+import threading
+import time
 from pathlib import Path
 
 import duckdb
@@ -82,12 +85,20 @@ def _resolve_jwt_secret() -> str:
 
 JWT_SECRET = _resolve_jwt_secret()
 
-# The claim contract — MUST match JWT_ISSUER / JWT_AUDIENCE in
+# The claim contract — MUST match JWT_ISSUER / JWT_ANALYTICS_AUDIENCE in
 # backend/src/lib/jwtConfig.ts, which signs every token this service accepts.
 # If they drift, every analytics call 401s; test_auth.py pins these values so a
 # one-sided change fails here rather than in production.
+#
+# The audience is the ANALYTICS one, not the login token's. This service has no
+# connection to Postgres, so it cannot check whether a login token's session has
+# since been revoked, or whether the user's fleet has changed. It accepts only
+# the 5-minute token the backend issues from POST /api/auth/analytics-token,
+# which the backend hands out only after that live check passes. So revocation
+# and fleet changes reach this service within 5 minutes, not the 7 days a login
+# token lives. A login token presented here is refused.
 JWT_ISSUER = "vesselmind-api"
-JWT_AUDIENCE = "vesselmind-app"
+JWT_AUDIENCE = "vesselmind-analytics"
 
 # Restrict CORS to the app origin(s). Override with ANALYTICS_ALLOWED_ORIGINS
 # (comma-separated) in production; defaults to the local Vite dev + preview ports.
@@ -126,8 +137,9 @@ def require_auth(
     """Reject any request without a valid app-issued JWT that carries a fleet.
 
     Runs as a route dependency before the query functions, so an unauthenticated
-    caller never reaches DuckDB. A token minted by the Express /api/auth/login
-    endpoint is accepted here unchanged because both sides share JWT_SECRET.
+    caller never reaches DuckDB. The token is the short-lived analytics token
+    the Express backend issues from POST /api/auth/analytics-token (see
+    JWT_AUDIENCE above), verified with the shared JWT_SECRET.
 
     A valid signature is not enough on its own. The Express API scopes every
     read to the caller's fleet and treats "no fleet" as "no access"
@@ -162,7 +174,87 @@ def require_auth(
     return claims
 
 
-def fleet_scope(claims: dict = Depends(require_auth)) -> str:
+# --- Per-user rate limit -----------------------------------------------------
+#
+# WHY. Every analytics request opens the warehouse and runs aggregate SQL, and
+# nothing bounded how often one caller could do that. The analytics page makes
+# four requests per load, so 60 a minute allows 15 page loads a minute per user:
+# far above real use, far below a loop.
+#
+# WHY IN-PROCESS. The backend's limiters count in Redis so replicas share them
+# (backend/src/middleware/rateLimiter.ts). This service deliberately has no
+# network dependencies, and runs a single fixed replica (k8s/base/13-analytics.yaml,
+# no HPA), so a per-process counter is exact. If it is ever scaled out, each
+# replica counts on its own and the effective limit becomes N x 60.
+#
+# KEYED BY USER, after authentication, so the limit follows the account rather
+# than an IP. Unauthenticated requests are refused at token decode, before this,
+# and never reach the warehouse.
+ANALYTICS_RATE_LIMIT = 60
+ANALYTICS_RATE_WINDOW_S = 60.0
+_RATE_MAX_KEYS = 10_000
+
+
+def _now() -> float:
+    """Monotonic clock, as a module function so tests can move time."""
+    return time.monotonic()
+
+
+class FixedWindowLimiter:
+    """Counts requests per key in fixed windows. Thread-safe: FastAPI runs these
+    sync endpoints in a thread pool."""
+
+    def __init__(self, limit: int, window_s: float, max_keys: int = _RATE_MAX_KEYS):
+        self.limit = limit
+        self.window_s = window_s
+        self.max_keys = max_keys
+        self._lock = threading.Lock()
+        self._windows: dict[str, tuple[float, int]] = {}
+
+    def hit(self, key: str, now: float) -> float | None:
+        """Count one request. Returns seconds until the window resets when the
+        key is over its limit, or None when the request is allowed."""
+        with self._lock:
+            start, count = self._windows.get(key, (now, 0))
+            if now - start >= self.window_s:
+                start, count = now, 0
+            count += 1
+            self._windows[key] = (start, count)
+            self._evict(now)
+            if count > self.limit:
+                return self.window_s - (now - start)
+            return None
+
+    def _evict(self, now: float) -> None:
+        # Bounded memory: drop finished windows first, then the oldest entries.
+        if len(self._windows) <= self.max_keys:
+            return
+        for key in [k for k, (start, _) in self._windows.items() if now - start >= self.window_s]:
+            del self._windows[key]
+        while len(self._windows) > self.max_keys:
+            del self._windows[next(iter(self._windows))]
+
+    def reset(self) -> None:
+        with self._lock:
+            self._windows.clear()
+
+
+_limiter = FixedWindowLimiter(ANALYTICS_RATE_LIMIT, ANALYTICS_RATE_WINDOW_S)
+
+
+def rate_limited(claims: dict = Depends(require_auth)) -> dict:
+    """Refuse a caller over its per-user limit, before any query runs."""
+    retry_after = _limiter.hit(str(claims.get("id") or claims["fleetId"]), _now())
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many analytics requests, please wait",
+            headers={"Retry-After": str(max(1, math.ceil(retry_after)))},
+        )
+    return claims
+
+
+def fleet_scope(claims: dict = Depends(rate_limited)) -> str:
     """The caller's fleet id — the tenant key every query below is scoped by.
 
     TENANCY MODEL. A vessel is visible to a fleet when that fleet owns it, or
@@ -218,10 +310,16 @@ def health():
 def summary(fleet_id: str = Depends(fleet_scope)):
     """Top-line KPIs over the vessels this fleet may see (a single row).
 
-    Every sub-select is scoped, including the raw position count from silver —
-    a KPI computed over the whole warehouse would report another fleet's
-    activity in aggregate even with each row hidden. The scope is computed once
-    in `visible` and bound once.
+    Every sub-select is scoped — a KPI computed over the whole warehouse would
+    report another fleet's activity in aggregate even with each row hidden. The
+    scope is computed once in `visible` and bound once.
+
+    Gold only. position_reports used to be count(*) over silver: a scan of
+    every raw ping on every page load, which at NOAA scale is millions of rows
+    a day. It is now sum(ping_count) over fct_vessel_daily, one row per vessel
+    per day, which is the same number by construction. The dbt test
+    assert_fct_ping_count_matches_silver fails the build if that ever stops
+    being true. No endpoint in this service reads silver.
     """
     return query(
         f"""
@@ -230,7 +328,7 @@ def summary(fleet_id: str = Depends(fleet_scope)):
         )
         select
             (select count(*) from visible)                                         as vessels,
-            (select count(*) from silver.silver_ais_positions
+            (select coalesce(sum(ping_count), 0) from gold.fct_vessel_daily
               where mmsi in (select mmsi from visible))                            as position_reports,
             -- coalesce: sum() over no rows is NULL, and the contract is a number.
             (select coalesce(round(sum(distance_nm)), 0) from gold.fct_vessel_daily

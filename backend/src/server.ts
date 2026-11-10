@@ -8,6 +8,7 @@ import { createApp } from './app';
 import { syncWeather } from './services/weatherPipeline';
 import { startAisStream } from './services/aisStream';
 import { registerFleetSockets } from './lib/fleetSockets';
+import { closeRedis } from './lib/redis';
 
 // Socket.io needs the httpServer before the Express app can wire up the
 // req.io middleware, so the server is built bare and the app attached as its
@@ -116,6 +117,8 @@ async function shutdown(signal: string): Promise<void> {
 
     await closed;
     await prisma.$disconnect();
+    // Last, like the database: rate limiting still needs Redis while requests drain.
+    await closeRedis();
     logger.info('drain complete');
     clearTimeout(forceExit);
     process.exit(0);

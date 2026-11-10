@@ -59,7 +59,7 @@ Ingestion gets data in; a warehouse makes it answerable. `data-platform/` is a f
 - **Tested, not just built:** **21 dbt data tests** across the four models (25 nodes build green) — schema tests plus singular tests asserting the unique grain of the silver ping and the daily fact.
 - **Built for real scale:** the loader streams CSV off disk (never into pandas) and the transforms are plain SQL. Measured on a MacBook Air (16GB): **1.48M rows loaded in ~1.3s; dedupe + validation + tests in ~3.4s.** Real NOAA daily files are 5–12M rows; the committed sample is deliberately tiny so the repo runs instantly offline.
 - **Two consumers, one gold layer:** a standalone **Streamlit** dashboard (KPIs, vessel map, distance chart, idling report) and the app's **Fleet Analytics** page via FastAPI (`data-platform/api/main.py`) — `/api/analytics/{summary,vessel-types,top-vessels,idling}`. Every endpoint is aggregated or top-N, so the React app never touches millions of raw rows.
-- **Same trust boundary as the rest of the app:** the analytics endpoints verify the *same* app-issued JWT via a shared `JWT_SECRET` (HS256), with CORS restricted to an allowlist. A token from `POST /api/auth/login` is accepted unchanged; `/health` stays open.
+- **Same trust boundary as the rest of the app:** the analytics endpoints verify the *same* app-issued JWT via a shared `JWT_SECRET` (HS256), with CORS restricted to an allowlist. Analytics accepts only a 5-minute token exchanged at `POST /api/auth/analytics-token` (the analytics service has no database, so it can't check revocation; the backend checks it before issuing), and refuses the login token; `/health` stays open.
 - **Fleet-scoped, without faking ownership:** AIS can't say who owns a vessel, so ownership is *declared* in a version-controlled registry (`dbt/seeds/vessel_fleet_registry.csv`) and carried into `dim_vessel.fleet_id`. Every endpoint shows a caller its own fleet's vessels plus public (unclaimed) ones, and never a vessel another fleet owns. The registry is empty today because no app fleet owns a vessel in the NOAA sample, and filling it to make the page look populated would be the fiction the live AIS map also declines. Isolation is proven against a real two-fleet DuckDB fixture (`api/test_tenant_isolation.py`), including a guard that fails CI if a new endpoint skips the scope.
 
 **Why this exists next to Postgres:** AIS lives in two stores on purpose — a real-time **operational** store (Postgres `AisVesselPosition`, one row per vessel, powers the live map) alongside an **analytical** warehouse (DuckDB, millions of rows → small aggregates, powers Fleet Analytics). That's the standard hot-path/cold-path, OLTP-next-to-OLAP split every real data platform has, not redundancy.
@@ -233,7 +233,7 @@ npm test             # Vitest + Testing Library
 
 cd data-platform     # after step 4
 .venv/bin/pytest api/                                # analytics API auth + tenant isolation
-cd dbt && ../.venv/bin/dbt build --profiles-dir .    # 29 warehouse data tests
+cd dbt && ../.venv/bin/dbt build --profiles-dir .    # 30 warehouse data tests
 ```
 
 ---
@@ -261,6 +261,8 @@ All AI features are live against your `ANTHROPIC_API_KEY` — nothing in the AI-
 ```
 POST   /api/auth/login
 POST   /api/auth/register
+POST   /api/auth/logout-all          # sign out everywhere: every existing token stops working
+POST   /api/auth/analytics-token     # 5-minute token for the analytics service, issued after a live session check
 GET    /api/fleet
 GET    /api/vessels/:id
 
