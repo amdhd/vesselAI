@@ -35,6 +35,12 @@ const schema = z
     // If set, GET /metrics requires `Authorization: Bearer <token>`.
     METRICS_TOKEN: z.string().optional(),
 
+    // Shared store for the rate limiters (middleware/rateLimiter.ts), so every
+    // API replica counts against the same limit. Optional: without it each
+    // replica keeps its own counters, which is correct for one replica and for
+    // local development, and N times too loose for N replicas.
+    REDIS_URL: z.string().url().optional(),
+
     // Broad per-IP API rate limit. Configurable because it is an OPERATIONAL
     // knob, not a security boundary: a load test needs it raised, and a
     // deployment behind a shared corporate NAT may need it raised too. The
