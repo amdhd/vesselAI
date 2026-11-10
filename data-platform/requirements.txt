@@ -11,8 +11,8 @@ duckdb==1.5.4
 # --- Transformations (Phase 2 silver, Phase 3 gold) via dbt ---
 # dbt-duckdb pulls in a compatible dbt-core automatically; both are pinned here
 # for reproducibility.
-dbt-duckdb==1.10.1
-dbt-core==1.12.0
+dbt-duckdb==1.11.1
+dbt-core==1.12.6
 
 # --- Transitive, pinned for a security fix ---
 # urllib3 arrives via requests (dbt-core -> requests -> urllib3) and is not a
