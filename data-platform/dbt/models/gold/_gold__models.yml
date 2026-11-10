@@ -15,6 +15,13 @@ models:
         description: "Human-readable vessel category decoded from the AIS type code."
         tests:
           - not_null
+      - name: fleet_id
+        description: >
+          The app fleet that owns this vessel, from the ownership registry
+          (seeds/vessel_fleet_registry.csv). NULL means public: no fleet has
+          claimed the vessel, so it is broadcast AIS any fleet may see. The
+          analytics API never shows a vessel to a fleet other than its owner.
+          Deliberately has no not_null test — NULL is the normal case, not a gap.
 
   - name: fct_vessel_daily
     description: >

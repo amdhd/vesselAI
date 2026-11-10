@@ -166,7 +166,7 @@ jobs:
         working-directory: data-platform/dbt
         run: dbt build --profiles-dir .
 
-      - name: API auth tests
+      - name: API tests (auth + tenant isolation)
         # Set explicitly so the suite tests a known secret rather than depending
         # on main.py's dev-only fallback, which exists for local convenience.
         #
@@ -174,9 +174,15 @@ jobs:
         # secret at all and returns DEV_FALLBACK_SECRET — so a short value here
         # silently does the opposite of what this env var is for, and the suite
         # goes green having tested the fallback path this line exists to avoid.
+        #
+        # The DIRECTORY, not a filename. This step used to name test_auth.py,
+        # which meant test_tenant_isolation.py — the tests that prove one fleet
+        # cannot read another's vessels — would have been written, passed
+        # locally, and never run here. Naming the directory means the next test
+        # file is collected without anyone remembering to add it.
         env:
           JWT_SECRET: ci-test-secret-at-least-32-chars-long
-        run: pytest api/test_auth.py
+        run: pytest api/
 
   # ---------------------------------------------------------------------------
   # Dependency advisory gate.

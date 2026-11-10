@@ -11,10 +11,22 @@
 -- RECENT KNOWN value: arg_max(value, event_time) picks the value at the latest
 -- timestamp, and FILTER (where value is not null) makes it ignore blanks — so a
 -- later blank never overwrites an earlier real name.
+--
+-- fleet_id is the one column NOT observed from AIS. It comes from the
+-- hand-maintained ownership registry (seeds/vessel_fleet_registry.csv — see its
+-- _seeds.yml for why ownership is declared rather than inferred), and it is what
+-- the analytics API scopes on: NULL means public broadcast data any fleet may
+-- see; a value means only that fleet may.
 
 with silver as (
 
     select * from {{ ref('silver_ais_positions') }}
+
+),
+
+registry as (
+
+    select mmsi, fleet_id from {{ ref('vessel_fleet_registry') }}
 
 ),
 
@@ -36,7 +48,11 @@ collapsed as (
 )
 
 select
-    mmsi,
+    collapsed.mmsi,
+    -- LEFT join: a vessel absent from the registry is public, not dropped. The
+    -- registry's unique-mmsi test is what keeps this join from fanning out, and
+    -- this model's own unique-mmsi test would catch it if that ever slipped.
+    registry.fleet_id,
     vessel_name,
     imo,
     call_sign,
@@ -55,3 +71,4 @@ select
     width_m,
     draft_m
 from collapsed
+left join registry on registry.mmsi = collapsed.mmsi
