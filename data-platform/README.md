@@ -197,7 +197,17 @@ verified with the shared `JWT_SECRET` (HS256), so a token from the Express
 the backend signs with (it falls back to the dev-only secret locally). CORS is
 restricted to `ANALYTICS_ALLOWED_ORIGINS` (comma-separated; defaults to the local
 Vite dev + preview ports). `/health` stays open. Auth is covered by
-`api/test_auth.py` (`pip install -r api/requirements.txt httpx pytest && pytest api/test_auth.py`).
+`api/test_auth.py` (`pip install -r api/requirements.txt httpx pytest && pytest api/`).
+
+**Tenancy:** a caller sees the vessels their fleet owns plus public ones, and
+never a vessel another fleet owns. AIS can't say who owns a vessel, so
+ownership is declared in `dbt/seeds/vessel_fleet_registry.csv` and lands in
+`gold.dim_vessel.fleet_id` (`NULL` = public). To make a vessel private to a
+fleet, add a row (`mmsi,fleet_id`) and rebuild. No code change is needed. The
+registry is empty because no app fleet owns a vessel in the NOAA sample (see
+`dbt/seeds/_seeds.yml` for why it isn't filled with demo assignments). Covered by
+`api/test_tenant_isolation.py`, which runs the real SQL against a two-fleet
+DuckDB fixture rather than stubbing the query layer.
 
 > **Gotcha — "Couldn't reach the analytics API" / everything 401s.** This means
 > the API is verifying tokens with a *different* `JWT_SECRET` than the backend

@@ -10,6 +10,7 @@ profile: 'vesselmind'
 model-paths: ["models"]
 macro-paths: ["macros"]
 test-paths: ["tests"]
+seed-paths: ["seeds"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
 
@@ -24,6 +25,22 @@ models:
       # Gold — the star schema and business aggregates the dashboard reads.
       +schema: gold
       +materialized: table
+
+seeds:
+  vesselmind:
+    # Reference data maintained by hand and version-controlled, as opposed to
+    # anything derived from the AIS feed. Its own schema so nothing confuses a
+    # declared fact ("fleet X owns this vessel") with an observed one.
+    +schema: reference
+    vessel_fleet_registry:
+      # Pinned rather than inferred. MMSI is TEXT throughout this warehouse
+      # (silver keeps it as an identifier, not a quantity), and an inferred
+      # integer column would join to nothing — every owned vessel would silently
+      # fall through to "public". Pinning also lets a header-only file build an
+      # empty table instead of failing type inference.
+      +column_types:
+        mmsi: varchar
+        fleet_id: varchar
 
 # Tunable business logic for the idling model (override with --vars if needed).
 vars:

@@ -1,0 +1,53 @@
+version: 2
+
+seeds:
+  - name: vessel_fleet_registry
+    description: >
+      Which app fleet OWNS which vessel — the warehouse's only source of
+      tenancy. One row per owned vessel; a vessel with no row here is public.
+
+
+      WHY OWNERSHIP IS DECLARED, NOT INFERRED. Everything else in this warehouse
+      is observed from AIS, and AIS is public broadcast: every vessel over 300 GT
+      transmits it, and anyone with a receiver sees it. Nothing in a position
+      report says which operator a vessel belongs to, so ownership cannot be
+      derived from the feed — it has to be asserted by someone who knows. That is
+      what this file is.
+
+
+      WHY IT IS EMPTY. No vessel in the current warehouse belongs to an app
+      fleet. The warehouse holds NOAA AIS for the Houston–Galveston area; the
+      app's only fleet (fleet-001) operates in Malaysian waters and shares no IMO
+      number with it. Assigning those vessels to fleet-001 to make the page look
+      populated would be faking ownership — the same thing the README declines
+      to do for the live AIS map ("gate the surface, not fake the data").
+
+
+      HOW IT IS READ. dim_vessel carries the owning fleet_id (NULL = public), and
+      the analytics API shows a caller every public vessel plus the vessels its
+      own fleet owns — never a vessel another fleet owns. So a row added here
+      makes that vessel private to its fleet on the next build, with no code
+      change. In production this would be fed from the app's vessel registry
+      rather than maintained by hand.
+    columns:
+      - name: mmsi
+        description: "The owned vessel. Text, matching silver and gold."
+        tests:
+          - not_null
+          # One owner per vessel. A duplicate would make the vessel visible to
+          # two tenants at once, and would fan out the left join in dim_vessel
+          # (which dim_vessel's own unique-mmsi test would also catch).
+          - unique
+          # An entry for a vessel the warehouse has never seen is not wrong —
+          # ownership can be registered before that vessel's first report
+          # arrives — but it is worth knowing about, so it warns, not fails.
+          - relationships:
+              arguments:
+                to: ref('dim_vessel')
+                field: mmsi
+              config:
+                severity: warn
+      - name: fleet_id
+        description: "The owning app fleet — the same id the JWT's fleetId claim carries."
+        tests:
+          - not_null

@@ -122,14 +122,18 @@ def require_auth(
     caller never reaches DuckDB. A token minted by the Express /api/auth/login
     endpoint is accepted here unchanged because both sides share JWT_SECRET.
 
-    A valid signature is not enough on its own. The gold tables hold every
-    vessel in the warehouse and have no fleet column, so this service cannot
-    filter per tenant — but the Express API scopes every read to the caller's
-    fleet and treats "no fleet" as "no access" (backend/src/lib/tenant.ts).
-    A self-service registrant is created with fleetId: null, so without also
-    requiring the claim, anyone who signs up could read the whole warehouse
-    through this endpoint. Requiring it keeps this service's gate consistent
-    with the app's model.
+    A valid signature is not enough on its own. The Express API scopes every
+    read to the caller's fleet and treats "no fleet" as "no access"
+    (backend/src/lib/tenant.ts). A self-service registrant is created with
+    fleetId: null, so without also requiring the claim, anyone who signs up
+    could read the warehouse through this endpoint. Requiring it keeps this
+    service's gate consistent with the app's model.
+
+    The claim must be a non-empty STRING, not merely truthy. It is bound into
+    every query as the tenant key (see fleet_scope), and `["fleet-a",
+    "fleet-b"]` or `1` are truthy too. A bound parameter cannot be injected
+    into, but a list or number is still the wrong key — the type check refuses
+    it here rather than leaving each query to decide what such a value means.
     """
     if credentials is None:
         raise HTTPException(status_code=401, detail="Missing bearer token")
@@ -137,9 +141,39 @@ def require_auth(
         claims = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=["HS256"])
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    if not claims.get("fleetId"):
+    fleet_id = claims.get("fleetId")
+    if not isinstance(fleet_id, str) or not fleet_id:
         raise HTTPException(status_code=403, detail="Analytics requires a fleet assignment")
     return claims
+
+
+def fleet_scope(claims: dict = Depends(require_auth)) -> str:
+    """The caller's fleet id — the tenant key every query below is scoped by.
+
+    TENANCY MODEL. A vessel is visible to a fleet when that fleet owns it, or
+    when no fleet does. Ownership comes from the registry seed
+    (dbt/seeds/vessel_fleet_registry.csv) via gold.dim_vessel.fleet_id:
+
+      fleet_id = <caller's fleet>  -> theirs: visible
+      fleet_id IS NULL             -> public AIS broadcast: visible to any fleet
+      fleet_id = <another fleet>   -> another tenant's vessel: NEVER visible
+
+    Public stays visible on purpose. AIS is broadcast in the clear by every
+    vessel over 300 GT, so hiding unclaimed vessels would protect nothing and
+    blank the page — the same call the live AIS map makes (README: "gate the
+    surface, not fake the data"). What this service must guarantee is the third
+    line: a vessel one fleet owns never reaches another.
+
+    Every query takes this value as a BOUND parameter, never interpolated.
+    """
+    return claims["fleetId"]
+
+
+# The visibility rule above, as SQL over dim_vessel aliased `d`. One definition
+# so the four endpoints cannot drift apart — a rule restated four times is a
+# rule that eventually differs in one of them. It holds a placeholder, not the
+# value: the caller still binds fleet_id as a parameter.
+VISIBLE_TO_FLEET = "(d.fleet_id = ? or d.fleet_id is null)"
 
 
 def query(sql: str, params: list | None = None) -> list[dict]:
@@ -165,63 +199,97 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/api/analytics/summary", dependencies=[Depends(require_auth)])
-def summary():
-    """Top-line KPIs for the whole dataset (a single row)."""
+@app.get("/api/analytics/summary")
+def summary(fleet_id: str = Depends(fleet_scope)):
+    """Top-line KPIs over the vessels this fleet may see (a single row).
+
+    Every sub-select is scoped, including the raw position count from silver —
+    a KPI computed over the whole warehouse would report another fleet's
+    activity in aggregate even with each row hidden. The scope is computed once
+    in `visible` and bound once.
+    """
     return query(
-        """
+        f"""
+        with visible as (
+            select d.mmsi from gold.dim_vessel d where {VISIBLE_TO_FLEET}
+        )
         select
-            (select count(*) from gold.dim_vessel)                      as vessels,
-            (select count(*) from silver.silver_ais_positions)          as position_reports,
-            (select round(sum(distance_nm)) from gold.fct_vessel_daily)  as total_distance_nm,
-            (select count(*) from gold.gold_vessel_idling)              as idle_episodes,
-            (select min(activity_date) from gold.fct_vessel_daily)       as first_day,
-            (select max(activity_date) from gold.fct_vessel_daily)       as last_day
-        """
+            (select count(*) from visible)                                         as vessels,
+            (select count(*) from silver.silver_ais_positions
+              where mmsi in (select mmsi from visible))                            as position_reports,
+            -- coalesce: sum() over no rows is NULL, and the contract is a number.
+            (select coalesce(round(sum(distance_nm)), 0) from gold.fct_vessel_daily
+              where mmsi in (select mmsi from visible))                            as total_distance_nm,
+            (select count(*) from gold.gold_vessel_idling
+              where mmsi in (select mmsi from visible))                            as idle_episodes,
+            (select min(activity_date) from gold.fct_vessel_daily
+              where mmsi in (select mmsi from visible))                            as first_day,
+            (select max(activity_date) from gold.fct_vessel_daily
+              where mmsi in (select mmsi from visible))                            as last_day
+        """,
+        [fleet_id],
     )[0]
 
 
-@app.get("/api/analytics/vessel-types", dependencies=[Depends(require_auth)])
-def vessel_types():
+@app.get("/api/analytics/vessel-types")
+def vessel_types(fleet_id: str = Depends(fleet_scope)):
     """Vessel count by decoded type — for a distribution chart."""
     return query(
-        """
-        select vessel_type_desc as type, count(*) as vessels
-        from gold.dim_vessel
+        f"""
+        select d.vessel_type_desc as type, count(*) as vessels
+        from gold.dim_vessel d
+        where {VISIBLE_TO_FLEET}
         group by 1
-        order by 2 desc
-        """
+        -- Tiebreak on the label: three types share a count in the sample, and
+        -- ordering on the count alone let their bars swap between requests.
+        order by 2 desc, 1
+        """,
+        [fleet_id],
     )
 
 
-@app.get("/api/analytics/top-vessels", dependencies=[Depends(require_auth)])
-def top_vessels(limit: int = Query(15, ge=1, le=100)):
+@app.get("/api/analytics/top-vessels")
+def top_vessels(
+    limit: int = Query(15, ge=1, le=100),
+    fleet_id: str = Depends(fleet_scope),
+):
     """The busiest vessels by estimated distance travelled."""
     return query(
-        """
+        f"""
         select d.vessel_name, d.vessel_type_desc,
                f.distance_nm, f.avg_speed_knots, f.ping_count
         from gold.fct_vessel_daily f
         join gold.dim_vessel d using (mmsi)
         where d.vessel_name is not null
-        order by f.distance_nm desc
+          and {VISIBLE_TO_FLEET}
+        order by f.distance_nm desc, d.vessel_name, f.activity_date
         limit ?
         """,
-        [limit],
+        [fleet_id, limit],
     )
 
 
-@app.get("/api/analytics/idling", dependencies=[Depends(require_auth)])
-def idling(limit: int = Query(25, ge=1, le=500)):
-    """Longest idle episodes (near-zero speed for an extended period)."""
+@app.get("/api/analytics/idling")
+def idling(
+    limit: int = Query(25, ge=1, le=500),
+    fleet_id: str = Depends(fleet_scope),
+):
+    """Longest idle episodes (near-zero speed for an extended period).
+
+    The scope matters most here: an idle episode carries a position (avg_lat /
+    avg_lon) and a time window, which together say where a vessel waited and
+    for how long — exactly the operational detail an owner would not want a
+    competitor reading.
+    """
     return query(
-        """
+        f"""
         select d.vessel_name, d.vessel_type_desc,
                i.idle_start, i.idle_end, i.idle_minutes, i.avg_lat, i.avg_lon
         from gold.gold_vessel_idling i
         join gold.dim_vessel d using (mmsi)
-        order by i.idle_minutes desc
+        where {VISIBLE_TO_FLEET}
+        order by i.idle_minutes desc, d.vessel_name, i.idle_start
         limit ?
         """,
-        [limit],
+        [fleet_id, limit],
     )
