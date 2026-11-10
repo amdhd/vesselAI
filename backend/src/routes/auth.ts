@@ -15,6 +15,14 @@ const router = Router();
 // (e.g. admin) must never be assignable from a public signup payload.
 const SELF_REGISTER_ROLES = new Set(['fleet_manager', 'engineer', 'viewer']);
 
+// What an unknown email's password is compared against, so login costs the
+// same whether or not the account exists. A real bcrypt hash of random bytes
+// nobody kept. It must use the SAME cost factor as stored passwords (12, in
+// /register below and prisma/seed.ts), or the two paths still differ in time;
+// the authTiming test checks that. Precomputed rather than hashed at startup so
+// it adds nothing to boot time.
+export const TIMING_EQUALISER_HASH = '$2a$12$DnX6R4fdsMxEDF3saPlulu6CrJD9iG.rCg8l00kQnnQtx0om/GMKy';
+
 function generateToken(user: { id: string; email: string; role: string; fleetId?: string | null; name: string }): string {
   return jwt.sign(
     {
@@ -71,6 +79,13 @@ router.post('/login', validate(LoginSchema), async (req: Request, res: Response)
     if (!user) {
       // DB connected but not seeded — still allow demo credentials (non-production only)
       if (tryDemoLogin(email, password, res)) return;
+      // Pay for a bcrypt compare even though there is nothing to compare
+      // against. Without it, an unknown email is rejected in about a
+      // millisecond while a known email with a wrong password takes a full
+      // cost-12 compare. The 401 text was already identical, but the timing
+      // answered "does this email have an account?" for anyone who measured it.
+      // The result is ignored, so the request stays a 401 whatever the password.
+      await bcrypt.compare(password, TIMING_EQUALISER_HASH);
       res.status(401).json({ error: 'Invalid email or password' });
       return;
     }
