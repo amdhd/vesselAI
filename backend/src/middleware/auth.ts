@@ -2,6 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET, JWT_VERIFY_OPTIONS } from '../lib/jwtConfig';
 import { authorizeClaims, type Authorization } from '../lib/session';
+import { isWebClient, readSessionCookie } from '../lib/sessionCookie';
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -37,14 +40,35 @@ export const authenticate = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  // WHERE THE TOKEN COMES FROM. A bearer header wins whenever one is present
+  // (the Angular app, API clients, tests). Otherwise the web app's httpOnly
+  // session cookie (lib/sessionCookie.ts). An invalid header token is refused;
+  // it never falls back to the cookie, so a request means one credential.
   const authHeader = req.headers.authorization;
+  let token: string | undefined;
+  if (authHeader) {
+    if (!authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ error: 'No token provided' });
+      return;
+    }
+    token = authHeader.split(' ')[1];
+  } else {
+    token = readSessionCookie(req);
+    // CSRF: the cookie is attached by the browser, so a request riding on it
+    // could have been started by another site. A state-changing one must also
+    // carry the web app's header, which another origin cannot add. Reads are
+    // exempt: they change nothing, and CORS stops another site reading the
+    // answer.
+    if (token && !SAFE_METHODS.has(req.method) && !isWebClient(req)) {
+      res.status(403).json({ error: 'Missing client header' });
+      return;
+    }
+  }
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!token) {
     res.status(401).json({ error: 'No token provided' });
     return;
   }
-
-  const token = authHeader.split(' ')[1];
 
   let decoded: JwtPayload & { exp?: unknown; iat?: number };
   try {

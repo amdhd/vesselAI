@@ -7,6 +7,7 @@ import { logger } from '../lib/logger';
 import { recordAudit } from '../lib/audit';
 import { revokeSessions } from '../lib/session';
 import { isProduction } from '../config/env';
+import { clearSessionCookie, isWebClient, setSessionCookie } from '../lib/sessionCookie';
 import { validate } from '../middleware/validate';
 import { LoginSchema, RegisterSchema } from '../schemas';
 import {
@@ -56,11 +57,28 @@ const DEMO_USER = {
 // If the request carries valid demo credentials (and demo login is enabled),
 // write the token response and return true so the caller can stop. Returns
 // false otherwise, leaving the response untouched.
-function tryDemoLogin(email: string, password: string, res: Response): boolean {
+/**
+ * Answer a successful login or registration.
+ *
+ * The web app (it sends WEB_CLIENT_HEADER) gets the token as an httpOnly cookie
+ * and NOT in the body, so no script on the page ever holds it. Every other
+ * client gets it in the body, as before. See lib/sessionCookie.ts for why the
+ * header decides, and why that also prevents login CSRF.
+ */
+function sendSession(req: Request, res: Response, token: string, user: object, status = 200): void {
+  if (isWebClient(req)) {
+    setSessionCookie(res, token);
+    res.status(status).json({ user });
+    return;
+  }
+  res.status(status).json({ token, user });
+}
+
+function tryDemoLogin(email: string, password: string, req: Request, res: Response): boolean {
   if (!DEMO_LOGIN_ENABLED || email !== DEMO_USER.email || password !== 'demo123') {
     return false;
   }
-  res.json({ token: generateToken(DEMO_USER), user: DEMO_USER });
+  sendSession(req, res, generateToken(DEMO_USER), DEMO_USER);
   return true;
 }
 
@@ -76,14 +94,14 @@ router.post('/login', validate(LoginSchema), async (req: Request, res: Response)
       user = await prisma.user.findUnique({ where: { email } });
     } catch {
       // DB not connected — use demo fallback (non-production only)
-      if (tryDemoLogin(email, password, res)) return;
+      if (tryDemoLogin(email, password, req, res)) return;
       res.status(503).json({ error: 'Database unavailable. Use demo@petronas.com / demo123' });
       return;
     }
 
     if (!user) {
       // DB connected but not seeded — still allow demo credentials (non-production only)
-      if (tryDemoLogin(email, password, res)) return;
+      if (tryDemoLogin(email, password, req, res)) return;
       // Pay for a bcrypt compare even though there is nothing to compare
       // against. Without it, an unknown email is rejected in about a
       // millisecond while a known email with a wrong password takes a full
@@ -104,10 +122,7 @@ router.post('/login', validate(LoginSchema), async (req: Request, res: Response)
     const token = generateToken(user);
     const { password: _password, ...userWithoutPassword } = user;
 
-    res.json({
-      token,
-      user: userWithoutPassword,
-    });
+    sendSession(req, res, token, userWithoutPassword);
   } catch (error) {
     logger.error({ err: error }, 'Login error');
     res.status(500).json({ error: 'Authentication failed' });
@@ -165,10 +180,7 @@ router.post('/register', validate(RegisterSchema), async (req: Request, res: Res
       details: { role: safeRole },
     });
 
-    res.status(201).json({
-      token,
-      user: userWithoutPassword,
-    });
+    sendSession(req, res, token, userWithoutPassword, 201);
   } catch (error) {
     logger.error({ err: error }, 'Register error');
     res.status(500).json({ error: 'Registration failed' });
@@ -198,6 +210,23 @@ router.post('/analytics-token', authenticate, (req: AuthenticatedRequest, res: R
   res.json({ token, expiresIn: ANALYTICS_TOKEN_TTL_SECONDS });
 });
 
+// POST /api/auth/logout
+//
+// Ends this browser's session by clearing its httpOnly cookie, which page
+// script cannot do itself. The token is not revoked server-side (there is no
+// per-token id; logout-all below revokes every token). Not behind
+// `authenticate`, so an expired session can still be cleared. It does require
+// the web app's header, so another site cannot sign users out with a forged
+// request.
+router.post('/logout', (req: Request, res: Response): void => {
+  if (!isWebClient(req)) {
+    res.status(403).json({ error: 'Missing client header' });
+    return;
+  }
+  clearSessionCookie(res);
+  res.status(204).end();
+});
+
 // POST /api/auth/logout-all
 //
 // Sign out everywhere: every token this account holds stops working, on every
@@ -218,6 +247,9 @@ router.post('/logout-all', authenticate, async (req: AuthenticatedRequest, res: 
     return;
   }
   await recordAudit({ userId, entity: 'User', action: 'revoke_sessions', entityId: userId });
+  // The cookie on this device is dead now anyway; clear it so the browser stops
+  // presenting it.
+  clearSessionCookie(res);
   res.status(204).end();
 });
 
