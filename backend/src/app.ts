@@ -14,7 +14,7 @@ import { logger } from './lib/logger';
 import { safeLogSerializers } from './lib/diagnostics';
 import { prisma } from './lib/prisma';
 import { metricsMiddleware, registry } from './lib/metrics';
-import { apiLimiter, authLimiter } from './middleware/rateLimiter';
+import { apiLimiter, authLimiter, accountLoginLimiter } from './middleware/rateLimiter';
 import { errorHandler, notFound } from './middleware/errorHandler';
 import authRoutes from './routes/auth';
 import fleetRoutes from './routes/fleet';
@@ -184,6 +184,7 @@ export function createApp(io?: SocketIOServer): Application {
 
   // Routes
   app.use('/api/auth/login', authLimiter);
+  app.use('/api/auth/login', accountLoginLimiter);
   app.use('/api/auth/register', authLimiter);
   app.use('/api/auth', authRoutes);
   app.use('/api', fleetRoutes);

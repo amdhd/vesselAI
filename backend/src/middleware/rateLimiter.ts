@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import rateLimit, { ipKeyGenerator, MemoryStore, type Store } from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import { AuthenticatedRequest } from './auth';
@@ -68,6 +69,43 @@ export const authLimiter = rateLimit({
   message: { error: 'Too many login attempts, please try again in 15 minutes' },
   skipSuccessfulRequests: true,
   store: storeFor('auth'),
+});
+
+// Per-ACCOUNT brute-force protection, alongside the per-IP authLimiter above.
+//
+// authLimiter counts per IP, so a guesser who spreads attempts over many
+// addresses (a botnet, rotating proxies) gets 5 tries per address per window
+// against the same account, which is effectively unlimited. This counts failed
+// logins per EMAIL instead, from anywhere: 10 per 15 minutes, then the account
+// refuses further attempts until the window ends.
+//
+// Applied to every email, whether or not an account exists: locking only real
+// accounts would turn the 429 into an oracle for which emails are registered,
+// undoing the equal-cost login in routes/auth.ts.
+//
+// THE TRADE, stated: anyone can lock a known email out for 15 minutes by
+// spending 10 wrong passwords on it. That is the standard cost of account
+// lockout; a short window that clears itself keeps it a nuisance rather than a
+// takeover, and the IP limit still caps how fast one source can do it.
+//
+// The key is a SHA-256 of the normalised email, so raw addresses never sit in
+// Redis. Counted in the shared store (#6), or a guesser would get 10 tries per
+// replica.
+export const ACCOUNT_LOGIN_MAX_FAILURES = 10;
+export const accountLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: ACCOUNT_LOGIN_MAX_FAILURES,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // The same text as the IP limiter, so the response does not say which limit
+  // tripped (and so nothing about the account).
+  message: { error: 'Too many login attempts, please try again in 15 minutes' },
+  skipSuccessfulRequests: true,
+  // No email means validation will 400 it; that is not a password guess.
+  skip: (req) => typeof req.body?.email !== 'string' || !req.body.email.trim(),
+  keyGenerator: (req) =>
+    createHash('sha256').update(String(req.body.email).trim().toLowerCase()).digest('hex'),
+  store: storeFor('account'),
 });
 
 // AI endpoints — cost protection, keyed per authenticated user
