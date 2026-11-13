@@ -6,6 +6,7 @@ import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../lib/logger';
 import { recordAudit } from '../lib/audit';
 import { revokeSessions } from '../lib/session';
+import { isProduction } from '../config/env';
 import { validate } from '../middleware/validate';
 import { LoginSchema, RegisterSchema } from '../schemas';
 import {
@@ -244,7 +245,21 @@ router.get('/me', authenticate, async (req: AuthenticatedRequest, res: Response)
         },
       });
     } catch {
-      // Return from token payload if DB unavailable
+      // Database unreachable. This endpoint is the user's RECORD, so it must not
+      // pass anything else off as one.
+      //
+      // Production: 503. The auth gate refuses outright while the database is
+      // down (lib/session.ts); the only way to get here is a session check
+      // served from the 30s cache just before the outage. Returning that cache
+      // as the account record, unmarked, is what this used to do.
+      if (isProduction) {
+        res.status(503).json({ error: 'Database unavailable' });
+        return;
+      }
+      // Outside production the app is built to run with no database (demo
+      // mode), so answer, but say plainly that this came from the token, not
+      // the database. A client must not treat it as authoritative.
+      res.setHeader('X-Data-Source', 'token');
       res.json({
         user: {
           id: req.user.id,
@@ -253,6 +268,7 @@ router.get('/me', authenticate, async (req: AuthenticatedRequest, res: Response)
           role: req.user.role,
           fleetId: req.user.fleetId,
         },
+        degraded: true,
       });
       return;
     }
