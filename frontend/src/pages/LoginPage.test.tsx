@@ -54,7 +54,9 @@ describe('LoginPage', () => {
 
     await waitFor(() => expect(screen.getByText('Dashboard')).toBeInTheDocument())
     expect(authApi.login).toHaveBeenCalledWith('captain@company.com', 'correct-password')
-    expect(localStorage.getItem('vm_token')).toBe('jwt-abc')
+    // The session is an httpOnly cookie; the page never stores a token.
+    expect(localStorage.getItem('vm_token')).toBeNull()
+    expect(localStorage.getItem('vm_user')).not.toBeNull()
   })
 
   it('falls back to the demo account when the API is unreachable and credentials match', async () => {
@@ -67,7 +69,9 @@ describe('LoginPage', () => {
     await user.click(screen.getByRole('button', { name: /^sign in$/i }))
 
     await waitFor(() => expect(screen.getByText('Dashboard')).toBeInTheDocument())
-    expect(localStorage.getItem('vm_token')).toMatch(/^demo_token_/)
+    // Offline demo: signed in locally, with no credential of any kind.
+    expect(localStorage.getItem('vm_token')).toBeNull()
+    expect(localStorage.getItem('vm_user')).not.toBeNull()
   })
 
   it('shows an error and stays on the page for bad credentials with no API', async () => {

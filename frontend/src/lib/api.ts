@@ -44,9 +44,24 @@ declare module 'axios' {
   }
 }
 
+// THE SESSION IS A COOKIE. The login token lives in an httpOnly cookie the
+// backend sets (backend/src/lib/sessionCookie.ts): the browser attaches it to
+// every request, and no script on this page can read it, so an XSS bug cannot
+// steal it. That is why nothing in this file reads or sends a token any more.
+//
+// WEB_CLIENT_HEADER goes on every request. It tells the backend this is the
+// first-party web app, which makes login set the cookie instead of returning
+// the token in the body, and it is the CSRF guard: the backend refuses a
+// state-changing cookie request without it, and another site cannot add it.
+export const WEB_CLIENT_HEADER = 'X-VesselMind-Client'
+export const WEB_CLIENT_VALUE = 'web'
+
 const api = axios.create({
   baseURL: BASE_URL,
-  headers: { 'Content-Type': 'application/json' },
+  // Same-origin in production (nginx proxies /api), so the cookie goes anyway;
+  // this covers a cross-origin VITE_API_URL in development.
+  withCredentials: true,
+  headers: { 'Content-Type': 'application/json', [WEB_CLIENT_HEADER]: WEB_CLIENT_VALUE },
 })
 
 // Request interceptor: attach token
@@ -55,10 +70,6 @@ api.interceptors.request.use((config) => {
     throw new axios.CanceledError('Queued write belongs to another account')
   }
   config.sessionId = localStorage.getItem('vm_session_id')
-  const token = localStorage.getItem('vm_token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
   return config
 })
 
@@ -123,9 +134,16 @@ export async function replayQueuedMutation(item: QueuedMutation): Promise<Replay
   }
 }
 
+// The streaming endpoints use fetch, not axios, so they need the same two
+// things the axios client sets: the session cookie (credentials) and the web
+// client header. Added here so no call site can forget them.
 async function sessionFetch(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
   const sessionId = localStorage.getItem('vm_session_id')
-  const response = await fetch(input, init)
+  const response = await fetch(input, {
+    ...init,
+    credentials: 'include',
+    headers: { ...(init.headers as Record<string, string>), [WEB_CLIENT_HEADER]: WEB_CLIENT_VALUE },
+  })
   if (response.status === 401 && sessionId === localStorage.getItem('vm_session_id')) {
     await clearSessionData()
     window.location.href = '/login'
@@ -143,6 +161,10 @@ export const authApi = {
   register: async (name: string, email: string, password: string, company: string): Promise<AuthResponse> => {
     const { data } = await api.post<AuthResponse>('/auth/register', { name, email, password, company })
     return data
+  },
+  // Clears the httpOnly session cookie, which page script cannot do itself.
+  logout: async (): Promise<void> => {
+    await api.post('/auth/logout')
   },
   getMe: async (): Promise<User> => {
     const { data } = await api.get<User>('/auth/me')
@@ -292,12 +314,10 @@ export const voyageApi = {
     speedPreference: 'eco' | 'normal' | 'fast'
     signal?: AbortSignal
   }) => {
-    const token = localStorage.getItem('vm_token')
     return sessionFetch(`${BASE_URL}/voyage/agent-plan/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       signal: params.signal,
       body: JSON.stringify({
@@ -535,12 +555,10 @@ export const knowledgeApi = {
     conversationHistory: { role: string; content: string }[]
     signal?: AbortSignal
   }) => {
-    const token = localStorage.getItem('vm_token')
     return sessionFetch(`${BASE_URL}/knowledge/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       signal: params.signal,
       // Spelled out rather than JSON.stringify(params): `signal` is not a
@@ -585,12 +603,10 @@ export const sireApi = {
     conversationHistory: { role: string; content: string }[]
     signal?: AbortSignal
   }) => {
-    const token = localStorage.getItem('vm_token')
     return sessionFetch(`${BASE_URL}/sire/inspector-simulation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       signal: params.signal,
       // See chatStream: `signal` must not travel in the body.
@@ -607,12 +623,10 @@ export const sireApi = {
     conversationHistory: { role: string; content: string }[]
     signal?: AbortSignal
   }) => {
-    const token = localStorage.getItem('vm_token')
     return sessionFetch(`${BASE_URL}/compliance/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       signal: params.signal,
       // See chatStream: `signal` must not travel in the body.

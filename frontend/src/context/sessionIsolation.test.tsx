@@ -8,7 +8,7 @@ import { clearSessionData, currentSessionScope, queryCacheKey } from '@/lib/sess
 
 const storage = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
 vi.mock('idb-keyval', () => storage)
-vi.mock('@/lib/api', () => ({ authApi: { login: vi.fn() } }))
+vi.mock('@/lib/api', () => ({ authApi: { login: vi.fn(), logout: vi.fn() } }))
 import { authApi } from '@/lib/api'
 
 function View() {
@@ -107,6 +107,32 @@ describe('account data isolation', () => {
     expect(screen.getByTestId('chat')).toHaveTextContent('empty')
   })
 
+  it('never stores the login token, even when the API returns one', async () => {
+    // The session is an httpOnly cookie. A token in the response body (from a
+    // backend that still sends one) must not be written where script can read it.
+    mount()
+    await login('A')
+    expect(localStorage.getItem('vm_token')).toBeNull()
+    expect(Object.values(localStorage).some((v) => String(v).includes('dummy-A'))).toBe(false)
+  })
+
+  it('removes a token left in storage by an earlier version', async () => {
+    localStorage.setItem('vm_token', 'old-long-lived-token')
+    localStorage.setItem('vm_user', JSON.stringify({ id: 'A', fleetId: 'shared-fleet' }))
+    localStorage.setItem('vm_session_id', 'session-a')
+    mount()
+    await screen.findByText('Login A')
+    expect(localStorage.getItem('vm_token')).toBeNull()
+  })
+
+  it('asks the backend to clear the cookie on logout', async () => {
+    mount()
+    await login('A')
+    fireEvent.click(screen.getByText('Logout'))
+    await waitFor(() => expect(screen.getByTestId('account')).toHaveTextContent('signed-out'))
+    expect(authApi.logout).toHaveBeenCalledTimes(1)
+  })
+
   it('does not let a late login response replace the newer account', async () => {
     let finishA!: (value: Awaited<ReturnType<typeof authApi.login>>) => void
     vi.mocked(authApi.login).mockImplementation(async (id) => {
@@ -122,7 +148,7 @@ describe('account data isolation', () => {
       finishA({ token: 'dummy-A', user: { id: 'A', email: 'A@example.test', name: 'A', company: 'Dummy', role: 'fleet_manager', fleetId: 'shared-fleet' } })
     })
     expect(screen.getByTestId('account')).toHaveTextContent('B')
-    expect(localStorage.getItem('vm_token')).toBe('dummy-B')
+    expect(JSON.parse(localStorage.getItem('vm_user')!).id).toBe('B')
   })
 
 

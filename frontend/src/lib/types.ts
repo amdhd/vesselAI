@@ -51,7 +51,8 @@ export interface User {
 }
 
 export interface AuthResponse {
-  token: string
+  /** Absent for the web app: its session is an httpOnly cookie, not a token it holds. */
+  token?: string
   user: User
 }
 

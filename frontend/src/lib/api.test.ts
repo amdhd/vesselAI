@@ -16,6 +16,8 @@ interface Captured {
   body: Record<string, unknown> | undefined
   skipAuthRedirect?: boolean
   authorization?: string
+  webClient?: string
+  withCredentials?: boolean
 }
 
 const captured: Captured[] = []
@@ -42,6 +44,8 @@ beforeAll(async () => {
       body: typeof config.data === 'string' ? JSON.parse(config.data) : config.data,
       skipAuthRedirect: config.skipAuthRedirect,
       authorization: config.headers?.Authorization as string | undefined,
+      webClient: config.headers?.['X-VesselMind-Client'] as string | undefined,
+      withCredentials: config.withCredentials,
     })
 
     beforeReply?.()
@@ -259,7 +263,6 @@ describe('replayQueuedMutation', () => {
   })
 
   it('keeps a write rejected by an expired token instead of losing it', async () => {
-    localStorage.setItem('vm_token', 'expired-token')
     reply(401, { error: 'Unauthorized' })
 
     await expect(api.replayQueuedMutation(entry)).resolves.toBe('stop')
@@ -267,7 +270,7 @@ describe('replayQueuedMutation', () => {
     // The flush used to treat every status below 500 as final and delete the
     // entry, so a token that expired while the user was offline silently threw
     // their write away.
-    expect(localStorage.getItem('vm_token')).toBe('expired-token')
+    expect(localStorage.getItem('vm_user')).not.toBeNull() // not signed out
     expect(captured[0].skipAuthRedirect).toBe(true)
   })
 
@@ -278,7 +281,6 @@ describe('replayQueuedMutation', () => {
   })
 
   it('still signs the user out on a 401 that is not a replay', async () => {
-    localStorage.setItem('vm_token', 'expired-token')
     localStorage.setItem('vm_knowledge_chat_vessel-001', 'private A chat')
     localStorage.setItem('vm_session_id', 'session-a')
     reply(401, { error: 'Unauthorized' })
@@ -286,28 +288,24 @@ describe('replayQueuedMutation', () => {
     await expect(api.fleetApi.getFleet()).rejects.toThrow()
 
     // The replay opt-out must not have weakened the ordinary path.
-    expect(localStorage.getItem('vm_token')).toBeNull()
+    expect(localStorage.getItem('vm_session_id')).toBeNull()
     expect(localStorage.getItem('vm_user')).toBeNull()
     expect(localStorage.getItem('vm_knowledge_chat_vessel-001')).toBeNull()
   })
 
   it('does not replay a captured prior-account write with the replacement credentials', async () => {
     localStorage.setItem('vm_user', JSON.stringify({ id: 'user-2' }))
-    localStorage.setItem('vm_token', 'user-2-token')
     await expect(api.replayQueuedMutation(entry)).resolves.toBe('stop')
     expect(captured).toHaveLength(0)
   })
 
   it('ignores a late 401 from the previous login instead of clearing the replacement session', async () => {
     localStorage.setItem('vm_session_id', 'session-a')
-    localStorage.setItem('vm_token', 'token-a')
     reply(401, { error: 'Unauthorized' })
     beforeReply = () => {
       localStorage.setItem('vm_session_id', 'session-b')
-      localStorage.setItem('vm_token', 'token-b')
     }
     await expect(api.fleetApi.getFleet()).rejects.toThrow()
-    expect(localStorage.getItem('vm_token')).toBe('token-b')
     expect(localStorage.getItem('vm_session_id')).toBe('session-b')
   })
 
@@ -332,7 +330,7 @@ describe('analytics token exchange', () => {
     issued = 0
     analyticsStatus = []
     api.clearAnalyticsToken()
-    localStorage.setItem('vm_token', 'login-token')
+    localStorage.setItem('vm_user', JSON.stringify({ id: 'user-1' }))
     localStorage.setItem('vm_session_id', 'session-a')
     beforeReply = () => {
       const last = captured[captured.length - 1]
@@ -352,7 +350,10 @@ describe('analytics token exchange', () => {
   it('sends analytics the exchanged token, never the login token', async () => {
     await api.analyticsApi.getSummary()
     expect(exchanges()).toHaveLength(1)
-    expect(exchanges()[0].authorization).toBe('Bearer login-token') // the exchange itself is a normal API call
+    // The exchange is a normal API call: authenticated by the session cookie,
+    // so it carries no token, only the web client header.
+    expect(exchanges()[0].authorization).toBeUndefined()
+    expect(exchanges()[0].webClient).toBe('web')
     expect(analyticsCalls()[0].authorization).toBe('Bearer analytics-1')
   })
 
@@ -394,7 +395,7 @@ describe('analytics token exchange', () => {
     expect(summary).toEqual({ vessels: 1 })
     expect(exchanges()).toHaveLength(2)
     expect(analyticsCalls().map((c) => c.authorization)).toEqual(['Bearer analytics-1', 'Bearer analytics-2'])
-    expect(localStorage.getItem('vm_token')).toBe('login-token')
+    expect(localStorage.getItem('vm_session_id')).toBe('session-a') // not signed out
   })
 
   it('gives up after one retry, and still does not sign out', async () => {
@@ -403,7 +404,7 @@ describe('analytics token exchange', () => {
     analyticsStatus = [401, 401]
     await expect(api.analyticsApi.getSummary()).rejects.toThrow()
     expect(analyticsCalls()).toHaveLength(2)
-    expect(localStorage.getItem('vm_token')).toBe('login-token')
+    expect(localStorage.getItem('vm_session_id')).toBe('session-a') // not signed out
   })
 
   it('signs out when the exchange itself is refused: the login session was revoked', async () => {
@@ -412,6 +413,38 @@ describe('analytics token exchange', () => {
     }
     await expect(api.analyticsApi.getSummary()).rejects.toThrow()
     expect(analyticsCalls()).toHaveLength(0)
-    expect(localStorage.getItem('vm_token')).toBeNull()
+    expect(localStorage.getItem('vm_session_id')).toBeNull()
+  })
+})
+
+describe('the session is a cookie, not a token the page holds', () => {
+  it('sends every API request with credentials and the web client header, and no token', async () => {
+    localStorage.setItem('vm_user', JSON.stringify({ id: 'user-1' }))
+    localStorage.setItem('vm_session_id', 'session-a')
+    reply(200, { id: 'f', name: 'F', operator: 'O', vessels: [] })
+    await api.fleetApi.getFleet()
+    expect(captured[0]).toMatchObject({ withCredentials: true, webClient: 'web' })
+    expect(captured[0].authorization).toBeUndefined()
+  })
+
+  it('streams chat with the cookie (credentials: include) and the web client header', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(new Response('data: [DONE]\n\n', { status: 200 }))
+    vi.stubGlobal('fetch', fetchSpy)
+    try {
+      await api.knowledgeApi.chatStream({ vesselId: 'vessel-001', message: 'hi', conversationHistory: [] })
+      const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+      expect(init.credentials).toBe('include')
+      const headers = init.headers as Record<string, string>
+      expect(headers['X-VesselMind-Client']).toBe('web')
+      expect(headers.Authorization).toBeUndefined()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('logout asks the backend to clear the cookie, since script cannot', async () => {
+    reply(204)
+    await api.authApi.logout()
+    expect(captured[0]).toMatchObject({ method: 'post', url: '/auth/logout', webClient: 'web' })
   })
 })

@@ -10,7 +10,11 @@ export function sessionScope(user: { id: string; fleetId?: string | null }, sess
 export function currentSessionScope(): string | null {
   const sessionId = localStorage.getItem('vm_session_id')
   const raw = localStorage.getItem('vm_user')
-  if (!sessionId || !raw || !localStorage.getItem('vm_token')) return null
+  // No token check: the session credential is an httpOnly cookie that script
+  // cannot see. vm_user + vm_session_id say which account this browser last
+  // signed in as; whether that session is still valid is the server's call,
+  // and its first 401 clears this.
+  if (!sessionId || !raw) return null
   try {
     const user = JSON.parse(raw) as { id?: string; fleetId?: string | null }
     return user.id ? sessionScope({ ...user, id: user.id }, sessionId) : null
