@@ -6,7 +6,6 @@ import { clearSessionData, currentSessionScope, SESSION_CLEARED_EVENT } from '@/
 
 interface AuthContextType {
   user: User | null
-  token: string | null
   sessionId: string | null
   isAuthenticated: boolean
   isLoading: boolean
@@ -19,7 +18,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const sessionChange = useRef(0)
@@ -28,7 +26,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const reset = () => {
       sessionChange.current++
       setUser(null)
-      setToken(null)
       setSessionId(null)
     }
     const restore = () => {
@@ -37,15 +34,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         reset()
         return
       }
-      setToken(localStorage.getItem('vm_token'))
       setUser(JSON.parse(localStorage.getItem('vm_user')!) as User)
       setSessionId(localStorage.getItem('vm_session_id'))
     }
     window.addEventListener(SESSION_CLEARED_EVENT, reset)
     const handleStorage = (event: StorageEvent) => {
-      if (event.key === null || ['vm_token', 'vm_user', 'vm_session_id'].includes(event.key)) restore()
+      if (event.key === null || ['vm_user', 'vm_session_id'].includes(event.key)) restore()
     }
     window.addEventListener('storage', handleStorage)
+    // Earlier versions kept the login token here, readable by any script on the
+    // page. The session is an httpOnly cookie now; drop any leftover token so a
+    // long-lived credential does not sit in storage after the upgrade.
+    localStorage.removeItem('vm_token')
     // Old unscoped sessions cannot prove who owns their retained data. Require
     // a fresh login once, rather than migrating private data to an assumed owner.
     if (currentSessionScope()) {
@@ -67,13 +67,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const attempt = ++sessionChange.current
     await cleanup
     if (attempt !== sessionChange.current) throw new Error('Session changed during login')
-    const saveSession = (nextToken: string, nextUser: User) => {
+    // Records WHO is signed in, never the credential: the backend set the
+    // session as an httpOnly cookie, which this code cannot see or store.
+    const saveSession = (nextUser: User) => {
       if (attempt !== sessionChange.current) throw new Error('Session changed during login')
       const nextSessionId = crypto.randomUUID()
-      localStorage.setItem('vm_token', nextToken)
       localStorage.setItem('vm_user', JSON.stringify(nextUser))
       localStorage.setItem('vm_session_id', nextSessionId)
-      setToken(nextToken)
       setUser(nextUser)
       setSessionId(nextSessionId)
     }
@@ -83,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // token on a different backend than the one that later verifies it (→ 401).
     try {
       const data = await authApi.login(email, password)
-      saveSession(data.token, data.user)
+      saveSession(data.user)
       return
     } catch (err) {
       // Production has the demo account seeded into the database, so a failure
@@ -97,10 +97,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // be worked on with no backend running.
     }
 
-    // Demo fallback (development only — see above)
+    // Demo fallback (development only — see above). There is no backend, so
+    // no cookie and no credential at all: the UI can be worked on, and any
+    // real request will 401.
     if (email === 'demo@petronas.com' && password === 'demo123') {
-      const demoToken = 'demo_token_' + Date.now()
-      saveSession(demoToken, MOCK_USER)
+      saveSession(MOCK_USER)
     } else {
       throw new Error('Invalid credentials. Use demo@petronas.com / demo123')
     }
@@ -113,16 +114,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     sessionChange.current++
     setUser(null)
-    setToken(null)
     setSessionId(null)
+    // Script cannot delete an httpOnly cookie, so ask the backend to. Best
+    // effort: signing out locally must not depend on the network.
+    try {
+      await authApi.logout()
+    } catch {
+      /* offline or already expired: local data is still cleared below */
+    }
     await clearSessionData()
   }, [])
 
   const value: AuthContextType = {
     user,
-    token,
     sessionId,
-    isAuthenticated: !!user && !!token,
+    isAuthenticated: !!user,
     isLoading,
     login,
     loginDemo,
