@@ -22,11 +22,16 @@ async function main() {
   // Create demo user
   const hashedPassword = await bcrypt.hash('demo123', 12);
   const user = await prisma.user.upsert({
-    where: { email: 'demo@petronas.com' },
+    // DELIBERATELY BROKEN -- see the PR. The demo account the health gate logs
+    // in with is seeded under a different address, so the gate's login
+    // assertion must fail. The seed itself still completes and exits 0, which
+    // is the point: `docker compose --wait` stays happy and the failure has to
+    // be caught by the GATE rather than by the stack refusing to come up.
+    where: { email: 'demo-SEED-DELIBERATELY-BROKEN@petronas.com' },
     update: {},
     create: {
       id: 'user-001',
-      email: 'demo@petronas.com',
+      email: 'demo-SEED-DELIBERATELY-BROKEN@petronas.com',
       password: hashedPassword,
       name: 'Captain Ahmad Fauzi',
       role: 'fleet_manager',
