@@ -72,14 +72,14 @@ export default function AgentHub() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-white">Agent Communication Hub</h2>
-        <p className="text-gray-400 text-sm mt-0.5">AI-generated port agent messages and communication tracking</p>
+        <h2 className="text-lg font-semibold text-ink">Agent Communication Hub</h2>
+        <p className="text-muted text-sm mt-0.5">AI-generated port agent messages and communication tracking</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Port calls list */}
         <div className="lg:col-span-2 space-y-3">
-          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Active Port Calls</h3>
+          <h3 className="text-sm font-semibold text-muted">Active Port Calls</h3>
           {MOCK_PORT_CALLS.map((pc) => {
             const vessel = MOCK_VESSELS.find((v) => v.id === pc.vesselId)
             const isSent = sentIds.has(pc.id)
@@ -87,15 +87,15 @@ export default function AgentHub() {
               <button
                 key={pc.id}
                 onClick={() => { setSelectedPortCall(pc); setGeneratedMsg(null) }}
-                className={`w-full text-left card hover:border-teal-700 transition-colors ${
-                  selectedPortCall?.id === pc.id ? 'border-teal-600' : ''
+                className={`w-full text-left card hover:border-accent-hi transition-colors ${
+                  selectedPortCall?.id === pc.id ? 'border-accent' : ''
                 }`}
               >
                 <div className="flex items-start justify-between">
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-white text-sm truncate">{vessel?.name ?? 'Unknown'}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{pc.portName}, {pc.country}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">ETA: {formatDate(pc.eta)}</p>
+                    <p className="font-medium text-ink text-sm truncate">{vessel?.name ?? 'Unknown'}</p>
+                    <p className="text-xs text-muted mt-0.5">{pc.portName}, {pc.country}</p>
+                    <p className="text-xs text-faint mt-0.5">ETA: {formatDate(pc.eta)}</p>
                     <div className="flex items-center gap-2 mt-2">
                       <span className={`badge-${pc.status === 'arrived' ? 'healthy' : 'info'} text-xs`}>
                         {pc.status}
@@ -103,7 +103,7 @@ export default function AgentHub() {
                       {isSent && <span className="badge-healthy text-xs">Message Sent</span>}
                     </div>
                   </div>
-                  <ChevronRight className={`w-4 h-4 flex-shrink-0 mt-1 ${selectedPortCall?.id === pc.id ? 'text-teal-400' : 'text-gray-600'}`} />
+                  <ChevronRight className={`w-4 h-4 flex-shrink-0 mt-1 ${selectedPortCall?.id === pc.id ? 'text-accent' : 'text-faint-2'}`} />
                 </div>
               </button>
             )
@@ -113,7 +113,7 @@ export default function AgentHub() {
         {/* Message generator */}
         <div className="lg:col-span-3">
           {!selectedPortCall ? (
-            <div className="card flex items-center justify-center h-64 text-gray-500 flex-col gap-2">
+            <div className="card flex items-center justify-center h-64 text-faint flex-col gap-2">
               <MessageSquare className="w-10 h-10 opacity-30" />
               <p>Select a port call to generate a message</p>
             </div>
@@ -121,21 +121,21 @@ export default function AgentHub() {
             <div className="space-y-4">
               <div className="card">
                 <div className="flex items-center gap-2 mb-4">
-                  <Mail className="w-5 h-5 text-teal-400" />
-                  <h3 className="font-semibold text-white">Generate Agent Message</h3>
+                  <Mail className="w-5 h-5 text-accent" />
+                  <h3 className="font-semibold text-ink">Generate Agent Message</h3>
                 </div>
 
                 <div className="mb-4">
-                  <label className="block text-sm text-gray-400 mb-2">Message Type</label>
+                  <label className="block text-sm text-muted mb-2">Message Type</label>
                   <div className="grid grid-cols-2 gap-2">
                     {(Object.keys(MESSAGE_TYPE_LABELS) as MessageType[]).map((type) => (
                       <button
                         key={type}
                         onClick={() => setMessageType(type)}
-                        className={`text-sm px-3 py-2 rounded-[2px] text-left transition-colors border ${
+                        className={`text-sm px-3 py-2 rounded-inner text-left transition-colors border ${
                           messageType === type
-                            ? 'bg-teal-600/15 text-teal-400 border-teal-600'
-                            : 'bg-[#12161a] text-gray-300 border-white/[0.1] hover:border-white/20'
+                            ? 'bg-accent/15 text-accent border-accent'
+                            : 'bg-paper-2 text-ink-2 border-light/[0.1] hover:border-light/20'
                         }`}
                       >
                         {MESSAGE_TYPE_LABELS[type]}
@@ -151,7 +151,7 @@ export default function AgentHub() {
                 >
                   {isGenerating ? (
                     <>
-                      <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin" />
+                      <div className="w-4 h-4 border border-light border-t-transparent rounded-full animate-spin" />
                       Generating with AI...
                     </>
                   ) : (
@@ -163,7 +163,7 @@ export default function AgentHub() {
                 </button>
 
                 {error && (
-                  <div role="alert" className="mt-3 bg-red-500/10 border border-red-500/30 text-red-300 text-[13px] rounded-md px-4 py-3">
+                  <div role="alert" className="mt-3 bg-critical/10 border border-critical/30 text-critical text-[13px] rounded-inner px-4 py-3">
                     {error}
                   </div>
                 )}
@@ -172,7 +172,7 @@ export default function AgentHub() {
               {generatedMsg && (
                 <div className="card space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-white text-sm">Generated Message</h3>
+                    <h3 className="font-semibold text-ink text-sm">Generated Message</h3>
                     <div className="flex gap-2">
                       <button
                         onClick={handleCopy}
@@ -191,17 +191,17 @@ export default function AgentHub() {
                     </div>
                   </div>
 
-                  <div className="bg-navy-900 rounded-[2px] p-4 space-y-3 border border-navy-700">
+                  <div className="bg-paper rounded-inner p-4 space-y-3 border border-rule">
                     <div className="flex gap-2 text-sm">
-                      <span className="text-gray-400 w-16 flex-shrink-0">To:</span>
-                      <span className="text-teal-400">{generatedMsg.to}</span>
+                      <span className="text-muted w-16 flex-shrink-0">To:</span>
+                      <span className="text-accent">{generatedMsg.to}</span>
                     </div>
                     <div className="flex gap-2 text-sm">
-                      <span className="text-gray-400 w-16 flex-shrink-0">Subject:</span>
-                      <span className="text-white font-medium">{generatedMsg.subject}</span>
+                      <span className="text-muted w-16 flex-shrink-0">Subject:</span>
+                      <span className="text-ink font-medium">{generatedMsg.subject}</span>
                     </div>
-                    <div className="border-t border-navy-700 pt-3">
-                      <pre className="text-gray-300 text-sm whitespace-pre-wrap font-sans leading-relaxed">
+                    <div className="border-t border-rule pt-3">
+                      <pre className="text-ink-2 text-sm whitespace-pre-wrap font-sans leading-relaxed">
                         {generatedMsg.body}
                       </pre>
                     </div>

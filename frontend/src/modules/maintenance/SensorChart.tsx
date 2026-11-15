@@ -13,6 +13,7 @@ import {
 import { maintenanceApi } from '@/lib/api'
 import type { SensorReading } from '@/lib/types'
 import { format } from 'date-fns'
+import { tok } from '@/lib/theme'
 
 interface SensorChartProps {
   equipmentId: string
@@ -65,7 +66,7 @@ export default function SensorChart({ equipmentId, sensorName, unit, normalRange
   if (isLoading) {
     return (
       <div className="h-48 flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
+        <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
@@ -75,10 +76,10 @@ export default function SensorChart({ equipmentId, sensorName, unit, normalRange
   if (isError || !sensorData || sensorData.length === 0) {
     return (
       <div className="space-y-2">
-        <h4 className="text-sm font-medium text-gray-300">
+        <h4 className="text-sm font-medium text-ink-2">
           {sensorName} ({unit})
         </h4>
-        <div className="h-48 flex items-center justify-center text-sm text-gray-500">
+        <div className="h-48 flex items-center justify-center text-sm text-faint">
           {isError ? 'Sensor data unavailable' : 'No sensor data for this period'}
         </div>
       </div>
@@ -99,28 +100,28 @@ export default function SensorChart({ equipmentId, sensorName, unit, normalRange
 
   return (
     <div className="space-y-2">
-      <h4 className="text-sm font-medium text-gray-300">
+      <h4 className="text-sm font-medium text-ink-2">
         {sensorName} ({unit})
       </h4>
       <div className="h-48">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.09)" />
+            <CartesianGrid stroke={tok('light', 0.05)} />
             <XAxis
               dataKey="time"
-              stroke="#454b55"
-              tick={{ fill: '#5c6470', fontSize: 9 }}
+              stroke={tok('rule')}
+              tick={{ fill: tok('muted'), fontSize: 9 }}
               interval="preserveStartEnd"
             />
             <YAxis
-              stroke="#454b55"
-              tick={{ fill: '#5c6470', fontSize: 9 }}
+              stroke={tok('rule')}
+              tick={{ fill: tok('muted'), fontSize: 9 }}
               domain={[yMin, yMax]}
               tickFormatter={(v) => v.toFixed(0)}
             />
             <Tooltip
-              contentStyle={{ backgroundColor: '#12161a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '2px', fontSize: '11px' }}
-              labelStyle={{ color: '#a8adb5' }}
+              contentStyle={{ backgroundColor: tok('paper-2'), border: `1px solid ${tok('light', 0.1)}`, borderRadius: '10px', fontSize: '11px' }}
+              labelStyle={{ color: tok('ink-2') }}
               formatter={(value: number) => [`${value.toFixed(2)} ${unit}`, sensorName]}
             />
 
@@ -129,32 +130,32 @@ export default function SensorChart({ equipmentId, sensorName, unit, normalRange
               type="monotone"
               dataKey="cautionZoneTop"
               stroke="none"
-              fill="#c99a54"
+              fill={tok('apricot')}
               fillOpacity={0.08}
             />
 
             {/* Critical reference line */}
             <ReferenceLine
               y={warningRange[0]}
-              stroke="#c99a54"
+              stroke={tok('apricot')}
               strokeDasharray="4 3"
-              label={{ value: 'Caution', position: 'right', fill: '#c99a54', fontSize: 9 }}
+              label={{ value: 'Caution', position: 'right', fill: tok('apricot'), fontSize: 9 }}
             />
             <ReferenceLine
               y={warningRange[1]}
-              stroke="#a8443b"
+              stroke={tok('critical')}
               strokeDasharray="4 3"
-              label={{ value: 'Critical', position: 'right', fill: '#a8443b', fontSize: 9 }}
+              label={{ value: 'Critical', position: 'right', fill: tok('critical'), fontSize: 9 }}
             />
 
             {/* Main sensor line */}
             <Line
               type="monotone"
               dataKey="value"
-              stroke="#3a8c85"
+              stroke={tok('accent')}
               strokeWidth={1.5}
               dot={false}
-              activeDot={{ r: 4, fill: '#3a8c85' }}
+              activeDot={{ r: 4, fill: tok('accent') }}
               name={sensorName}
             />
 
@@ -164,7 +165,7 @@ export default function SensorChart({ equipmentId, sensorName, unit, normalRange
               dataKey="anomaly"
               stroke="none"
               strokeWidth={0}
-              dot={{ r: 4, fill: '#a8443b', stroke: '#fff', strokeWidth: 1 }}
+              dot={{ r: 4, fill: tok('critical'), stroke: tok('ink'), strokeWidth: 1 }}
               activeDot={false}
               name="Anomaly"
               isAnimationActive={false}
@@ -172,18 +173,18 @@ export default function SensorChart({ equipmentId, sensorName, unit, normalRange
           </ComposedChart>
         </ResponsiveContainer>
       </div>
-      <div className="flex items-center gap-4 text-xs text-gray-500">
+      <div className="flex items-center gap-4 text-xs text-faint">
         <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 bg-teal-600 inline-block" /> Sensor reading
+          <span className="w-3 h-0.5 bg-accent inline-block" /> Sensor reading
         </span>
         <span className="flex items-center gap-1">
           <span className="w-2 h-2 bg-status-red inline-block" /> Anomaly
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 inline-block" style={{ borderTop: '2px dashed #c99a54' }} /> Caution
+          <span className="w-3 h-0.5 inline-block" style={{ borderTop: `2px dashed ${tok('apricot')}` }} /> Caution
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 inline-block" style={{ borderTop: '2px dashed #a8443b' }} /> Critical
+          <span className="w-3 h-0.5 inline-block" style={{ borderTop: `2px dashed ${tok('critical')}` }} /> Critical
         </span>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { MapContainer, TileLayer, Polyline, CircleMarker, Popup, Marker, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import type { RouteOptimization } from '@/lib/types'
+import { tok } from '@/lib/theme'
 
 // Fix Leaflet default icon issue in Vite
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -42,7 +43,7 @@ export default function RouteMap({ routeData, vesselPosition }: RouteMapProps) {
 
   const vesselIcon = L.divIcon({
     className: '',
-    html: `<div style="width:12px;height:12px;background:#14b8a6;border:2px solid white;border-radius:50%;box-shadow:0 0 8px #14b8a6"></div>`,
+    html: `<div style="width:12px;height:12px;background:${tok('accent')};border:2px solid ${tok('paper')};border-radius:50%"></div>`,
     iconSize: [12, 12],
     iconAnchor: [6, 6],
   })
@@ -67,7 +68,7 @@ export default function RouteMap({ routeData, vesselPosition }: RouteMapProps) {
       {directPositions.length > 1 && (
         <Polyline
           positions={directPositions}
-          pathOptions={{ color: '#ef4444', weight: 2, dashArray: '8 6', opacity: 0.7 }}
+          pathOptions={{ color: tok('critical'), weight: 2, dashArray: '8 6', opacity: 0.7 }}
         />
       )}
 
@@ -75,7 +76,7 @@ export default function RouteMap({ routeData, vesselPosition }: RouteMapProps) {
       {aiPositions.length > 1 && (
         <Polyline
           positions={aiPositions}
-          pathOptions={{ color: '#14b8a6', weight: 2.5, opacity: 0.9 }}
+          pathOptions={{ color: tok('accent'), weight: 2.5, opacity: 0.9 }}
         />
       )}
 
@@ -85,7 +86,7 @@ export default function RouteMap({ routeData, vesselPosition }: RouteMapProps) {
           key={`ai-wp-${idx}`}
           center={[wp.lat, wp.lng]}
           radius={5}
-          pathOptions={{ color: '#14b8a6', fillColor: '#14b8a6', fillOpacity: 0.9, weight: 1.5 }}
+          pathOptions={{ color: tok('accent'), fillColor: tok('accent'), fillOpacity: 0.9, weight: 1.5 }}
         >
           <Popup>
             <div style={{ fontSize: '12px', minWidth: '140px' }}>
@@ -93,7 +94,7 @@ export default function RouteMap({ routeData, vesselPosition }: RouteMapProps) {
               <p>Wind: {wp.weather.windSpeed} kn</p>
               <p>Waves: {wp.weather.waveHeight}m</p>
               <p>Current: {wp.weather.current} kn</p>
-              <p style={{ color: '#9ca3af', marginTop: '4px', fontSize: '11px' }}>{wp.weather.description}</p>
+              <p style={{ color: tok('ink-2'), marginTop: '4px', fontSize: '11px' }}>{wp.weather.description}</p>
             </div>
           </Popup>
         </CircleMarker>
@@ -105,13 +106,13 @@ export default function RouteMap({ routeData, vesselPosition }: RouteMapProps) {
           key={`dir-wp-${idx}`}
           center={[wp.lat, wp.lng]}
           radius={4}
-          pathOptions={{ color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.6, weight: 1 }}
+          pathOptions={{ color: tok('critical'), fillColor: tok('critical'), fillOpacity: 0.6, weight: 1 }}
         >
           {wp.name && (
             <Popup>
               <div style={{ fontSize: '12px' }}>
                 <p style={{ fontWeight: 'bold' }}>{wp.name}</p>
-                <p style={{ color: '#9ca3af' }}>Direct route waypoint</p>
+                <p style={{ color: tok('ink-2') }}>Direct route waypoint</p>
               </div>
             </Popup>
           )}

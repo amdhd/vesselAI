@@ -10,6 +10,7 @@ import { describeApiError } from '@/lib/apiError'
 import Badge from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import EquipmentDetail from './EquipmentDetail'
+import { tok } from '@/lib/theme'
 
 function HealthCircle({ score }: { score: number }) {
   const radius = 24
@@ -19,8 +20,8 @@ function HealthCircle({ score }: { score: number }) {
 
   return (
     <div className="relative inline-flex items-center justify-center shrink-0">
-      <svg width="56" height="56" viewBox="0 0 56 56">
-        <circle cx="28" cy="28" r={radius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+      <svg width="56" height="56" viewBox="0 0 56 56" aria-hidden="true">
+        <circle cx="28" cy="28" r={radius} fill="none" stroke={tok('light', 0.08)} strokeWidth="4" />
         <circle
           cx="28"
           cy="28"
@@ -35,7 +36,7 @@ function HealthCircle({ score }: { score: number }) {
           style={{ transition: 'stroke-dashoffset 0.5s ease' }}
         />
       </svg>
-      <span className="absolute font-mono text-[15px] font-semibold text-[#e2e4e7]">{score}</span>
+      <span className="absolute tabular-nums text-[15px] font-semibold text-ink">{score}</span>
     </div>
   )
 }
@@ -70,41 +71,41 @@ function EquipmentCard({ equipment, hasAlert, onClick }: EquipmentCardProps) {
   return (
     <div
       onClick={() => onClick(equipment)}
-      className="bg-navy-800 p-5 cursor-pointer hover:bg-white/[0.015] transition-colors group"
+      className="panel p-5 cursor-pointer hover:bg-paper-3 hover:border-light/[0.12] transition-colors group"
     >
       {/* Alert banner */}
       {hasAlert && (
-        <div className="flex items-center gap-2 mb-3 p-2 border border-status-red text-status-red rounded-[2px] text-xs">
+        <div className="flex items-center gap-2 mb-3 p-2 border border-status-red text-status-red rounded-inner text-xs">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-          Anomaly Detected — AI flagged bearing issue
+          Anomaly detected: AI flagged bearing issue
         </div>
       )}
 
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-[#e2e4e7] text-[14px] truncate group-hover:text-teal-300 transition-colors">
+          <h3 className="font-semibold text-ink text-[14px] truncate group-hover:text-accent-hi transition-colors">
             {equipment.name}
           </h3>
-          <p className="text-[#767d88] text-[11.5px] mt-[3px]">{equipment.manufacturer}</p>
+          <p className="text-muted text-[11.5px] mt-[3px]">{equipment.manufacturer}</p>
         </div>
         <div className="ml-3">
           <HealthCircle score={equipment.healthScore} />
         </div>
       </div>
 
-      <div className="mt-4 pt-3.5 border-t border-white/[0.06] flex items-center justify-between">
+      <div className="mt-4 pt-3.5 border-t border-light/[0.06] flex items-center justify-between">
         <StatusBadge status={equipment.status} />
-        <span className="text-[#767d88] text-[11.5px] font-mono">{equipment.runningHours.toLocaleString()} hrs</span>
+        <span className="text-muted text-[11.5px] tabular-nums">{equipment.runningHours.toLocaleString()} hrs</span>
       </div>
 
       <div className="mt-3.5 flex justify-between text-xs">
         <div>
-          <span className="text-[10px] text-[#5c6470] uppercase tracking-wide">Last maint.</span>
-          <p className="text-[#c7cbd1] text-xs mt-[3px]">{formatDate(equipment.lastMaintenance)}</p>
+          <span className="text-[11px] text-faint">Last maint.</span>
+          <p className="text-ink-2 text-xs mt-[3px]">{formatDate(equipment.lastMaintenance)}</p>
         </div>
         <div className="text-right">
-          <span className="text-[10px] text-[#5c6470] uppercase tracking-wide">Next maint.</span>
-          <p className="text-[#c7cbd1] text-xs mt-[3px]">{formatDate(equipment.nextMaintenance)}</p>
+          <span className="text-[11px] text-faint">Next maint.</span>
+          <p className="text-ink-2 text-xs mt-[3px]">{formatDate(equipment.nextMaintenance)}</p>
         </div>
       </div>
     </div>
@@ -162,9 +163,9 @@ export default function EquipmentGrid() {
   if (!selectedVessel) {
     return (
       <div className="card flex flex-col items-center justify-center py-16 text-center">
-        <Cpu className="w-12 h-12 text-gray-600 mb-4" />
-        <h3 className="text-white font-semibold">No vessel selected</h3>
-        <p className="text-gray-400 text-sm mt-2">Select a vessel from the top bar to view equipment</p>
+        <Cpu className="w-12 h-12 text-faint-2 mb-4" />
+        <h3 className="text-ink font-semibold">No vessel selected</h3>
+        <p className="text-muted text-sm mt-2">Select a vessel from the top bar to view equipment</p>
       </div>
     )
   }
@@ -174,9 +175,9 @@ export default function EquipmentGrid() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="card animate-pulse">
-            <div className="h-4 bg-navy-700 rounded mb-3 w-3/4" />
-            <div className="h-20 bg-navy-700 rounded mb-3" />
-            <div className="h-4 bg-navy-700 rounded w-1/2" />
+            <div className="h-4 bg-paper-3 rounded mb-3 w-3/4" />
+            <div className="h-20 bg-paper-3 rounded mb-3" />
+            <div className="h-4 bg-paper-3 rounded w-1/2" />
           </div>
         ))}
       </div>
@@ -190,21 +191,21 @@ export default function EquipmentGrid() {
       <div className="space-y-4">
         {/* Analyze button */}
         <div className="flex items-center justify-between">
-          <p className="text-gray-400 text-sm">
-            {sortedEquipment.length} equipment units — {flaggedCount} flagged for review
+          <p className="text-muted text-sm">
+            {sortedEquipment.length} equipment units, {flaggedCount} flagged for review
           </p>
           <button
             onClick={() => analyzeAll()}
             disabled={isAnalyzing || flaggedCount === 0}
             className={cn(
-              'flex items-center gap-2 px-4 py-2 rounded-[2px] text-[12.5px] font-semibold transition-colors border',
+              'flex items-center gap-2 px-4 py-2 rounded-inner text-[12.5px] font-semibold transition-colors border',
               flaggedCount > 0
                 ? 'border-status-amber text-status-amber hover:bg-status-amber/10'
-                : 'border-navy-600 text-gray-500 cursor-not-allowed'
+                : 'border-rule-2 text-faint cursor-not-allowed'
             )}
           >
             {isAnalyzing ? (
-              <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-apricot border-t-transparent rounded-full animate-spin" />
             ) : (
               <Zap className="w-4 h-4" />
             )}
@@ -214,17 +215,17 @@ export default function EquipmentGrid() {
 
         {/* Analysis result */}
         {analyzeResult && (
-          <div className="border border-status-amber/50 bg-navy-800 rounded-[2px] p-5">
+          <div className="border border-status-amber/35 bg-status-amber/[0.06] rounded-inner p-5">
             <div className="flex items-center gap-2 mb-2">
               <Zap className="w-4 h-4 text-status-amber" />
               <span className="text-status-amber font-semibold text-sm">AI Analysis Result</span>
             </div>
-            <p className="text-gray-300 text-sm leading-relaxed">{analyzeResult}</p>
+            <p className="text-ink-2 text-sm leading-relaxed">{analyzeResult}</p>
           </div>
         )}
 
         {/* Equipment grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-px bg-navy-700 border border-navy-700">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {sortedEquipment.map((eq) => (
             <EquipmentCard
               key={eq.id}

@@ -69,23 +69,23 @@ export default function ShiftHandover() {
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <div className="space-y-4">
         <div className="card">
-          <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-            <ClipboardList size={16} className="text-teal-400" />
+          <h3 className="font-semibold text-ink mb-4 flex items-center gap-2">
+            <ClipboardList size={16} className="text-accent" />
             End-of-Watch Handover
           </h3>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Watch</label>
+                <label className="block text-xs text-muted mb-1">Watch</label>
                 <select value={form.watch} onChange={e => setForm(f => ({ ...f, watch: e.target.value }))}
-                  className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600">
+                  className="w-full bg-paper border border-rule-2 rounded-inner px-3 py-2 text-ink text-sm focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15">
                   {WATCH_OPTIONS.map(w => <option key={w}>{w}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Engineer Name</label>
+                <label className="block text-xs text-muted mb-1">Engineer Name</label>
                 <input value={form.engineer} onChange={e => setForm(f => ({ ...f, engineer: e.target.value }))}
-                  placeholder="Your name" className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 placeholder-gray-600" />
+                  placeholder="Your name" className="w-full bg-paper border border-rule-2 rounded-inner px-3 py-2 text-ink text-sm focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15 placeholder-faint-2" />
               </div>
             </div>
             {[
@@ -95,11 +95,11 @@ export default function ShiftHandover() {
               { key: 'pendingOrders', label: 'Pending Work Orders', placeholder: 'WO numbers and status...' },
             ].map(field => (
               <div key={field.key}>
-                <label className="block text-xs text-gray-400 mb-1">{field.label}</label>
+                <label className="block text-xs text-muted mb-1">{field.label}</label>
                 <textarea value={form[field.key as keyof typeof form]}
                   onChange={e => setForm(f => ({ ...f, [field.key]: e.target.value }))}
                   rows={2} placeholder={field.placeholder}
-                  className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 resize-none placeholder-gray-600" />
+                  className="w-full bg-paper border border-rule-2 rounded-inner px-3 py-2 text-ink text-sm focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15 resize-none placeholder-faint-2" />
               </div>
             ))}
             <button onClick={handleGenerate} disabled={loading}
@@ -107,7 +107,7 @@ export default function ShiftHandover() {
               {loading ? <><LoadingSpinner size="sm" /> Generating...</> : <><Zap size={16} /> Generate Handover Report</>}
             </button>
             {error && (
-              <div role="alert" className="bg-red-500/10 border border-red-500/30 text-red-300 text-[13px] rounded-md px-4 py-3">
+              <div role="alert" className="bg-critical/10 border border-critical/30 text-critical text-[13px] rounded-inner px-4 py-3">
                 {error}
               </div>
             )}
@@ -119,7 +119,7 @@ export default function ShiftHandover() {
         {result ? (
           <div className="card">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-white">Handover Report</h3>
+              <h3 className="font-semibold text-ink">Handover Report</h3>
               <div className="flex gap-2">
                 <button onClick={() => navigator.clipboard.writeText(result.reportText)} className="btn-secondary text-xs flex items-center gap-1 py-1.5">
                   <Copy size={12} /> Copy
@@ -135,29 +135,29 @@ export default function ShiftHandover() {
                 </button>
               </div>
             </div>
-            <div className="bg-navy-800 border border-teal-600/50 rounded-[2px] p-3 mb-3">
-              <p className="text-teal-400 text-sm font-medium">Summary</p>
-              <p className="text-gray-300 text-sm mt-1">{result.summary}</p>
+            <div className="bg-accent/[0.06] border border-accent/30 rounded-inner p-3 mb-3">
+              <p className="text-accent text-sm font-medium">Summary</p>
+              <p className="text-ink-2 text-sm mt-1">{result.summary}</p>
             </div>
-            <pre className="text-gray-300 text-xs whitespace-pre-wrap font-mono bg-navy-900 rounded-[2px] p-3 max-h-64 overflow-y-auto">{result.reportText}</pre>
+            <pre className="text-ink-2 text-xs whitespace-pre-wrap tabular-nums bg-paper rounded-inner p-3 max-h-64 overflow-y-auto">{result.reportText}</pre>
           </div>
         ) : (
-          <div className="card flex items-center justify-center min-h-[200px] text-center text-gray-500">
-            <div><ClipboardList size={40} className="mx-auto mb-3 text-navy-600" /><p>Fill the form to generate a handover report</p></div>
+          <div className="card flex items-center justify-center min-h-[200px] text-center text-faint">
+            <div><ClipboardList size={40} className="mx-auto mb-3 text-rule-2" /><p>Fill the form to generate a handover report</p></div>
           </div>
         )}
 
         <div className="card">
-          <h3 className="font-semibold text-white mb-3 flex items-center gap-2"><Clock size={16} className="text-teal-400" /> Recent Handovers</h3>
+          <h3 className="font-semibold text-ink mb-3 flex items-center gap-2"><Clock size={16} className="text-accent" /> Recent Handovers</h3>
           <div className="space-y-3">
             {history.map(h => (
-              <div key={h.id} className="bg-navy-900 rounded-[2px] p-3 border border-navy-700">
+              <div key={h.id} className="bg-paper rounded-inner p-3 border border-rule">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-white text-sm font-medium">{h.engineer}</span>
-                  <span className="text-xs text-gray-500">{formatDateTime(h.createdAt)}</span>
+                  <span className="text-ink text-sm font-medium">{h.engineer}</span>
+                  <span className="text-xs text-faint">{formatDateTime(h.createdAt)}</span>
                 </div>
-                <span className="text-xs text-teal-400 mb-1 block">Watch: {h.watch}</span>
-                <p className="text-gray-400 text-xs">{h.aiSummary}</p>
+                <span className="text-xs text-accent mb-1 block">Watch: {h.watch}</span>
+                <p className="text-muted text-xs">{h.aiSummary}</p>
               </div>
             ))}
           </div>

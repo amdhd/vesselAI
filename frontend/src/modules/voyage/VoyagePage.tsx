@@ -23,8 +23,8 @@ function TabLoadingState() {
   return (
     <div className="flex items-center justify-center h-64">
       <div className="flex flex-col items-center gap-3">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-        <p className="text-gray-400 text-sm">Loading module...</p>
+        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        <p className="text-muted text-sm">Loading module...</p>
       </div>
     </div>
   )
@@ -38,10 +38,10 @@ export default function VoyagePage() {
     <div className="space-y-5">
       {/* Header */}
       <div>
-        <h1 className="text-[23px] font-semibold text-[#f0f1f3] tracking-[-0.01em]">Voyage Optimizer</h1>
-        <p className="text-[#767d88] text-[13px] mt-[5px]">
+        <h1 className="text-[23px] font-semibold text-ink tracking-[-0.01em]">Voyage Optimizer</h1>
+        <p className="text-muted text-[13px] mt-[5px]">
           {selectedVessel ? (
-            <>AI-powered voyage planning for <span className="text-teal-400 font-medium">{selectedVessel.name}</span></>
+            <>AI-powered voyage planning for <span className="text-accent font-medium">{selectedVessel.name}</span></>
           ) : (
             'Select a vessel from the top bar to begin'
           )}

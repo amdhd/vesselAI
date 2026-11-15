@@ -2,6 +2,7 @@ import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { format } from 'date-fns'
 import type { CIIRating } from './types'
+import { tok } from '@/lib/theme'
 
 // ─── Class Name Merger ─────────────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ export function getCIIColor(rating: CIIRating): string {
     case 'C': return 'text-status-amber'
     case 'D':
     case 'E': return 'text-status-red'
-    default: return 'text-gray-400'
+    default: return 'text-muted'
   }
 }
 
@@ -104,7 +105,7 @@ export function getCIIBgColor(rating: CIIRating): string {
     case 'C': return 'bg-transparent border-status-amber text-status-amber'
     case 'D':
     case 'E': return 'bg-transparent border-status-red text-status-red'
-    default: return 'bg-transparent border-navy-700 text-gray-400'
+    default: return 'bg-transparent border-rule text-muted'
   }
 }
 
@@ -125,11 +126,11 @@ export function getStatusColor(status: string): string {
       return 'text-status-red'
     case 'offline':
     case 'off_hire':
-      return 'text-gray-400'
+      return 'text-muted'
     case 'in_port':
-      return 'text-teal-400'
+      return 'text-accent'
     default:
-      return 'text-gray-400'
+      return 'text-muted'
   }
 }
 
@@ -160,9 +161,9 @@ export function getHealthColor(score: number): string {
 }
 
 export function getHealthBg(score: number): string {
-  if (score >= 80) return '#4a9d6f'
-  if (score >= 60) return '#c99a54'
-  return '#a8443b'
+  if (score >= 80) return tok('accent')
+  if (score >= 60) return tok('apricot')
+  return tok('critical')
 }
 
 export function getCongestionColor(level: string): string {

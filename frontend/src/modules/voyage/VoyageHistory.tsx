@@ -12,7 +12,7 @@ function SkeletonRow() {
     <tr className="animate-pulse">
       {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
         <td key={i} className="py-3 px-4">
-          <div className="h-4 bg-navy-700 rounded" />
+          <div className="h-4 bg-paper-3 rounded" />
         </td>
       ))}
     </tr>
@@ -22,7 +22,7 @@ function SkeletonRow() {
 function SavingsCell({ savings }: { savings: number }) {
   const isPositive = savings > 0
   return (
-    <span className={cn('flex items-center gap-1 font-mono font-medium text-sm', isPositive ? 'text-status-green' : 'text-status-red')}>
+    <span className={cn('flex items-center gap-1 tabular-nums font-medium text-sm', isPositive ? 'text-status-green' : 'text-status-red')}>
       {isPositive ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
       {isPositive ? '+' : ''}${Math.abs(savings * 650).toLocaleString()}
     </span>
@@ -30,10 +30,10 @@ function SavingsCell({ savings }: { savings: number }) {
 }
 
 function CIIImpactCell({ impact }: { impact: number | undefined | null }) {
-  if (impact == null) return <span className="font-mono text-sm font-medium text-[#5c6470]">—</span>
+  if (impact == null) return <span className="text-sm font-medium text-faint" aria-label="No data">n/a</span>
   const isPositive = impact < 0
   return (
-    <span className={cn('font-mono text-sm font-medium', isPositive ? 'text-status-green' : 'text-status-red')}>
+    <span className={cn('tabular-nums text-sm font-medium', isPositive ? 'text-status-green' : 'text-status-red')}>
       {impact > 0 ? '+' : ''}{impact.toFixed(2)}
     </span>
   )
@@ -69,51 +69,51 @@ export default function VoyageHistory() {
     <div className="space-y-4">
       <div className="card">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-semibold text-white flex items-center gap-2">
-            <Clock className="w-4 h-4 text-teal-400" />
-            Voyage History — {selectedVessel?.name ?? 'All Vessels'}
+          <h2 className="text-base font-semibold text-ink flex items-center gap-2">
+            <Clock className="w-4 h-4 text-accent" />
+            Voyage history, {selectedVessel?.name ?? 'All Vessels'}
           </h2>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-navy-700">
+              <tr className="border-b border-rule">
                 {['Departure', 'Route', 'Distance', 'Planned Fuel', 'Actual Fuel', 'Savings ($)', 'CII Impact', 'Status'].map((h) => (
-                  <th key={h} className="text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470] pb-3 px-4 first:pl-0 last:pr-0 whitespace-nowrap">
+                  <th key={h} className="text-left text-[11.5px] font-semibold text-faint pb-3 px-4 first:pl-0 last:pr-0 whitespace-nowrap">
                     {h}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-navy-700/50">
+            <tbody className="divide-y divide-rule/50">
               {isLoading ? (
                 Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)
               ) : !history || history.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center">
-                    <Clock className="w-10 h-10 text-gray-600 mx-auto mb-3" />
-                    <p className="text-gray-400">No voyage history found</p>
-                    <p className="text-gray-600 text-xs mt-1">Completed voyages will appear here</p>
+                    <Clock className="w-10 h-10 text-faint-2 mx-auto mb-3" />
+                    <p className="text-muted">No voyage history found</p>
+                    <p className="text-faint-2 text-xs mt-1">Completed voyages will appear here</p>
                   </td>
                 </tr>
               ) : (
                 history.map((voyage) => {
                   return (
-                    <tr key={voyage.id} className="hover:bg-navy-700/20 transition-colors">
-                      <td className="py-3 px-4 pl-0 text-gray-300 font-mono whitespace-nowrap">{formatDate(voyage.departureDate)}</td>
-                      <td className="py-3 px-4 text-white whitespace-nowrap">
+                    <tr key={voyage.id} className="hover:bg-paper-3/20 transition-colors">
+                      <td className="py-3 px-4 pl-0 text-ink-2 tabular-nums whitespace-nowrap">{formatDate(voyage.departureDate)}</td>
+                      <td className="py-3 px-4 text-ink whitespace-nowrap">
                         <span className="flex items-center gap-1">
                           {voyage.route.split(' → ')[0]}
-                          <ArrowRight className="w-3 h-3 text-gray-500 shrink-0" />
+                          <ArrowRight className="w-3 h-3 text-faint shrink-0" />
                           {voyage.route.split(' → ')[1]}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-gray-300 font-mono">
+                      <td className="py-3 px-4 text-ink-2 tabular-nums">
                         {voyage.distanceNm != null ? `${Math.round(voyage.distanceNm).toLocaleString()} nm` : '—'}
                       </td>
-                      <td className="py-3 px-4 text-gray-300 font-mono">{formatFuel(voyage.plannedFuel)}</td>
-                      <td className="py-3 px-4 text-gray-300 font-mono">{formatFuel(voyage.actualFuel)}</td>
+                      <td className="py-3 px-4 text-ink-2 tabular-nums">{formatFuel(voyage.plannedFuel)}</td>
+                      <td className="py-3 px-4 text-ink-2 tabular-nums">{formatFuel(voyage.actualFuel)}</td>
                       <td className="py-3 px-4">
                         <SavingsCell savings={voyage.savings} />
                       </td>
@@ -133,13 +133,13 @@ export default function VoyageHistory() {
 
         {/* Summary row */}
         {history && history.length > 0 && (
-          <div className="mt-5 pt-4 border-t border-navy-700 flex items-center justify-between">
+          <div className="mt-5 pt-4 border-t border-rule flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm">
               <TrendingUp className="w-4 h-4 text-status-green" />
-              <span className="text-gray-400">Total savings this month:</span>
-              <span className="text-status-green font-mono font-semibold">${totalSavings.toLocaleString()}</span>
+              <span className="text-muted">Total savings this month:</span>
+              <span className="text-status-green tabular-nums font-semibold">${totalSavings.toLocaleString()}</span>
             </div>
-            <span className="text-gray-500 text-xs">{history.length} voyages</span>
+            <span className="text-faint text-xs">{history.length} voyages</span>
           </div>
         )}
       </div>

@@ -19,8 +19,8 @@ export default defineConfig({
         name: 'VesselMind AI',
         short_name: 'VesselMind',
         description: 'Maritime AI Platform for Fleet Operations',
-        theme_color: '#0f172a',
-        background_color: '#0f172a',
+        theme_color: '#14161d',
+        background_color: '#14161d',
         display: 'standalone',
         start_url: '/',
         icons: [

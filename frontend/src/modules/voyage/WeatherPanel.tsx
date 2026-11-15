@@ -20,7 +20,7 @@ function weatherLabel(code?: number | null): string {
 
 // Simple sea-state cue from wave height (Douglas scale-ish).
 function seaState(waveM?: number | null): { label: string; color: string } {
-  if (waveM == null) return { label: '—', color: 'text-[#767d88]' }
+  if (waveM == null) return { label: '—', color: 'text-muted' }
   if (waveM < 0.5) return { label: 'Calm', color: 'text-status-green' }
   if (waveM < 1.25) return { label: 'Smooth', color: 'text-status-green' }
   if (waveM < 2.5) return { label: 'Moderate', color: 'text-status-amber' }
@@ -29,12 +29,12 @@ function seaState(waveM?: number | null): { label: string; color: string } {
 
 function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="bg-navy-700/40 rounded-[2px] p-2.5">
-      <div className="flex items-center gap-1.5 text-[#767d88] text-[10.5px] uppercase tracking-wide mb-1">
+    <div className="bg-paper-3/40 rounded-inner p-2.5">
+      <div className="flex items-center gap-1.5 text-muted text-[11.5px] mb-1">
         {icon}
         {label}
       </div>
-      <p className="text-white font-mono font-semibold text-[15px]">{value}</p>
+      <p className="text-ink tabular-nums font-semibold text-[15px]">{value}</p>
     </div>
   )
 }
@@ -67,19 +67,19 @@ export default function WeatherPanel() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold text-white flex items-center gap-2">
-            <CloudSun className="w-4 h-4 text-teal-400" />
+          <h2 className="text-base font-semibold text-ink flex items-center gap-2">
+            <CloudSun className="w-4 h-4 text-accent" />
             Live Marine Weather
           </h2>
-          <p className="text-[#767d88] text-xs mt-1">
-            Current conditions across the fleet's operating area — live from Open-Meteo Marine
+          <p className="text-muted text-xs mt-1">
+            Current conditions across the fleet's operating area, live from Open-Meteo Marine
             {fetchedAt && <> · updated {new Date(fetchedAt).toLocaleTimeString()}</>}
           </p>
         </div>
         <button
           onClick={load}
           disabled={loading}
-          className="flex items-center gap-1.5 text-xs text-teal-400 hover:text-teal-300 border border-teal-600/40 rounded-[2px] px-3 py-1.5 disabled:opacity-50 transition-colors"
+          className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hi border border-accent/40 rounded-inner px-3 py-1.5 disabled:opacity-50 transition-colors"
         >
           {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
           Refresh
@@ -89,7 +89,7 @@ export default function WeatherPanel() {
       {error && <div className="card border-status-red text-status-red text-sm">{error}</div>}
 
       {loading && !locations && (
-        <div className="card flex items-center justify-center py-12 text-gray-400 gap-2">
+        <div className="card flex items-center justify-center py-12 text-muted gap-2">
           <Loader2 className="w-5 h-5 animate-spin" /> Fetching live conditions…
         </div>
       )}
@@ -102,23 +102,23 @@ export default function WeatherPanel() {
               <div key={loc.name} className="card">
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h3 className="text-[#e2e4e7] font-semibold text-sm flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-teal-400" /> {loc.name}
+                    <h3 className="text-ink font-semibold text-sm flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-accent" /> {loc.name}
                     </h3>
-                    <p className="text-[#5c6470] text-[11px] font-mono mt-0.5">
+                    <p className="text-faint text-[11px] tabular-nums mt-0.5">
                       {loc.latitude.toFixed(2)}, {loc.longitude.toFixed(2)}
                     </p>
                   </div>
                   {loc.ok ? (
                     <span className={`text-[11px] font-semibold ${sea.color}`}>{sea.label}</span>
                   ) : (
-                    <span className="text-[11px] text-[#767d88]">unavailable</span>
+                    <span className="text-[11px] text-muted">unavailable</span>
                   )}
                 </div>
 
                 {loc.ok ? (
                   <>
-                    <p className="text-[#a8adb5] text-xs mb-3">{weatherLabel(loc.weatherCode)}</p>
+                    <p className="text-ink-2 text-xs mb-3">{weatherLabel(loc.weatherCode)}</p>
                     <div className="grid grid-cols-3 gap-2">
                       <Metric icon={<Waves className="w-3 h-3" />} label="Wave" value={loc.waveHeightM != null ? `${loc.waveHeightM.toFixed(1)}m` : '—'} />
                       <Metric icon={<Wind className="w-3 h-3" />} label="Wind" value={loc.windSpeedKn != null ? `${Math.round(loc.windSpeedKn)}kn` : '—'} />
@@ -126,7 +126,7 @@ export default function WeatherPanel() {
                     </div>
                   </>
                 ) : (
-                  <p className="text-[#767d88] text-xs">No live data for this location right now.</p>
+                  <p className="text-muted text-xs">No live data for this location right now.</p>
                 )}
               </div>
             )

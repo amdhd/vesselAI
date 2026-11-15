@@ -80,52 +80,52 @@ export default function DocumentManager() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         <div className="card text-center">
-          <div className="font-mono text-2xl font-semibold text-teal-400">{docs.filter(d => d.status === 'indexed').length}</div>
-          <div className="text-sm text-gray-400 mt-1">Indexed Documents</div>
+          <div className="tabular-nums text-2xl font-semibold text-accent">{docs.filter(d => d.status === 'indexed').length}</div>
+          <div className="text-sm text-muted mt-1">Indexed Documents</div>
         </div>
         <div className="card text-center">
-          <div className="font-mono text-2xl font-semibold text-status-amber">{docs.filter(d => d.status === 'processing').length}</div>
-          <div className="text-sm text-gray-400 mt-1">Processing</div>
+          <div className="tabular-nums text-2xl font-semibold text-status-amber">{docs.filter(d => d.status === 'processing').length}</div>
+          <div className="text-sm text-muted mt-1">Processing</div>
         </div>
         <div className="card text-center">
-          <div className="font-mono text-2xl font-semibold text-white">{docs.length}</div>
-          <div className="text-sm text-gray-400 mt-1">Total Documents</div>
+          <div className="tabular-nums text-2xl font-semibold text-ink">{docs.length}</div>
+          <div className="text-sm text-muted mt-1">Total Documents</div>
         </div>
       </div>
 
       {/* Upload area */}
       <div
-        className={`border-2 border-dashed rounded-[2px] p-8 text-center transition-colors ${
-          isDragging ? 'border-teal-600 bg-teal-600/10' : 'border-navy-600 hover:border-navy-500'
+        className={`border-2 border-dashed rounded-inner p-8 text-center transition-colors ${
+          isDragging ? 'border-accent bg-accent/10' : 'border-rule-2 hover:border-muted'
         }`}
         onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={e => { e.preventDefault(); setIsDragging(false) }}
       >
-        <Upload size={32} className="text-gray-500 mx-auto mb-3" />
-        <p className="text-gray-300 font-medium">Drop documents here to add to knowledge base</p>
-        <p className="text-gray-500 text-sm mt-1">Supports PDF, DOCX, TXT — manuals, reports, procedures</p>
+        <Upload size={32} className="text-faint mx-auto mb-3" />
+        <p className="text-ink-2 font-medium">Drop documents here to add to knowledge base</p>
+        <p className="text-faint text-sm mt-1">Supports PDF, DOCX, TXT: manuals, reports, procedures</p>
         <button className="btn-secondary mt-4 text-sm">Browse Files</button>
       </div>
 
       {/* Search */}
       <div className="relative">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
         <input
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search knowledge base..."
-          className="w-full bg-navy-800 border border-navy-700 rounded-[2px] pl-10 pr-4 py-2.5 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-teal-600"
+          className="w-full bg-paper border border-light/[0.08] rounded-inner pl-10 pr-4 py-2.5 text-ink placeholder-faint text-sm focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15"
         />
       </div>
 
       {/* Documents table */}
       <div className="card p-0 overflow-hidden">
-        <div className="px-5 py-4 border-b border-navy-700 flex items-center gap-2">
-          <Database size={16} className="text-teal-400" />
-          <h3 className="font-semibold text-white">Vessel Knowledge Base</h3>
-          <span className="ml-auto text-sm text-gray-400">{filtered.length} documents</span>
+        <div className="px-5 py-4 border-b border-rule flex items-center gap-2">
+          <Database size={16} className="text-accent" />
+          <h3 className="font-semibold text-ink">Vessel Knowledge Base</h3>
+          <span className="ml-auto text-sm text-muted">{filtered.length} documents</span>
         </div>
 
         {isLoading ? (
@@ -133,30 +133,30 @@ export default function DocumentManager() {
         ) : (
           <table className="w-full">
             <thead>
-              <tr className="border-b border-navy-700">
-                <th className="text-left px-5 py-3 text-xs text-gray-400 font-medium">Document</th>
-                <th className="text-left px-5 py-3 text-xs text-gray-400 font-medium">Type</th>
-                <th className="text-left px-5 py-3 text-xs text-gray-400 font-medium">Status</th>
-                <th className="text-left px-5 py-3 text-xs text-gray-400 font-medium">Uploaded</th>
+              <tr className="border-b border-rule">
+                <th className="text-left px-5 py-3 text-xs text-muted font-medium">Document</th>
+                <th className="text-left px-5 py-3 text-xs text-muted font-medium">Type</th>
+                <th className="text-left px-5 py-3 text-xs text-muted font-medium">Status</th>
+                <th className="text-left px-5 py-3 text-xs text-muted font-medium">Uploaded</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(doc => (
-                <tr key={doc.id} className="border-b border-navy-700/50 hover:bg-navy-700/30 transition-colors">
+                <tr key={doc.id} className="border-b border-rule/50 hover:bg-paper-3/30 transition-colors">
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-3">
-                      <FileText size={16} className="text-teal-400 shrink-0" />
-                      <span className="text-white text-sm">{doc.name}</span>
+                      <FileText size={16} className="text-accent shrink-0" />
+                      <span className="text-ink text-sm">{doc.name}</span>
                     </div>
                   </td>
-                  <td className="px-5 py-3 text-gray-400 text-sm">{TYPE_LABELS[doc.type] ?? doc.type}</td>
+                  <td className="px-5 py-3 text-muted text-sm">{TYPE_LABELS[doc.type] ?? doc.type}</td>
                   <td className="px-5 py-3">
-                    <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-[2px] font-medium ${STATUS_TEXT[doc.status] ?? ''}`}>
+                    <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-inner font-medium ${STATUS_TEXT[doc.status] ?? ''}`}>
                       {STATUS_ICONS[doc.status]}
                       {STATUS_LABELS[doc.status]}
                     </span>
                   </td>
-                  <td className="px-5 py-3 text-gray-400 text-sm">{formatDate(doc.uploadedAt)}</td>
+                  <td className="px-5 py-3 text-muted text-sm">{formatDate(doc.uploadedAt)}</td>
                 </tr>
               ))}
             </tbody>

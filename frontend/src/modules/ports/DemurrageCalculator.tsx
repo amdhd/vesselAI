@@ -46,17 +46,17 @@ export default function DemurrageCalculator() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-white">Demurrage Calculator</h2>
-        <p className="text-gray-400 text-sm mt-0.5">Per-vessel laytime and demurrage tracking</p>
+        <h2 className="text-lg font-semibold text-ink">Demurrage Calculator</h2>
+        <p className="text-muted text-sm mt-0.5">Per-vessel laytime and demurrage tracking</p>
       </div>
 
       {/* Alert for OSV Tenaga Satu */}
       {selectedVesselId === 'v3' && status !== 'onlaytime' && (
-        <div className="flex items-center gap-3 bg-navy-800 border border-status-amber rounded-[2px] px-4 py-3">
+        <div className="flex items-center gap-3 bg-status-amber/[0.06] border border-status-amber/35 rounded-inner px-4 py-3">
           <AlertTriangle className="w-5 h-5 text-status-amber flex-shrink-0" />
           <p className="text-status-amber text-sm">
-            <strong>OSV Tenaga Satu</strong> — <span className="font-mono">{timeRemaining}</span> hours of laytime remaining at Fujairah.
-            Estimated demurrage if delayed: <strong className="font-mono">${formatNumber(demurrageRate / 24 * 8)}</strong>
+            <strong>OSV Tenaga Satu</strong>: <span className="tabular-nums">{timeRemaining}</span> hours of laytime remaining at Fujairah.
+            Estimated demurrage if delayed: <strong className="tabular-nums">${formatNumber(demurrageRate / 24 * 8)}</strong>
           </p>
         </div>
       )}
@@ -64,14 +64,14 @@ export default function DemurrageCalculator() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Inputs */}
         <div className="card space-y-5">
-          <h3 className="font-semibold text-white">Charter Party Details</h3>
+          <h3 className="font-semibold text-ink">Charter Party Details</h3>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-2">Vessel</label>
+            <label className="block text-sm text-muted mb-2">Vessel</label>
             <select
               value={selectedVesselId}
               onChange={(e) => handleVesselChange(e.target.value)}
-              className="w-full bg-[#12161a] border border-white/[0.1] rounded-[2px] px-3 py-2.5 text-white text-sm"
+              className="w-full bg-paper-2 border border-light/[0.1] rounded-inner px-3 py-2.5 text-ink text-sm"
             >
               {MOCK_VESSELS.map((v) => (
                 <option key={v.id} value={v.id}>{v.name}</option>
@@ -80,19 +80,19 @@ export default function DemurrageCalculator() {
           </div>
 
           {portCall && (
-            <div className="bg-navy-700/50 rounded-[2px] p-3 text-sm">
-              <p className="text-gray-400 mb-1">Active Port Call</p>
-              <p className="text-white font-medium">{portCall.portName}, {portCall.country}</p>
-              <p className="text-gray-400 text-xs mt-0.5">
+            <div className="bg-paper-3/50 rounded-inner p-3 text-sm">
+              <p className="text-muted mb-1">Active Port Call</p>
+              <p className="text-ink font-medium">{portCall.portName}, {portCall.country}</p>
+              <p className="text-muted text-xs mt-0.5">
                 Berth: {portCall.berthNumber ?? 'TBC'} · Status: {portCall.status}
               </p>
             </div>
           )}
 
           <div>
-            <label className="flex justify-between text-sm text-gray-400 mb-2">
+            <label className="flex justify-between text-sm text-muted mb-2">
               <span>Laytime Allowed</span>
-              <span className="text-white font-mono font-semibold">{laytimeAllowed} hours</span>
+              <span className="text-ink tabular-nums font-semibold">{laytimeAllowed} hours</span>
             </label>
             <input
               type="range"
@@ -101,21 +101,21 @@ export default function DemurrageCalculator() {
               step={6}
               value={laytimeAllowed}
               onChange={(e) => setLaytimeAllowed(parseInt(e.target.value))}
-              className="w-full accent-teal-500"
+              className="w-full accent-accent"
             />
-            <div className="flex justify-between text-xs text-gray-500 mt-1 font-mono">
+            <div className="flex justify-between text-xs text-faint mt-1 tabular-nums">
               <span>12h</span>
               <span>96h</span>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Demurrage Rate ($/day)</label>
+            <label className="block text-sm text-muted mb-1">Demurrage Rate ($/day)</label>
             <input
               type="number"
               value={demurrageRate}
               onChange={(e) => setDemurrageRate(parseInt(e.target.value) || 0)}
-              className="w-full bg-[#12161a] border border-white/[0.1] rounded-[2px] px-3 py-2.5 text-white text-sm font-mono"
+              className="w-full bg-paper-2 border border-light/[0.1] rounded-inner px-3 py-2.5 text-ink text-sm tabular-nums"
             />
           </div>
         </div>
@@ -132,7 +132,7 @@ export default function DemurrageCalculator() {
             {status === 'atrisk' && <Clock className="w-8 h-8 text-status-amber flex-shrink-0" />}
             {status === 'onlaytime' && <CheckCircle className="w-8 h-8 text-status-green flex-shrink-0" />}
             <div>
-              <p className="text-sm text-gray-400">Status</p>
+              <p className="text-sm text-muted">Status</p>
               <p className={`font-semibold text-lg ${
                 status === 'indemurrage' ? 'text-status-red' :
                 status === 'atrisk' ? 'text-status-amber' :
@@ -145,14 +145,14 @@ export default function DemurrageCalculator() {
 
           {/* Laytime progress */}
           <div className="card">
-            <p className="text-sm text-gray-400 mb-3">Laytime Progress</p>
-            <div className="flex justify-between text-sm mb-2 font-mono">
-              <span className="text-white">{timeUsed}h used</span>
-              <span className="text-gray-400">{laytimeAllowed}h allowed</span>
+            <p className="text-sm text-muted mb-3">Laytime Progress</p>
+            <div className="flex justify-between text-sm mb-2 tabular-nums">
+              <span className="text-ink">{timeUsed}h used</span>
+              <span className="text-muted">{laytimeAllowed}h allowed</span>
             </div>
-            <div className="w-full bg-navy-700 h-[5px]">
+            <div className="w-full bg-paper-3 h-[5px]">
               <div
-                className={`h-[5px] transition-all ${
+                className={`h-[5px] transition-colors ${
                   usedPct >= 100 ? 'bg-status-red' : usedPct >= 80 ? 'bg-status-amber' : 'bg-status-green'
                 }`}
                 style={{ width: `${usedPct}%` }}
@@ -160,15 +160,15 @@ export default function DemurrageCalculator() {
             </div>
             <div className="grid grid-cols-2 gap-4 mt-4">
               <div>
-                <p className="text-xs text-gray-400">Time Remaining</p>
-                <p className={`font-mono text-2xl font-semibold ${timeRemaining <= 8 ? 'text-status-amber' : 'text-white'}`}>
+                <p className="text-xs text-muted">Time Remaining</p>
+                <p className={`tabular-nums text-2xl font-semibold ${timeRemaining <= 8 ? 'text-status-amber' : 'text-ink'}`}>
                   {timeRemaining}h
                 </p>
               </div>
               {overtime > 0 && (
                 <div>
-                  <p className="text-xs text-gray-400">Overtime</p>
-                  <p className="font-mono text-2xl font-semibold text-status-red">{overtime}h</p>
+                  <p className="text-xs text-muted">Overtime</p>
+                  <p className="tabular-nums text-2xl font-semibold text-status-red">{overtime}h</p>
                 </div>
               )}
             </div>
@@ -177,15 +177,15 @@ export default function DemurrageCalculator() {
           {/* Financial */}
           <div className="grid grid-cols-2 gap-3">
             <div className="card">
-              <p className="text-xs text-gray-400">Est. Demurrage</p>
-              <p className={`font-mono text-xl font-semibold mt-1 ${estimatedDemurrage > 0 ? 'text-status-red' : 'text-status-green'}`}>
+              <p className="text-xs text-muted">Est. Demurrage</p>
+              <p className={`tabular-nums text-xl font-semibold mt-1 ${estimatedDemurrage > 0 ? 'text-status-red' : 'text-status-green'}`}>
                 ${formatNumber(estimatedDemurrage)}
               </p>
               {estimatedDemurrage === 0 && <p className="text-xs text-status-green mt-0.5">None accrued</p>}
             </div>
             <div className="card">
-              <p className="text-xs text-gray-400">Rate per hour</p>
-              <p className="font-mono text-xl font-semibold text-white mt-1">
+              <p className="text-xs text-muted">Rate per hour</p>
+              <p className="tabular-nums text-xl font-semibold text-ink mt-1">
                 ${formatNumber(demurrageRate / 24)}
               </p>
             </div>
@@ -193,13 +193,13 @@ export default function DemurrageCalculator() {
 
           {/* Optimal speed recommendation */}
           {optimalSpeed && (
-            <div className="card bg-navy-800 border-teal-600/50 flex items-start gap-3">
-              <Zap className="w-5 h-5 text-teal-400 mt-0.5 flex-shrink-0" />
+            <div className="card bg-paper-2 border-accent/50 flex items-start gap-3">
+              <Zap className="w-5 h-5 text-accent mt-0.5 flex-shrink-0" />
               <div>
-                <p className="text-sm font-medium text-teal-400">Speed Recommendation</p>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <p className="text-sm font-medium text-accent">Speed Recommendation</p>
+                <p className="text-xs text-muted mt-0.5">
                   Optimal speed to avoid demurrage:{' '}
-                  <span className="text-white font-mono font-semibold">{optimalSpeed} kn</span>
+                  <span className="text-ink tabular-nums font-semibold">{optimalSpeed} kn</span>
                 </p>
               </div>
             </div>

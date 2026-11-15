@@ -70,7 +70,7 @@ export function FleetProvider({ children }: { children: React.ReactNode }) {
       {error && (
         <div
           role="alert"
-          className="fixed top-0 inset-x-0 z-50 bg-status-red/90 border-b border-status-red px-4 py-2 text-center text-sm text-white"
+          className="fixed top-0 inset-x-0 z-50 bg-status-red/90 border-b border-status-red px-4 py-2 text-center text-sm text-ink"
         >
           {error}
         </div>

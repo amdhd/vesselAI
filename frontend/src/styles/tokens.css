@@ -1,0 +1,85 @@
+/* Hallmark · shape: app screen · genre: modern-minimal · theme: Dusk (by request) · redesign: restyle
+ * nav: kept (sidebar, 8 destinations) · signature: the fleet ledger on the dashboard · states: loading, empty, error where the screens have them · dusk: shore/periwinkle-apricot/glass
+ * axes: dark/grotesk-sans/cool · posture: committed · contrast: pass · v2.0.0 */
+/* Hallmark · pre-emit critique: P2 H2 E2 S2 R2 V2 · weakest: three status colours, kept a muted red for critical by request (maritime safety alerts) */
+/* Dusk deviation, by request: a third signal, a desaturated red, for critical vessel and equipment alerts; never a fill. */
+
+/*
+ * Dusk tokens. Colours are stored as bare OKLCH channels (L C H) so Tailwind
+ * can apply opacity modifiers (`bg-accent/20`); the `--color-*` names wrap them
+ * for plain CSS. Every colour in the app goes through one of these.
+ */
+:root {
+  color-scheme: dark;
+
+  /* slate */
+  --c-shade: 13.5% 0.02 268;
+  --c-paper: 17.5% 0.014 268;
+  --c-paper-2: 21% 0.016 268;
+  --c-paper-3: 25% 0.017 268;
+  --c-rule: 30% 0.016 266;
+  --c-rule-2: 36% 0.016 266;
+
+  /* ink */
+  --c-ink: 96% 0.006 75;
+  --c-ink-2: 85% 0.010 262;
+  --c-muted: 70% 0.016 262;
+  --c-faint: 60% 0.016 262;
+  --c-faint-2: 50% 0.016 264;
+  --c-light: 100% 0 0;
+
+  /* signals: periwinkle is done / on / healthy; apricot is open / waiting; critical is the one muted red */
+  --c-accent: 77% 0.10 274;
+  --c-accent-hi: 84% 0.085 274;
+  --c-accent-deep: 44% 0.13 274;
+  --c-accent-soft: 91% 0.038 274;
+  --c-accent-ink: 19% 0.035 274;
+  --c-apricot: 83% 0.095 62;
+  --c-apricot-deep: 52% 0.09 62;
+  --c-critical: 68% 0.13 25;
+  --c-critical-deep: 42% 0.11 25;
+  --c-focus: 80% 0.10 274;
+
+  /* day: text set on the pale part of a photograph */
+  --c-day-ink: 22% 0.022 268;
+  --c-day-muted: 38% 0.022 266;
+  --c-fog: 94% 0.012 70;
+
+  --color-shade: oklch(var(--c-shade));
+  --color-paper: oklch(var(--c-paper));
+  --color-paper-2: oklch(var(--c-paper-2));
+  --color-paper-3: oklch(var(--c-paper-3));
+  --color-rule: oklch(var(--c-rule));
+  --color-ink: oklch(var(--c-ink));
+  --color-ink-2: oklch(var(--c-ink-2));
+  --color-muted: oklch(var(--c-muted));
+  --color-faint: oklch(var(--c-faint));
+  --color-light: oklch(var(--c-light));
+  --color-accent: oklch(var(--c-accent));
+  --color-accent-hi: oklch(var(--c-accent-hi));
+  --color-accent-ink: oklch(var(--c-accent-ink));
+  --color-apricot: oklch(var(--c-apricot));
+  --color-critical: oklch(var(--c-critical));
+  --color-focus: oklch(var(--c-focus));
+  --color-fog: oklch(var(--c-fog));
+
+  --glass: oklch(22% 0.018 268 / 0.58);
+  --glass-blur: 22px;
+  --glass-hi: inset 0 1px 0 oklch(100% 0 0 / 0.10), inset 0 0 0 1px oklch(100% 0 0 / 0.06);
+  --shadow-card: 0 1px 0 oklch(100% 0 0 / 0.05) inset, 0 24px 60px -36px oklch(8% 0.02 268 / 0.8);
+  --shadow-pop: 0 1px 0 oklch(100% 0 0 / 0.08) inset, 0 28px 70px -24px oklch(6% 0.02 268 / 0.85);
+
+  --font-display: "Wix Madefor Display", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Wix Madefor Text", ui-sans-serif, system-ui, sans-serif;
+  --font-code: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --radius-card: 18px;
+  --radius-inner: 10px;
+  --radius-pill: 999px;
+  --tracking-display: -0.022em;
+  --display-weight: 500;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+}

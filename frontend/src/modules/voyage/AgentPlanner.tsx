@@ -6,6 +6,7 @@ import { readSseStream } from '@/lib/sse'
 import { cn } from '@/lib/utils'
 import ChatMarkdown from '@/components/ui/ChatMarkdown'
 import { usePersistentVesselState } from '@/hooks/usePersistentVesselState'
+import { tok } from '@/lib/theme'
 
 const PORTS = ['Singapore', 'Fujairah', 'Port Klang', 'Kerteh', 'Rotterdam', 'Ras Tanura', 'Bintulu']
 
@@ -60,11 +61,11 @@ function formatValue(v: unknown): string {
 // Renders a tool's input/output as clean labeled rows instead of raw JSON.
 function DataView({ data }: { data: unknown }) {
   if (data === null || typeof data !== 'object') {
-    return <span className="text-[12px] font-mono text-[#e2e4e7]">{formatValue(data)}</span>
+    return <span className="text-[12px] tabular-nums text-ink">{formatValue(data)}</span>
   }
   const entries = Object.entries(data as Record<string, unknown>)
   if (entries.length === 0) {
-    return <span className="text-[11.5px] text-[#5c6470] italic">no arguments</span>
+    return <span className="text-[11.5px] text-faint italic">no arguments</span>
   }
   return (
     <div className="space-y-1.5">
@@ -73,8 +74,8 @@ function DataView({ data }: { data: unknown }) {
         if (nested) {
           return (
             <div key={k}>
-              <p className="text-[11px] text-[#767d88] mb-1">{humanizeKey(k)}</p>
-              <div className="ml-1 pl-3 border-l border-navy-700">
+              <p className="text-[11px] text-muted mb-1">{humanizeKey(k)}</p>
+              <div className="ml-1 pl-3 border-l border-rule">
                 <DataView data={v} />
               </div>
             </div>
@@ -82,8 +83,8 @@ function DataView({ data }: { data: unknown }) {
         }
         return (
           <div key={k} className="flex items-baseline justify-between gap-4">
-            <span className="text-[11.5px] text-[#767d88] shrink-0">{humanizeKey(k)}</span>
-            <span className="text-[12.5px] font-mono text-[#e2e4e7] text-right break-all">{formatValue(v)}</span>
+            <span className="text-[11.5px] text-muted shrink-0">{humanizeKey(k)}</span>
+            <span className="text-[12.5px] tabular-nums text-ink text-right break-all">{formatValue(v)}</span>
           </div>
         )
       })}
@@ -182,22 +183,22 @@ export default function AgentPlanner() {
     <div className="space-y-5">
       {/* Form */}
       <div className="card">
-        <h2 className="text-base font-semibold text-white mb-1 flex items-center gap-2">
-          <Bot className="w-4 h-4 text-teal-400" />
+        <h2 className="text-base font-semibold text-ink mb-1 flex items-center gap-2">
+          <Bot className="w-4 h-4 text-accent" />
           AI Voyage Agent
         </h2>
-        <p className="text-[#767d88] text-xs mb-5">
+        <p className="text-muted text-xs mb-5">
           A multi-step agent: it reads the vessel, computes the route, fetches{' '}
-          <span className="text-teal-400">live marine weather</span>, and runs the fuel model — then recommends a speed.
+          <span className="text-accent">live marine weather</span>, and runs the fuel model, then recommends a speed.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-[11.5px] font-semibold tracking-wide text-[#a8adb5] mb-2">Departure Port</label>
+            <label className="block text-[11.5px] font-semibold text-ink-2 mb-2">Departure Port</label>
             <select
               value={departurePort}
               onChange={(e) => patchSnapshot({ departurePort: e.target.value })}
-              className="w-full bg-[#12161a] border border-white/[0.1] rounded-[2px] px-3 py-2.5 text-white focus:outline-none focus:border-teal-600 transition-colors text-sm"
+              className="w-full bg-paper-2 border border-light/[0.1] rounded-inner px-3 py-2.5 text-ink focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15 transition-colors text-sm"
             >
               {PORTS.map((p) => (
                 <option key={p} value={p}>{p}</option>
@@ -205,11 +206,11 @@ export default function AgentPlanner() {
             </select>
           </div>
           <div>
-            <label className="block text-[11.5px] font-semibold tracking-wide text-[#a8adb5] mb-2">Destination Port</label>
+            <label className="block text-[11.5px] font-semibold text-ink-2 mb-2">Destination Port</label>
             <select
               value={destinationPort}
               onChange={(e) => patchSnapshot({ destinationPort: e.target.value })}
-              className="w-full bg-[#12161a] border border-white/[0.1] rounded-[2px] px-3 py-2.5 text-white focus:outline-none focus:border-teal-600 transition-colors text-sm"
+              className="w-full bg-paper-2 border border-light/[0.1] rounded-inner px-3 py-2.5 text-ink focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15 transition-colors text-sm"
             >
               {PORTS.map((p) => (
                 <option key={p} value={p}>{p}</option>
@@ -217,9 +218,9 @@ export default function AgentPlanner() {
             </select>
           </div>
           <div>
-            <label className="flex justify-between items-center text-[11.5px] font-semibold tracking-wide text-[#a8adb5] mb-2">
+            <label className="flex justify-between items-center text-[11.5px] font-semibold text-ink-2 mb-2">
               <span>Cargo Load</span>
-              <span className="text-teal-400 font-mono">{cargoLoad}%</span>
+              <span className="text-accent tabular-nums">{cargoLoad}%</span>
             </label>
             <input
               type="range"
@@ -229,20 +230,20 @@ export default function AgentPlanner() {
               onChange={(e) => patchSnapshot({ cargoLoad: Number(e.target.value) })}
               className="slider-teal w-full cursor-pointer"
               style={{
-                background: `linear-gradient(to right, #3a8c85 0%, #3a8c85 ${cargoLoad}%, #1f2227 ${cargoLoad}%, #1f2227 100%)`,
+                background: `linear-gradient(to right, ${tok('accent')} 0%, ${tok('accent')} ${cargoLoad}%, ${tok('paper-3')} ${cargoLoad}%, ${tok('paper-3')} 100%)`,
               }}
             />
           </div>
           <div>
-            <label className="block text-[11.5px] font-semibold tracking-wide text-[#a8adb5] mb-2">Speed Preference</label>
+            <label className="block text-[11.5px] font-semibold text-ink-2 mb-2">Speed Preference</label>
             <div className="grid grid-cols-3 gap-2">
               {SPEED_OPTIONS.map((opt) => (
                 <button
                   key={opt.id}
                   onClick={() => patchSnapshot({ speedPreference: opt.id })}
                   className={cn(
-                    'py-2.5 rounded-[2px] border text-[13px] font-semibold transition-colors bg-[#12161a]',
-                    speedPreference === opt.id ? 'border-teal-600 text-teal-400' : 'border-white/[0.1] text-[#a8adb5] hover:border-white/20'
+                    'py-2.5 rounded-inner border text-[13px] font-semibold transition-colors bg-paper-2',
+                    speedPreference === opt.id ? 'border-accent text-accent' : 'border-light/[0.1] text-ink-2 hover:border-light/20'
                   )}
                 >
                   {opt.label}
@@ -253,18 +254,18 @@ export default function AgentPlanner() {
         </div>
 
         {error && (
-          <div className="mt-4 p-3 border border-status-red text-status-red rounded-[2px] text-sm">{error}</div>
+          <div className="mt-4 p-3 border border-status-red text-status-red rounded-inner text-sm">{error}</div>
         )}
 
         <button
           onClick={handleRun}
           disabled={loading || !selectedVessel}
-          className="mt-6 w-full py-[13px] flex items-center justify-center gap-2 rounded-[2px] font-semibold bg-teal-900 border border-teal-600/50 text-teal-400 hover:bg-teal-600/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="mt-6 w-full py-[13px] flex items-center justify-center gap-2 rounded-inner font-semibold bg-accent/10 border border-accent/50 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              Agent is reasoning — reading specs, weather, and running the fuel model...
+              Agent is reasoning: reading specs, weather, and running the fuel model...
             </>
           ) : (
             <>
@@ -277,7 +278,7 @@ export default function AgentPlanner() {
         {loading && (
           <button
             onClick={stopRun}
-            className="mt-2 w-full py-2 flex items-center justify-center gap-2 rounded-[2px] text-sm text-[#a8adb5] border border-navy-600 hover:border-status-red hover:text-status-red transition-colors"
+            className="mt-2 w-full py-2 flex items-center justify-center gap-2 rounded-inner text-sm text-ink-2 border border-rule-2 hover:border-status-red hover:text-status-red transition-colors"
           >
             <Square className="w-3 h-3 fill-current" />
             Stop
@@ -287,23 +288,23 @@ export default function AgentPlanner() {
 
       {/* Recommendation — appears once the agent converges */}
       {result && (
-        <div className="card border-teal-600/60">
+        <div className="card border-accent/60">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-teal-400 flex items-center gap-2">
+            <h3 className="font-semibold text-accent flex items-center gap-2">
               <Sparkles className="w-4 h-4" /> Agent Recommendation
             </h3>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#5c6470] border border-navy-600 px-2 py-0.5 rounded-[2px]">
+              <span className="text-[11px] font-semibold text-faint border border-rule-2 px-2 py-0.5 rounded-inner">
                 {result.steps} step{result.steps !== 1 ? 's' : ''} · {result.toolCalls.length} tool calls
               </span>
               {result.fallback && (
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-status-amber border border-status-amber/50 px-2 py-0.5 rounded-[2px] flex items-center gap-1">
+                <span className="text-[11px] font-semibold text-status-amber border border-status-amber/50 px-2 py-0.5 rounded-inner flex items-center gap-1">
                   <AlertTriangle className="w-3 h-3" /> Fallback
                 </span>
               )}
             </div>
           </div>
-          <div className="text-[#e2e4e7] text-sm leading-relaxed">
+          <div className="text-ink text-sm leading-relaxed">
             <ChatMarkdown content={result.recommendation} />
           </div>
         </div>
@@ -312,26 +313,26 @@ export default function AgentPlanner() {
       {/* Reasoning trace — streams in live, then persists after the run */}
       {(traceCalls.length > 0 || loading) && (
         <div className="card">
-          <h3 className="font-semibold text-white text-sm mb-4 flex items-center gap-2">
-            <Wrench className="w-4 h-4 text-gray-400" /> Reasoning trace — tools the agent called
+          <h3 className="font-semibold text-ink text-sm mb-4 flex items-center gap-2">
+            <Wrench className="w-4 h-4 text-muted" /> Reasoning trace: tools the agent called
           </h3>
           <ol className="space-y-3">
             {traceCalls.map((call, i) => (
-              <li key={i} className="border border-navy-700 rounded-[2px] overflow-hidden animate-in fade-in duration-300">
-                <div className="flex items-center gap-2 px-3 py-2 bg-navy-700/40 border-b border-navy-700">
-                  <span className="w-5 h-5 shrink-0 bg-teal-600/20 rounded-[2px] flex items-center justify-center text-[11px] font-mono text-teal-400">
+              <li key={i} className="border border-rule rounded-inner overflow-hidden animate-in fade-in duration-300">
+                <div className="flex items-center gap-2 px-3 py-2 bg-paper-3/40 border-b border-rule">
+                  <span className="w-5 h-5 shrink-0 bg-accent/20 rounded-inner flex items-center justify-center text-[11px] tabular-nums text-accent">
                     {i + 1}
                   </span>
-                  <span className="text-[13px] font-semibold text-[#e2e4e7]">{TOOL_LABELS[call.tool] ?? call.tool}</span>
-                  <span className="text-[11px] font-mono text-[#5c6470]">{call.tool}</span>
+                  <span className="text-[13px] font-semibold text-ink">{TOOL_LABELS[call.tool] ?? call.tool}</span>
+                  <span className="text-[11px] tabular-nums text-faint">{call.tool}</span>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-navy-700">
+                <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-rule">
                   <div className="p-3.5">
-                    <p className="text-[10px] uppercase tracking-[0.08em] text-[#5c6470] mb-2">Input</p>
+                    <p className="text-[11px] text-faint mb-2">Input</p>
                     <DataView data={call.input} />
                   </div>
                   <div className="p-3.5">
-                    <p className="text-[10px] uppercase tracking-[0.08em] text-[#5c6470] mb-2">Output</p>
+                    <p className="text-[11px] text-faint mb-2">Output</p>
                     <DataView data={call.output} />
                   </div>
                 </div>
@@ -340,8 +341,8 @@ export default function AgentPlanner() {
 
             {/* Live "the agent is working" tick while streaming, before the result lands */}
             {loading && !result && (
-              <li className="flex items-center gap-2 px-3 py-2.5 text-[12.5px] text-[#767d88]">
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-400" />
+              <li className="flex items-center gap-2 px-3 py-2.5 text-[12.5px] text-muted">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />
                 {activeStep > 0
                   ? `Reasoning — step ${activeStep}${traceCalls.length > 0 ? ` · ${traceCalls.length} tool call${traceCalls.length !== 1 ? 's' : ''} so far` : ''}…`
                   : 'Starting the agent…'}

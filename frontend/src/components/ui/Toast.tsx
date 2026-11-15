@@ -27,14 +27,14 @@ const icons: Record<ToastType, React.ReactNode> = {
   success: <CheckCircle className="w-4 h-4 text-status-green" />,
   error: <XCircle className="w-4 h-4 text-status-red" />,
   warning: <AlertTriangle className="w-4 h-4 text-status-amber" />,
-  info: <Info className="w-4 h-4 text-teal-400" />,
+  info: <Info className="w-4 h-4 text-accent" />,
 }
 
 const bgMap: Record<ToastType, string> = {
-  success: 'border-status-green bg-navy-800',
-  error: 'border-status-red bg-navy-800',
-  warning: 'border-status-amber bg-navy-800',
-  info: 'border-teal-600 bg-navy-800',
+  success: 'border-status-green bg-paper-2',
+  error: 'border-status-red bg-paper-2',
+  warning: 'border-status-amber bg-paper-2',
+  info: 'border-accent bg-paper-2',
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -63,19 +63,19 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div
             key={toast.id}
             className={cn(
-              'flex items-start gap-3 p-3 rounded-[2px] border animate-in slide-in-from-right-full',
-              'bg-navy-800 shadow-lg',
+              'flex items-start gap-3 p-3 rounded-inner border animate-in slide-in-from-right-full',
+              'bg-paper-2 shadow-lg',
               bgMap[toast.type],
             )}
           >
             <div className="mt-0.5">{icons[toast.type]}</div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white">{toast.title}</p>
-              {toast.message && <p className="text-xs text-gray-400 mt-0.5">{toast.message}</p>}
+              <p className="text-sm font-medium text-ink">{toast.title}</p>
+              {toast.message && <p className="text-xs text-muted mt-0.5">{toast.message}</p>}
             </div>
             <button
               onClick={() => removeToast(toast.id)}
-              className="text-gray-500 hover:text-gray-300 transition-colors shrink-0"
+              className="text-faint hover:text-ink-2 transition-colors shrink-0"
             >
               <X className="w-3.5 h-3.5" />
             </button>

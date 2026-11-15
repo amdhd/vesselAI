@@ -18,8 +18,8 @@ function TabLoadingState() {
   return (
     <div className="flex items-center justify-center h-64">
       <div className="flex flex-col items-center gap-3">
-        <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-        <p className="text-gray-400 text-sm">Loading module...</p>
+        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        <p className="text-muted text-sm">Loading module...</p>
       </div>
     </div>
   )
@@ -28,13 +28,13 @@ function TabLoadingState() {
 function CalendarPlaceholder() {
   return (
     <div className="card flex flex-col items-center justify-center py-16 text-center">
-      <Calendar className="w-12 h-12 text-gray-600 mb-4" />
-      <h3 className="text-white font-semibold text-lg">Maintenance Calendar</h3>
-      <p className="text-gray-400 text-sm mt-2 max-w-sm">
+      <Calendar className="w-12 h-12 text-faint-2 mb-4" />
+      <h3 className="text-ink font-semibold text-lg">Maintenance Calendar</h3>
+      <p className="text-muted text-sm mt-2 max-w-sm">
         Interactive maintenance scheduling calendar coming soon. View planned work orders by date.
       </p>
-      <div className="mt-6 px-4 py-2 bg-navy-700 border border-navy-600 rounded-[2px] text-gray-500 text-xs">
-        Calendar view — Planned feature
+      <div className="mt-6 px-4 py-2 bg-paper-3 border border-rule-2 rounded-inner text-faint text-xs">
+        Calendar view: planned feature
       </div>
     </div>
   )
@@ -48,10 +48,10 @@ export default function MaintenancePage() {
     <div className="space-y-5">
       {/* Header */}
       <div>
-        <h1 className="text-[23px] font-semibold text-[#f0f1f3] tracking-[-0.01em]">Maintenance AI</h1>
-        <p className="text-[#767d88] text-[13px] mt-[5px]">
+        <h1 className="text-[23px] font-semibold text-ink tracking-[-0.01em]">Maintenance AI</h1>
+        <p className="text-muted text-[13px] mt-[5px]">
           {selectedVessel ? (
-            <>Equipment health monitoring for <span className="text-teal-400 font-medium">{selectedVessel.name}</span></>
+            <>Equipment health monitoring for <span className="text-accent font-medium">{selectedVessel.name}</span></>
           ) : (
             'Select a vessel to view equipment health'
           )}

@@ -10,12 +10,12 @@ interface BadgeProps {
 }
 
 const variantColor: Record<BadgeVariant, string> = {
-  healthy: 'text-status-green border-status-green',
-  warning: 'text-status-amber border-status-amber',
-  critical: 'text-status-red border-status-red',
-  expired: 'text-status-red border-status-red',
-  info: 'text-teal-400 border-teal-600',
-  default: 'text-gray-400 border-navy-700',
+  healthy: 'text-status-green border-status-green/35 bg-status-green/[0.08]',
+  warning: 'text-status-amber border-status-amber/35 bg-status-amber/[0.08]',
+  critical: 'text-status-red border-status-red/40 bg-status-red/[0.08]',
+  expired: 'text-status-red border-status-red/40 bg-status-red/[0.08]',
+  info: 'text-ink-2 border-light/15 bg-light/[0.04]',
+  default: 'text-muted border-light/10 bg-transparent',
 }
 
 const dotColor: Record<BadgeVariant, string> = {
@@ -23,21 +23,22 @@ const dotColor: Record<BadgeVariant, string> = {
   warning: 'bg-status-amber',
   critical: 'bg-status-red',
   expired: 'bg-status-red',
-  info: 'bg-teal-400',
-  default: 'bg-gray-500',
+  info: 'bg-ink-2',
+  default: 'bg-faint',
 }
 
+// Status words: sentence case, a small dot, a pill. Never tracked capitals.
 export default function Badge({ variant = 'default', children, className, dot = true }: BadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 border bg-transparent rounded-[2px] text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 whitespace-nowrap',
+        'inline-flex items-center gap-1.5 border rounded-pill text-[12px] font-medium leading-5 px-2.5 whitespace-nowrap',
         variantColor[variant],
         className,
       )}
     >
-      {dot && <span className={cn('w-[5px] h-[5px] shrink-0', dotColor[variant])} />}
-      {children}
+      {dot && <span aria-hidden="true" className={cn('w-1.5 h-1.5 rounded-full shrink-0', dotColor[variant])} />}
+      {typeof children === 'string' ? children.charAt(0).toUpperCase() + children.slice(1) : children}
     </span>
   )
 }

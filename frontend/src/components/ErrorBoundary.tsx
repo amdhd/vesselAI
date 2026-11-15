@@ -57,23 +57,23 @@ export default class ErrorBoundary extends Component<Props, State> {
 
     return (
       <div className="card flex flex-col items-center justify-center py-16 text-center">
-        <div className="w-12 h-12 flex items-center justify-center border border-status-amber/50 rounded-[2px] mb-4">
+        <div className="w-12 h-12 flex items-center justify-center border border-status-amber/50 rounded-inner mb-4">
           <AlertTriangle className="w-6 h-6 text-status-amber" />
         </div>
-        <h3 className="text-white font-semibold text-lg">
+        <h3 className="text-ink font-semibold text-lg">
           {chunkError ? 'This section needs a refresh' : 'Something went wrong'}
         </h3>
-        <p className="text-gray-400 text-sm mt-2 max-w-sm">
+        <p className="text-muted text-sm mt-2 max-w-sm">
           {chunkError
             ? 'A newer version of the app is available, or a module failed to load. Reload to continue.'
             : 'An unexpected error occurred while rendering this view.'}
         </p>
         {!chunkError && (
-          <p className="text-gray-600 text-xs mt-3 font-mono max-w-md break-words">{error.message}</p>
+          <p className="text-faint-2 text-xs mt-3 tabular-nums max-w-md break-words">{error.message}</p>
         )}
         <button
           onClick={this.handleReload}
-          className="mt-6 flex items-center gap-2 px-4 py-2 rounded-[2px] text-[12.5px] font-semibold border border-teal-600 text-teal-400 hover:bg-teal-600/10 transition-colors"
+          className="mt-6 flex items-center gap-2 px-4 py-2 rounded-inner text-[12.5px] font-semibold border border-accent text-accent hover:bg-accent/10 transition-colors"
         >
           <RotateCw className="w-4 h-4" />
           Reload

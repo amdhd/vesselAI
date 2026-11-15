@@ -118,23 +118,23 @@ export default function FleetMatrix() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-white">Fleet Compliance Matrix</h2>
-          <p className="text-gray-400 text-sm mt-0.5">Overview of all vessels' compliance status</p>
+          <h2 className="text-lg font-semibold text-ink">Fleet Compliance Matrix</h2>
+          <p className="text-muted text-sm mt-0.5">Overview of all vessels' compliance status</p>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-sm">
             <CheckCircle className="w-4 h-4 text-status-green" />
-            <span className="text-status-green font-semibold font-mono">{fullCompliant} fully compliant</span>
+            <span className="text-status-green font-semibold tabular-nums">{fullCompliant} fully compliant</span>
           </div>
           <div className="flex items-center gap-2 text-sm">
             <AlertCircle className="w-4 h-4 text-status-amber" />
-            <span className="text-status-amber font-semibold font-mono">{requireAttention} require attention</span>
+            <span className="text-status-amber font-semibold tabular-nums">{requireAttention} require attention</span>
           </div>
         </div>
       </div>
 
       {/* Summary banner */}
-      <div className={`flex items-center gap-3 rounded-[2px] px-4 py-3 border bg-navy-800 ${
+      <div className={`flex items-center gap-3 rounded-inner px-4 py-3 border bg-paper-2 ${
         requireAttention > 0 ? 'border-status-amber' : 'border-status-green'
       }`}>
         <Grid className={`w-5 h-5 flex-shrink-0 ${requireAttention > 0 ? 'text-status-amber' : 'text-status-green'}`} />
@@ -148,13 +148,13 @@ export default function FleetMatrix() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-navy-700 bg-navy-900/50">
-                <th className="text-left px-5 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">Vessel</th>
-                <th className="text-center px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">CII Rating</th>
-                <th className="text-center px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">ETS Status</th>
-                <th className="text-center px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">MRV Filed</th>
-                <th className="text-center px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">EEXI Valid</th>
-                <th className="text-center px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">SOx Compliant</th>
+              <tr className="border-b border-rule bg-paper/50">
+                <th className="text-left px-5 py-3 text-[11.5px] font-semibold text-faint">Vessel</th>
+                <th className="text-center px-4 py-3 text-[11.5px] font-semibold text-faint">CII Rating</th>
+                <th className="text-center px-4 py-3 text-[11.5px] font-semibold text-faint">ETS Status</th>
+                <th className="text-center px-4 py-3 text-[11.5px] font-semibold text-faint">MRV Filed</th>
+                <th className="text-center px-4 py-3 text-[11.5px] font-semibold text-faint">EEXI Valid</th>
+                <th className="text-center px-4 py-3 text-[11.5px] font-semibold text-faint">SOx Compliant</th>
               </tr>
             </thead>
             <tbody>
@@ -163,19 +163,19 @@ export default function FleetMatrix() {
                 return (
                   <tr
                     key={vessel.vesselId}
-                    className={`border-b border-navy-700/50 hover:bg-navy-700/30 transition-colors ${
-                      i % 2 === 0 ? '' : 'bg-navy-900/20'
+                    className={`border-b border-rule/50 hover:bg-paper-3/30 transition-colors ${
+                      i % 2 === 0 ? '' : 'bg-paper/20'
                     }`}
                   >
                     <td className="px-5 py-4">
                       <div>
-                        <p className="font-medium text-white">{vessel.vesselName}</p>
-                        <p className="text-xs text-gray-500">{v?.type ?? ''} — IMO {v?.imo ?? ''}</p>
+                        <p className="font-medium text-ink">{vessel.vesselName}</p>
+                        <p className="text-xs text-faint">{v?.type ?? ''}, IMO {v?.imo ?? ''}</p>
                       </div>
                     </td>
                     <td className="px-4 py-4 text-center">
                       <span
-                        className={`inline-flex items-center justify-center w-9 h-9 rounded-[2px] font-mono font-semibold text-lg border ${getCIIBgColor(vessel.ciiRating)}`}
+                        className={`inline-flex items-center justify-center w-9 h-9 rounded-inner tabular-nums font-semibold text-lg border ${getCIIBgColor(vessel.ciiRating)}`}
                       >
                         {vessel.ciiRating}
                       </span>
@@ -208,7 +208,7 @@ export default function FleetMatrix() {
         >
           {generating ? (
             <>
-              <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin" />
+              <div className="w-4 h-4 border border-light border-t-transparent rounded-full animate-spin" />
               Generating...
             </>
           ) : (
@@ -221,7 +221,7 @@ export default function FleetMatrix() {
       </div>
 
       {generated && (
-        <div className="bg-navy-800 border border-status-green rounded-[2px] px-4 py-3 text-status-green text-sm flex items-center gap-2">
+        <div className="bg-status-green/[0.06] border border-status-green/35 rounded-inner px-4 py-3 text-status-green text-sm flex items-center gap-2">
           <CheckCircle className="w-4 h-4" />
           Fleet compliance report downloaded as CSV.
         </div>
