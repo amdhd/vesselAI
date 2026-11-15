@@ -118,17 +118,17 @@ export default function ComplianceChat() {
   return (
     <div className="flex flex-col h-[calc(100vh-280px)] min-h-[500px]">
       {/* Context banner */}
-      <div className="flex items-center gap-2 bg-navy-800 border border-teal-600/50 rounded-[2px] px-4 py-2.5 mb-4 flex-shrink-0">
-        <Bot className="w-4 h-4 text-teal-400 flex-shrink-0" />
-        <span className="text-sm text-teal-300">
-          Context: <span className="font-semibold">{selectedVessel?.name ?? 'All Vessels'}</span> — CII, EU ETS, MARPOL, FuelEU Maritime regulations
+      <div className="flex items-center gap-2 bg-accent/[0.06] border border-accent/30 rounded-inner px-4 py-2.5 mb-4 flex-shrink-0">
+        <Bot className="w-4 h-4 text-accent flex-shrink-0" />
+        <span className="text-sm text-accent-hi">
+          Context: <span className="font-semibold">{selectedVessel?.name ?? 'All Vessels'}</span>: CII, EU ETS, MARPOL, FuelEU Maritime regulations
         </span>
         {messages.length > 0 && (
           <button
             onClick={clearChat}
             disabled={isStreaming}
             title="Clear this vessel's saved chat history"
-            className="ml-auto flex-shrink-0 flex items-center gap-1.5 text-xs text-gray-400 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="ml-auto flex-shrink-0 flex items-center gap-1.5 text-xs text-muted hover:text-critical disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Trash2 className="w-3.5 h-3.5" />
             Clear
@@ -141,9 +141,9 @@ export default function ComplianceChat() {
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-6 py-8">
             <div className="text-center">
-              <Bot className="w-12 h-12 text-teal-400 mx-auto mb-3" />
-              <h3 className="text-white font-semibold text-lg">Compliance AI Assistant</h3>
-              <p className="text-gray-400 text-sm mt-1">
+              <Bot className="w-12 h-12 text-accent mx-auto mb-3" />
+              <h3 className="text-ink font-semibold text-lg">Compliance AI Assistant</h3>
+              <p className="text-muted text-sm mt-1">
                 Ask me anything about CII, EU ETS, MARPOL, or maritime regulations
               </p>
             </div>
@@ -152,7 +152,7 @@ export default function ComplianceChat() {
                 <button
                   key={q}
                   onClick={() => void sendMessage(q)}
-                  className="text-left text-sm text-gray-300 bg-navy-800 hover:bg-navy-700 border border-navy-700 hover:border-teal-700 rounded-[2px] px-4 py-3 transition-colors"
+                  className="text-left text-sm text-ink-2 bg-paper-2 hover:bg-paper-3 border border-rule hover:border-accent-hi rounded-inner px-4 py-3 transition-colors"
                 >
                   {q}
                 </button>
@@ -168,27 +168,27 @@ export default function ComplianceChat() {
           >
             <div
               className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                msg.role === 'user' ? 'bg-navy-600' : 'bg-teal-900'
+                msg.role === 'user' ? 'bg-rule' : 'bg-accent/10'
               }`}
             >
               {msg.role === 'user' ? (
-                <User className="w-4 h-4 text-gray-300" />
+                <User className="w-4 h-4 text-ink-2" />
               ) : (
-                <Bot className="w-4 h-4 text-teal-400" />
+                <Bot className="w-4 h-4 text-accent" />
               )}
             </div>
             <div
-              className={`max-w-[75%] rounded-[2px] px-4 py-3 text-sm leading-relaxed ${
+              className={`max-w-[75%] rounded-inner px-4 py-3 text-sm leading-relaxed ${
                 msg.role === 'user'
-                  ? 'bg-navy-700 text-white'
-                  : 'bg-navy-800 border border-navy-700 text-gray-200'
+                  ? 'bg-paper-3 text-ink'
+                  : 'bg-paper-2 border border-rule text-ink'
               }`}
             >
               {msg.fallback && <AiFallbackNotice {...msg.fallback} />}
               {msg.content ? (
                 msg.role === 'assistant' ? <ChatMarkdown content={msg.content} /> : msg.content
               ) : (
-                <span className="flex items-center gap-2 text-gray-500">
+                <span className="flex items-center gap-2 text-faint">
                   <Loader2 className="w-3 h-3 animate-spin" />
                   Thinking...
                 </span>
@@ -200,7 +200,7 @@ export default function ComplianceChat() {
       </div>
 
       {/* Input area */}
-      <div className="flex-shrink-0 bg-navy-800 border border-navy-700 rounded-[2px] p-3 flex items-end gap-3">
+      <div className="flex-shrink-0 bg-paper-2 border border-rule rounded-inner p-3 flex items-end gap-3">
         <textarea
           ref={textareaRef}
           value={input}
@@ -209,14 +209,14 @@ export default function ComplianceChat() {
           placeholder="Ask about CII forecasts, ETS allowances, MARPOL compliance..."
           rows={1}
           disabled={isStreaming}
-          className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 resize-none focus:outline-none leading-relaxed"
+          className="flex-1 bg-transparent text-ink text-sm placeholder-faint resize-none focus:outline-none leading-relaxed"
           style={{ maxHeight: '120px' }}
         />
         {isStreaming && (
           <button
             onClick={stopStreaming}
             title="Stop generating"
-            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-status-red pb-1 transition-colors flex-shrink-0"
+            className="flex items-center gap-1.5 text-xs text-muted hover:text-status-red pb-1 transition-colors flex-shrink-0"
           >
             <Square className="w-3 h-3 fill-current" />
             Stop
@@ -225,7 +225,7 @@ export default function ComplianceChat() {
         <button
           onClick={() => void sendMessage(input)}
           disabled={!input.trim() || isStreaming}
-          className="bg-teal-600 hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white p-2 rounded-[2px] transition-colors flex-shrink-0"
+          className="bg-accent hover:bg-accent-hi disabled:opacity-40 disabled:cursor-not-allowed text-accent-ink p-2 rounded-inner transition-colors flex-shrink-0"
         >
           <Send className="w-4 h-4" />
         </button>

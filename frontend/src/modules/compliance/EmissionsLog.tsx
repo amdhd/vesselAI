@@ -49,8 +49,8 @@ function generateMockData(vesselId: string): EmissionRecord[] {
 
 const fuelTypeBadge: Record<string, string> = {
   HFO: 'text-status-amber border-status-amber',
-  VLSFO: 'text-teal-400 border-teal-600',
-  MGO: 'text-[#a8adb5] border-white/20',
+  VLSFO: 'text-accent border-accent',
+  MGO: 'text-ink-2 border-light/20',
   LNG: 'text-status-green border-status-green',
 }
 
@@ -95,18 +95,18 @@ export default function EmissionsLog() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-white">Emissions Log</h2>
-          <p className="text-gray-400 text-sm mt-0.5">
-            {selectedVessel?.name ?? 'All Vessels'} — 2026 emission records
+          <h2 className="text-lg font-semibold text-ink">Emissions Log</h2>
+          <p className="text-muted text-sm mt-0.5">
+            {selectedVessel?.name ?? 'All Vessels'}, 2026 emission records
           </p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-400" />
+            <Filter className="w-4 h-4 text-muted" />
             <select
               value={monthFilter}
               onChange={(e) => setMonthFilter(e.target.value)}
-              className="bg-[#12161a] border border-white/[0.1] rounded-[2px] px-3 py-2 text-white text-sm"
+              className="bg-paper-2 border border-light/[0.1] rounded-inner px-3 py-2 text-ink text-sm"
             >
               <option value="All">All Months</option>
               {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -123,44 +123,44 @@ export default function EmissionsLog() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-navy-700 bg-navy-900/50">
-                <th className="text-left px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">Date</th>
-                <th className="text-left px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">Route</th>
-                <th className="text-left px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">Fuel Type</th>
-                <th className="text-right px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">Fuel (MT)</th>
-                <th className="text-right px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">CO2 (MT)</th>
-                <th className="text-right px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">SOx (MT)</th>
-                <th className="text-right px-4 py-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470]">NOx (MT)</th>
+              <tr className="border-b border-rule bg-paper/50">
+                <th className="text-left px-4 py-3 text-[11.5px] font-semibold text-faint">Date</th>
+                <th className="text-left px-4 py-3 text-[11.5px] font-semibold text-faint">Route</th>
+                <th className="text-left px-4 py-3 text-[11.5px] font-semibold text-faint">Fuel Type</th>
+                <th className="text-right px-4 py-3 text-[11.5px] font-semibold text-faint">Fuel (MT)</th>
+                <th className="text-right px-4 py-3 text-[11.5px] font-semibold text-faint">CO2 (MT)</th>
+                <th className="text-right px-4 py-3 text-[11.5px] font-semibold text-faint">SOx (MT)</th>
+                <th className="text-right px-4 py-3 text-[11.5px] font-semibold text-faint">NOx (MT)</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((r, i) => (
                 <tr
                   key={r.id}
-                  className={`border-b border-navy-700/50 hover:bg-navy-700/30 transition-colors ${i % 2 === 0 ? '' : 'bg-navy-900/20'}`}
+                  className={`border-b border-rule/50 hover:bg-paper-3/30 transition-colors ${i % 2 === 0 ? '' : 'bg-paper/20'}`}
                 >
-                  <td className="px-4 py-3 text-gray-300 font-mono">{r.date}</td>
-                  <td className="px-4 py-3 text-gray-300">{r.route}</td>
+                  <td className="px-4 py-3 text-ink-2 tabular-nums">{r.date}</td>
+                  <td className="px-4 py-3 text-ink-2">{r.route}</td>
                   <td className="px-4 py-3">
-                    <span className={`text-[10px] font-semibold uppercase tracking-wide border rounded-[2px] px-2 py-0.5 ${fuelTypeBadge[r.fuelType]}`}>
+                    <span className={`text-[11px] font-semibold border rounded-inner px-2 py-0.5 ${fuelTypeBadge[r.fuelType]}`}>
                       {r.fuelType}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right text-white font-mono font-medium">{formatNumber(r.fuelMT, 1)}</td>
-                  <td className="px-4 py-3 text-right text-status-amber font-mono font-medium">{formatNumber(r.co2MT, 1)}</td>
-                  <td className="px-4 py-3 text-right text-gray-300 font-mono">{r.soxMT.toFixed(3)}</td>
-                  <td className="px-4 py-3 text-right text-gray-300 font-mono">{r.noxMT.toFixed(3)}</td>
+                  <td className="px-4 py-3 text-right text-ink tabular-nums font-medium">{formatNumber(r.fuelMT, 1)}</td>
+                  <td className="px-4 py-3 text-right text-status-amber tabular-nums font-medium">{formatNumber(r.co2MT, 1)}</td>
+                  <td className="px-4 py-3 text-right text-ink-2 tabular-nums">{r.soxMT.toFixed(3)}</td>
+                  <td className="px-4 py-3 text-right text-ink-2 tabular-nums">{r.noxMT.toFixed(3)}</td>
                 </tr>
               ))}
               {/* Summary row */}
-              <tr className="bg-teal-900/20 border-t-2 border-teal-700">
-                <td className="px-4 py-3 font-bold text-teal-400" colSpan={3}>
+              <tr className="bg-accent/[0.024] border-t-2 border-accent/40">
+                <td className="px-4 py-3 font-bold text-accent" colSpan={3}>
                   TOTALS ({filtered.length} records)
                 </td>
-                <td className="px-4 py-3 text-right font-bold font-mono text-white">{formatNumber(totals.fuelMT, 1)}</td>
-                <td className="px-4 py-3 text-right font-bold font-mono text-status-amber">{formatNumber(totals.co2MT, 1)}</td>
-                <td className="px-4 py-3 text-right font-bold font-mono text-white">{totals.soxMT.toFixed(3)}</td>
-                <td className="px-4 py-3 text-right font-bold font-mono text-white">{totals.noxMT.toFixed(3)}</td>
+                <td className="px-4 py-3 text-right font-bold tabular-nums text-ink">{formatNumber(totals.fuelMT, 1)}</td>
+                <td className="px-4 py-3 text-right font-bold tabular-nums text-status-amber">{formatNumber(totals.co2MT, 1)}</td>
+                <td className="px-4 py-3 text-right font-bold tabular-nums text-ink">{totals.soxMT.toFixed(3)}</td>
+                <td className="px-4 py-3 text-right font-bold tabular-nums text-ink">{totals.noxMT.toFixed(3)}</td>
               </tr>
             </tbody>
           </table>

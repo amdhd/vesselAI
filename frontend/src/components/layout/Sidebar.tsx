@@ -47,50 +47,48 @@ export default function Sidebar() {
       <NavLink
         key={to}
         to={to}
+        aria-current={active ? 'page' : undefined}
         className={cn(
-          'flex items-center gap-2.5 px-3 py-2.5 text-[13px] font-medium border-l-2 transition-colors',
+          'group relative flex items-center gap-3 min-h-[38px] px-3 rounded-inner text-[13.5px] font-medium transition-colors duration-micro',
           active
-            ? 'border-teal-600 bg-white/[0.045] text-[#eceef0]'
-            : 'border-transparent text-[#8a919d] hover:text-[#eceef0] hover:bg-white/[0.025]',
+            ? 'bg-light/[0.06] text-ink shadow-[inset_0_1px_0_oklch(var(--c-light)/0.06)]'
+            : 'text-muted hover:text-ink hover:bg-light/[0.03]',
         )}
       >
-        <Icon className={cn('shrink-0', active ? 'text-teal-600' : 'text-[#5c6470]')} size={16} strokeWidth={1.6} />
-        {label}
+        <Icon className={cn('shrink-0', active ? 'text-accent' : 'text-faint group-hover:text-ink-2')} size={17} strokeWidth={1.6} />
+        <span className="flex-1">{label}</span>
+        {active && <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-accent" />}
       </NavLink>
     )
   }
 
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-[236px] bg-navy-800 border-r border-navy-700 flex flex-col z-30">
+    <aside className="fixed left-0 top-0 bottom-0 w-[248px] bg-shade/60 border-r border-light/[0.06] flex flex-col z-30">
       {/* Logo */}
-      <div className="px-5 py-[18px] border-b border-navy-700 flex items-center gap-2.5">
-        <div className="w-[30px] h-[30px] shrink-0 bg-[#12181a] border border-teal-600/40 rounded-[2px] flex items-center justify-center">
-          <Waves className="w-4 h-4 text-teal-600" strokeWidth={1.6} />
+      <div className="px-5 h-16 flex items-center gap-3">
+        <div className="w-8 h-8 shrink-0 rounded-full bg-accent/15 ring-1 ring-accent/30 flex items-center justify-center">
+          <Waves className="w-4 h-4 text-accent" strokeWidth={1.8} />
         </div>
         <div className="leading-tight">
-          <h1 className="text-[13.5px] font-semibold tracking-wide text-[#eceef0]">VesselMind AI</h1>
-          <p className="text-[10.5px] text-[#5c6470] uppercase tracking-wider">Maritime Intelligence</p>
+          <p className="font-display text-[15px] font-medium tracking-[-0.01em] text-ink">VesselMind AI</p>
+          <p className="text-[12px] text-faint">Maritime intelligence</p>
         </div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-2.5 py-3.5">
-        <div className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[#454b55] px-2.5 pt-1.5 pb-2">
-          Operations
-        </div>
-        <div>{operationsItems.map(renderItem)}</div>
+      <nav aria-label="Main" className="flex-1 overflow-y-auto px-3 pt-4 pb-3">
+        <p className="text-[12px] font-medium text-faint px-3 pb-2">Operations</p>
+        <div className="space-y-0.5">{operationsItems.map(renderItem)}</div>
 
-        <div className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[#454b55] px-2.5 pt-[18px] pb-2">
-          Intelligence
-        </div>
-        <div>{intelligenceItems.map(renderItem)}</div>
+        <p className="text-[12px] font-medium text-faint px-3 pt-6 pb-2">Intelligence</p>
+        <div className="space-y-0.5">{intelligenceItems.map(renderItem)}</div>
       </nav>
 
       {/* Footer */}
-      <div className="px-5 py-3.5 border-t border-navy-700 text-[10.5px] text-[#454b55] leading-relaxed">
+      <div className="mx-3 mb-3 px-3 py-3 rounded-inner border-t border-light/[0.06] text-[12px] text-faint leading-relaxed">
         VesselMind AI v0.0.1
         <br />
-        Maritime Operations Platform
+        Maritime operations platform
       </div>
     </aside>
   )

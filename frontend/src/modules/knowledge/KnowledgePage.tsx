@@ -21,8 +21,8 @@ export default function KnowledgePage() {
   return (
     <div className="flex flex-col h-full">
       <div className="mb-6">
-        <h1 className="text-[23px] font-semibold text-[#f0f1f3] tracking-[-0.01em]">Knowledge & Operations</h1>
-        <p className="text-[#767d88] text-[13px] mt-[5px]">AI-powered vessel knowledge assistant and technical documentation</p>
+        <h1 className="text-[23px] font-semibold text-ink tracking-[-0.01em]">Knowledge & Operations</h1>
+        <p className="text-muted text-[13px] mt-[5px]">AI-powered vessel knowledge assistant and technical documentation</p>
       </div>
 
       <Tabs tabs={TABS} activeId={activeTab} onChange={setActiveTab} className="mb-6 flex-shrink-0 overflow-x-auto" />

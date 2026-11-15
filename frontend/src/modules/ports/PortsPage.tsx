@@ -21,8 +21,8 @@ export default function PortsPage() {
   return (
     <div className="flex flex-col h-full">
       <div className="mb-6">
-        <h1 className="text-[23px] font-semibold text-[#f0f1f3] tracking-[-0.01em]">Ports & Operations</h1>
-        <p className="text-[#767d88] text-[13px] mt-[5px]">Fleet tracking, port intelligence, and agent communication</p>
+        <h1 className="text-[23px] font-semibold text-ink tracking-[-0.01em]">Ports & Operations</h1>
+        <p className="text-muted text-[13px] mt-[5px]">Fleet tracking, port intelligence, and agent communication</p>
       </div>
 
       <Tabs tabs={TABS} activeId={activeTab} onChange={setActiveTab} className="mb-6 flex-shrink-0 overflow-x-auto" />

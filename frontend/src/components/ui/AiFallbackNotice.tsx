@@ -15,7 +15,7 @@ interface AiFallbackNoticeProps {
  */
 export default function AiFallbackNotice({ rateLimited, retryAfter }: AiFallbackNoticeProps) {
   return (
-    <div className="flex items-start gap-2 mb-2 rounded-[2px] border border-status-amber/40 bg-status-amber/10 px-2.5 py-1.5">
+    <div className="flex items-start gap-2 mb-2 rounded-inner border border-status-amber/40 bg-status-amber/10 px-2.5 py-1.5">
       <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px text-status-amber" />
       <span className="text-[11.5px] leading-snug text-status-amber">
         {rateLimited

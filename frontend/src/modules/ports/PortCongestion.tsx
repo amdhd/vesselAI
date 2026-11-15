@@ -5,27 +5,20 @@ import { MOCK_PORT_CONGESTION } from '@/lib/mockData'
 import type { PortCongestion as PortCongestionType, CongestionLevel } from '@/lib/types'
 import { getCongestionColor } from '@/lib/utils'
 import LoadingSpinner from '@/components/ui/LoadingSpinner'
-
-const COUNTRY_FLAGS: Record<string, string> = {
-  UAE: '🇦🇪',
-  Singapore: '🇸🇬',
-  Malaysia: '🇲🇾',
-  Netherlands: '🇳🇱',
-  USA: '🇺🇸',
-}
+import { tok } from '@/lib/theme'
 
 const CONGESTION_COLORS: Record<CongestionLevel, string> = {
-  low: '#4a9d6f',
-  medium: '#3a8c85',
-  high: '#c99a54',
-  congested: '#a8443b',
+  low: tok('accent'),
+  medium: tok('accent'),
+  high: tok('apricot'),
+  congested: tok('critical'),
 }
 
 const CONGESTION_LABELS: Record<CongestionLevel, string> = {
-  low: 'LOW',
-  medium: 'MEDIUM',
-  high: 'HIGH',
-  congested: 'CONGESTED',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  congested: 'Congested',
 }
 
 const NEXT_BERTH: Record<string, string> = {
@@ -61,20 +54,20 @@ export default function PortCongestion() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-white">Port Congestion Intelligence</h2>
-        <p className="text-gray-400 text-sm mt-0.5">Real-time port congestion and 7-day forecast</p>
+        <h2 className="text-lg font-semibold text-ink">Port Congestion Intelligence</h2>
+        <p className="text-muted text-sm mt-0.5">Real-time port congestion and 7-day forecast</p>
       </div>
 
       {/* High congestion alerts */}
       {ports.filter((p) => p.congestionLevel === 'high' || p.congestionLevel === 'congested').map((p) => (
         <div
           key={p.portId}
-          className="flex items-start gap-3 bg-navy-800 border border-status-amber rounded-[2px] px-4 py-3"
+          className="flex items-start gap-3 bg-status-amber/[0.06] border border-status-amber/35 rounded-inner px-4 py-3"
         >
           <AlertTriangle className="w-5 h-5 text-status-amber flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-status-amber text-sm font-medium">
-              {COUNTRY_FLAGS[p.country] ?? ''} {p.portName} — {CONGESTION_LABELS[p.congestionLevel]} CONGESTION
+              {p.portName}: {CONGESTION_LABELS[p.congestionLevel].toLowerCase()} congestion
             </p>
             {p.alerts?.map((alert, i) => (
               <p key={i} className="text-status-amber/80 text-xs mt-1">
@@ -100,30 +93,30 @@ export default function PortCongestion() {
             <div key={port.portId} className="card space-y-3">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="font-semibold text-white text-sm">
-                    {COUNTRY_FLAGS[port.country] ?? ''} {port.portName}
+                  <p className="font-semibold text-ink text-sm">
+                    {port.portName}
                   </p>
-                  <p className="text-xs text-gray-500">{port.country}</p>
+                  <p className="text-xs text-faint">{port.country}</p>
                 </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-[2px] font-semibold uppercase tracking-wide border ${getCongestionColor(port.congestionLevel)}`}>
+                <span className={`text-[11px] px-2 py-0.5 rounded-inner font-semibold border ${getCongestionColor(port.congestionLevel)}`}>
                   {CONGESTION_LABELS[port.congestionLevel]}
                 </span>
               </div>
 
               <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="bg-navy-700/50 rounded-[2px] p-2">
-                  <p className="text-xs text-gray-400">Avg Wait</p>
-                  <p className="text-white font-mono font-semibold text-sm">{port.avgWaitingTime}h</p>
+                <div className="bg-paper-3/50 rounded-inner p-2">
+                  <p className="text-xs text-muted">Avg Wait</p>
+                  <p className="text-ink tabular-nums font-semibold text-sm">{port.avgWaitingTime}h</p>
                 </div>
-                <div className="bg-navy-700/50 rounded-[2px] p-2">
-                  <p className="text-xs text-gray-400 flex items-center justify-center gap-1">
+                <div className="bg-paper-3/50 rounded-inner p-2">
+                  <p className="text-xs text-muted flex items-center justify-center gap-1">
                     <Anchor className="w-3 h-3" /> At Anchor
                   </p>
-                  <p className="text-white font-mono font-semibold text-sm">{port.vesselsAtAnchor}</p>
+                  <p className="text-ink tabular-nums font-semibold text-sm">{port.vesselsAtAnchor}</p>
                 </div>
-                <div className="bg-navy-700/50 rounded-[2px] p-2">
-                  <p className="text-xs text-gray-400">Next Berth</p>
-                  <p className="text-white font-mono font-semibold text-xs leading-tight">
+                <div className="bg-paper-3/50 rounded-inner p-2">
+                  <p className="text-xs text-muted">Next Berth</p>
+                  <p className="text-ink tabular-nums font-semibold text-xs leading-tight">
                     {NEXT_BERTH[port.portId] ?? 'TBD'}
                   </p>
                 </div>
@@ -133,7 +126,7 @@ export default function PortCongestion() {
                   computed a ~0 height for every bar regardless of value in
                   this small a container, so draw it directly instead. */}
               <div>
-                <p className="text-xs text-gray-400 mb-1">7-Day Forecast</p>
+                <p className="text-xs text-muted mb-1">7-Day Forecast</p>
                 <svg viewBox="0 0 374 48" width="100%" height={48} preserveAspectRatio="none">
                   {chartData.map((entry, i) => {
                     const barWidth = 374 / chartData.length - 6

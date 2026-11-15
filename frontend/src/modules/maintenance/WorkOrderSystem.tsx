@@ -13,7 +13,7 @@ import { useToast } from '@/components/ui/Toast'
 const COLUMNS: { id: WorkOrderStatus; label: string; color: string }[] = [
   { id: 'open', label: 'Open', color: 'text-status-red border-status-red' },
   { id: 'in_progress', label: 'In Progress', color: 'text-status-amber border-status-amber' },
-  { id: 'completed', label: 'Completed', color: 'text-teal-400 border-teal-600' },
+  { id: 'completed', label: 'Completed', color: 'text-accent border-accent' },
   { id: 'verified', label: 'Verified', color: 'text-status-green border-status-green' },
 ]
 
@@ -37,14 +37,14 @@ function WorkOrderCard({ workOrder, onClick }: WorkOrderCardProps) {
   return (
     <div
       onClick={() => onClick(workOrder)}
-      className="bg-navy-700/60 border border-navy-600 rounded-[2px] p-3 cursor-pointer hover:border-teal-700/50 hover:bg-navy-700 transition-all space-y-2"
+      className="bg-paper-3/60 border border-rule-2 rounded-inner p-3 cursor-pointer hover:border-accent-hi/50 hover:bg-paper-3 transition-colors space-y-2"
     >
       <div className="flex items-start justify-between gap-2">
-        <h4 className="text-white text-xs font-medium leading-snug">{workOrder.title}</h4>
+        <h4 className="text-ink text-xs font-medium leading-snug">{workOrder.title}</h4>
         <PriorityBadge priority={workOrder.priority} />
       </div>
-      <p className="text-gray-500 text-xs">{workOrder.equipmentName}</p>
-      <div className="space-y-1 text-xs text-gray-500">
+      <p className="text-faint text-xs">{workOrder.equipmentName}</p>
+      <div className="space-y-1 text-xs text-faint">
         {workOrder.assignedTo && (
           <div className="flex items-center gap-1.5">
             <User className="w-3 h-3" />
@@ -111,31 +111,31 @@ function NewWorkOrderModal({ vesselId, onClose, onSubmit, isSubmitting }: NewWor
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-navy-800 border border-navy-700 rounded-[2px] w-full max-w-lg">
-        <div className="flex items-center justify-between p-5 border-b border-navy-700">
-          <h3 className="text-white font-semibold">New Work Order</h3>
-          <button onClick={onClose} className="p-1.5 rounded-[2px] text-gray-400 hover:text-white hover:bg-navy-700 transition-colors">
+    <div className="fixed inset-0 bg-shade/60 z-50 flex items-center justify-center p-4">
+      <div className="panel shadow-pop w-full max-w-lg">
+        <div className="flex items-center justify-between p-5 border-b border-rule">
+          <h3 className="text-ink font-semibold">New Work Order</h3>
+          <button onClick={onClose} className="p-1.5 rounded-inner text-muted hover:text-ink hover:bg-paper-3 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">Title</label>
+            <label className="block text-sm font-medium text-ink-2 mb-1.5">Title</label>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Work order title..."
-              className="w-full bg-navy-700 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 transition-colors"
+              className="w-full bg-paper-3 border border-rule-2 rounded-inner px-3 py-2 text-ink text-sm focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15 transition-colors"
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">Equipment</label>
+            <label className="block text-sm font-medium text-ink-2 mb-1.5">Equipment</label>
             <select
               value={equipmentId}
               onChange={(e) => setEquipmentId(e.target.value)}
-              className="w-full bg-navy-700 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 transition-colors"
+              className="w-full bg-paper-3 border border-rule-2 rounded-inner px-3 py-2 text-ink text-sm focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15 transition-colors"
               required
             >
               <option value="">Select equipment...</option>
@@ -145,22 +145,22 @@ function NewWorkOrderModal({ vesselId, onClose, onSubmit, isSubmitting }: NewWor
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">Description</label>
+            <label className="block text-sm font-medium text-ink-2 mb-1.5">Description</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe the work to be done..."
               rows={3}
-              className="w-full bg-navy-700 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 transition-colors resize-none"
+              className="w-full bg-paper-3 border border-rule-2 rounded-inner px-3 py-2 text-ink text-sm focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15 transition-colors resize-none"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">Priority</label>
+              <label className="block text-sm font-medium text-ink-2 mb-1.5">Priority</label>
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as WorkOrderPriority)}
-                className="w-full bg-navy-700 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 transition-colors"
+                className="w-full bg-paper-3 border border-rule-2 rounded-inner px-3 py-2 text-ink text-sm focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15 transition-colors"
               >
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
@@ -169,34 +169,34 @@ function NewWorkOrderModal({ vesselId, onClose, onSubmit, isSubmitting }: NewWor
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">Planned Date</label>
+              <label className="block text-sm font-medium text-ink-2 mb-1.5">Planned Date</label>
               <input
                 type="date"
                 value={plannedDate}
                 onChange={(e) => setPlannedDate(e.target.value)}
-                className="w-full bg-navy-700 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 transition-colors"
+                className="w-full bg-paper-3 border border-rule-2 rounded-inner px-3 py-2 text-ink text-sm focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15 transition-colors"
               />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">Assigned To</label>
+              <label className="block text-sm font-medium text-ink-2 mb-1.5">Assigned To</label>
               <input
                 value={assignedTo}
                 onChange={(e) => setAssignedTo(e.target.value)}
                 placeholder="Engineer name..."
-                className="w-full bg-navy-700 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 transition-colors"
+                className="w-full bg-paper-3 border border-rule-2 rounded-inner px-3 py-2 text-ink text-sm focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15 transition-colors"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">Estimated Hours</label>
+              <label className="block text-sm font-medium text-ink-2 mb-1.5">Estimated Hours</label>
               <input
                 type="number"
                 value={estimatedHours}
                 onChange={(e) => setEstimatedHours(Number(e.target.value))}
                 min={1}
                 max={200}
-                className="w-full bg-navy-700 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 transition-colors"
+                className="w-full bg-paper-3 border border-rule-2 rounded-inner px-3 py-2 text-ink text-sm focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15 transition-colors"
               />
             </div>
           </div>
@@ -207,7 +207,7 @@ function NewWorkOrderModal({ vesselId, onClose, onSubmit, isSubmitting }: NewWor
               disabled={isSubmitting}
               className="flex-1 btn-primary py-2 text-sm flex items-center justify-center gap-2"
             >
-              {isSubmitting && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+              {isSubmitting && <div className="w-4 h-4 border-2 border-light border-t-transparent rounded-full animate-spin" />}
               Create Work Order
             </button>
           </div>
@@ -262,9 +262,9 @@ export default function WorkOrderSystem() {
   if (!selectedVessel) {
     return (
       <div className="card flex flex-col items-center justify-center py-16 text-center">
-        <ClipboardList className="w-12 h-12 text-gray-600 mb-4" />
-        <h3 className="text-white font-semibold">No vessel selected</h3>
-        <p className="text-gray-400 text-sm mt-2">Select a vessel to view work orders</p>
+        <ClipboardList className="w-12 h-12 text-faint-2 mb-4" />
+        <h3 className="text-ink font-semibold">No vessel selected</h3>
+        <p className="text-muted text-sm mt-2">Select a vessel to view work orders</p>
       </div>
     )
   }
@@ -274,9 +274,9 @@ export default function WorkOrderSystem() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {COLUMNS.map((col) => (
           <div key={col.id} className="card animate-pulse">
-            <div className="h-5 bg-navy-700 rounded mb-4 w-1/2" />
+            <div className="h-5 bg-paper-3 rounded mb-4 w-1/2" />
             {[1, 2].map((i) => (
-              <div key={i} className="h-24 bg-navy-700 rounded mb-3" />
+              <div key={i} className="h-24 bg-paper-3 rounded mb-3" />
             ))}
           </div>
         ))}
@@ -288,7 +288,7 @@ export default function WorkOrderSystem() {
     <>
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <p className="text-gray-400 text-sm">{workOrderList.length} total work orders</p>
+          <p className="text-muted text-sm">{workOrderList.length} total work orders</p>
           <button
             onClick={() => setShowModal(true)}
             className="flex items-center gap-2 btn-primary text-sm"
@@ -308,12 +308,12 @@ export default function WorkOrderSystem() {
                   <h3 className={cn('font-semibold text-sm', col.color.split(' ')[0])}>
                     {col.label}
                   </h3>
-                  <span className="text-gray-500 text-xs font-mono bg-navy-700 px-2 py-0.5 rounded-[2px]">
+                  <span className="text-faint text-xs tabular-nums bg-paper-3 px-2 py-0.5 rounded-inner">
                     {orders.length}
                   </span>
                 </div>
                 {orders.length === 0 ? (
-                  <div className="text-center py-6 text-gray-600 text-xs">No orders</div>
+                  <div className="text-center py-6 text-faint-2 text-xs">No orders</div>
                 ) : (
                   orders.map((wo) => (
                     <WorkOrderCard key={wo.id} workOrder={wo} onClick={setSelectedWO} />
@@ -327,24 +327,24 @@ export default function WorkOrderSystem() {
 
       {/* Work order detail modal */}
       {selectedWO && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-navy-800 border border-navy-700 rounded-[2px] w-full max-w-lg">
-            <div className="flex items-start justify-between p-5 border-b border-navy-700">
+        <div className="fixed inset-0 bg-shade/60 z-50 flex items-center justify-center p-4">
+          <div className="panel shadow-pop w-full max-w-lg">
+            <div className="flex items-start justify-between p-5 border-b border-rule">
               <div>
-                <h3 className="text-white font-semibold">{selectedWO.title}</h3>
-                <p className="text-gray-400 text-sm mt-0.5">{selectedWO.equipmentName}</p>
+                <h3 className="text-ink font-semibold">{selectedWO.title}</h3>
+                <p className="text-muted text-sm mt-0.5">{selectedWO.equipmentName}</p>
               </div>
-              <button onClick={() => setSelectedWO(null)} className="p-1.5 rounded-[2px] text-gray-400 hover:text-white hover:bg-navy-700 transition-colors">
+              <button onClick={() => setSelectedWO(null)} className="p-1.5 rounded-inner text-muted hover:text-ink hover:bg-paper-3 transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="p-5 space-y-4">
               <div className="flex items-center gap-3 flex-wrap">
                 <PriorityBadge priority={selectedWO.priority} />
-                <span className="text-gray-400 text-xs capitalize">{selectedWO.type.replace('_', ' ')}</span>
-                <span className="text-gray-400 text-xs capitalize">{selectedWO.status.replace('_', ' ')}</span>
+                <span className="text-muted text-xs capitalize">{selectedWO.type.replace('_', ' ')}</span>
+                <span className="text-muted text-xs capitalize">{selectedWO.status.replace('_', ' ')}</span>
               </div>
-              <p className="text-gray-300 text-sm">{selectedWO.description}</p>
+              <p className="text-ink-2 text-sm">{selectedWO.description}</p>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 {[
                   { label: 'Assigned to', value: selectedWO.assignedTo ?? 'Unassigned' },
@@ -352,21 +352,21 @@ export default function WorkOrderSystem() {
                   { label: 'Estimated hours', value: `${selectedWO.estimatedHours}h` },
                   { label: 'Completed', value: selectedWO.completedDate ? formatDate(selectedWO.completedDate) : '—' },
                 ].map(({ label, value }) => (
-                  <div key={label} className="bg-navy-700/50 rounded-[2px] p-3">
-                    <p className="text-gray-500 text-xs">{label}</p>
-                    <p className="text-white mt-0.5">{value}</p>
+                  <div key={label} className="bg-paper-3/50 rounded-inner p-3">
+                    <p className="text-faint text-xs">{label}</p>
+                    <p className="text-ink mt-0.5">{value}</p>
                   </div>
                 ))}
               </div>
               {selectedWO.partsRequired && selectedWO.partsRequired.length > 0 && (
                 <div>
-                  <p className="text-gray-400 text-xs mb-2 flex items-center gap-1">
+                  <p className="text-muted text-xs mb-2 flex items-center gap-1">
                     <AlertCircle className="w-3 h-3" /> Parts required
                   </p>
                   <ul className="space-y-1">
                     {selectedWO.partsRequired.map((part) => (
-                      <li key={part} className="text-gray-300 text-sm flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0" />
+                      <li key={part} className="text-ink-2 text-sm flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
                         {part}
                       </li>
                     ))}

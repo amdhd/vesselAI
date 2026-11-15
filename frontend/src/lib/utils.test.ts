@@ -61,7 +61,7 @@ describe('getStatusColor', () => {
   })
 
   it('falls back to grey for an unrecognized status', () => {
-    expect(getStatusColor('made-up-status')).toBe('text-gray-400')
+    expect(getStatusColor('made-up-status')).toBe('text-muted')
   })
 })
 

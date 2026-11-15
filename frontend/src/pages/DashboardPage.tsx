@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle, XCircle, AlertCircle, ArrowRight } from 'lucide-react'
+import { AlertTriangle, CheckCircle, XCircle, AlertCircle, Ship } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   ResponsiveContainer,
@@ -14,6 +14,7 @@ import { useFleet } from '@/context/FleetContext'
 import Badge from '@/components/ui/Badge'
 import { MOCK_NOTIFICATIONS, MOCK_VESSELS, MOCK_ETS_DATA, MOCK_ALERTS } from '@/lib/mockData'
 import { getGreeting, formatDate, timeAgo, cn } from '@/lib/utils'
+import { tok } from '@/lib/theme'
 
 // ── Dashboard KPI calculations ────────────────────────────────────────────────
 
@@ -129,17 +130,17 @@ const PORT_CALLS = [
 
 // ── Fleet operations KPIs ─────────────────────────────────────────────────────
 const OPS_KPIS = [
-  { label: 'Fleet CO₂ Intensity',  value: '4.82', unit: 'gCO₂/dwt-nm', sub: '+0.62 vs required',        subColor: 'text-status-red'   },
-  { label: 'Crew Certification',   value: '46',   unit: '/48 valid',   sub: '2 expiring within 30 days', subColor: 'text-status-amber' },
-  { label: 'Bunker Spend (MTD)',   value: '$284K', unit: '',           sub: '-6.2% vs budget',           subColor: 'text-status-green' },
-  { label: 'Off-Hire Days (YTD)',  value: '3.5',  unit: '',            sub: 'Across 3 vessels',          subColor: 'text-gray-500'     },
+  { label: 'Fleet CO₂ intensity',  value: '4.82', unit: 'gCO₂/dwt-nm', sub: '+0.62 vs required',        subColor: 'text-status-red'   },
+  { label: 'Crew certification',   value: '46',   unit: '/48 valid',   sub: '2 expiring within 30 days', subColor: 'text-status-amber' },
+  { label: 'Bunker spend (MTD)',   value: '$284K', unit: '',           sub: '-6.2% vs budget',           subColor: 'text-status-green' },
+  { label: 'Off-hire days (YTD)',  value: '3.5',  unit: '',            sub: 'Across 3 vessels',          subColor: 'text-faint'     },
 ]
 
 function SeverityIcon({ severity }: { severity: string }) {
   if (severity === 'critical') return <AlertCircle className="w-4 h-4 text-status-red shrink-0" />
   if (severity === 'warning') return <AlertTriangle className="w-4 h-4 text-status-amber shrink-0" />
   if (severity === 'success') return <CheckCircle className="w-4 h-4 text-status-green shrink-0" />
-  return <AlertCircle className="w-4 h-4 text-teal-400 shrink-0" />
+  return <AlertCircle className="w-4 h-4 text-accent shrink-0" />
 }
 
 function severityVariant(severity: string): 'healthy' | 'warning' | 'critical' | 'info' {
@@ -149,24 +150,51 @@ function severityVariant(severity: string): 'healthy' | 'warning' | 'critical' |
   return 'info'
 }
 
-function KPIStrip({
+/** A panel heading with an optional quiet link on the right. */
+function PanelHead({ title, to, linkLabel, aside }: { title: string; to?: string; linkLabel?: string; aside?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4 px-6 pt-5 pb-4">
+      <h2 className="text-[16px] text-ink">{title}</h2>
+      {aside}
+      {to && linkLabel && (
+        <Link
+          to={to}
+          className="text-[13px] font-medium text-accent hover:text-accent-hi underline-offset-4 hover:underline transition-colors"
+        >
+          {linkLabel}
+        </Link>
+      )}
+    </div>
+  )
+}
+
+/** One ruled tally of four figures: a single surface split by hairlines, never a grid of tiles. */
+function Tally({
   items,
 }: {
   items: { label: string; value: React.ReactNode; sub?: string; subColor?: string }[]
 }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-px bg-navy-700 border border-navy-700">
+    <dl className="panel grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 divide-y sm:divide-y-0 xl:divide-x divide-light/[0.06]">
       {items.map((item) => (
-        <div key={item.label} className="bg-navy-800 p-5">
-          <p className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-[#5c6470] mb-3.5">
-            {item.label}
-          </p>
-          <p className="font-mono text-[26px] font-semibold text-[#f0f1f3] leading-none">{item.value}</p>
-          {item.sub && <p className={cn('text-xs mt-1.5', item.subColor ?? 'text-gray-500')}>{item.sub}</p>}
+        <div key={item.label} className="px-6 py-5">
+          <dt className="label">{item.label}</dt>
+          <dd className="mt-2 font-display text-[34px] font-medium tracking-[-0.022em] text-ink leading-none tabular-nums">
+            {item.value}
+          </dd>
+          {item.sub && <dd className={cn('text-[13px] mt-2', item.subColor ?? 'text-muted')}>{item.sub}</dd>}
         </div>
       ))}
-    </div>
+    </dl>
   )
+}
+
+function EtsCell({ status }: { status: 'compliant' | 'warning' | 'non_compliant' }) {
+  if (status === 'compliant')
+    return <span className="inline-flex items-center gap-1.5 text-status-green text-[13px]"><CheckCircle className="w-3.5 h-3.5" /> Compliant</span>
+  if (status === 'warning')
+    return <span className="inline-flex items-center gap-1.5 text-status-amber text-[13px]"><AlertTriangle className="w-3.5 h-3.5" /> At risk</span>
+  return <span className="inline-flex items-center gap-1.5 text-status-red text-[13px]"><XCircle className="w-3.5 h-3.5" /> Non-compliant</span>
 }
 
 export default function DashboardPage() {
@@ -195,93 +223,82 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-4 pb-2">
         <div>
-          <h1 className="text-[23px] font-semibold text-[#f0f1f3] tracking-[-0.01em]">
+          <h1 className="text-[30px] leading-[1.1] text-ink">
             {greeting}, {firstName}
           </h1>
-          <p className="text-[#767d88] text-[13px] mt-[5px]">{today} — Fleet Overview</p>
+          <p className="text-muted text-[14px] mt-2">{today}, fleet overview</p>
         </div>
-        <div className="flex items-center gap-[7px] px-[13px] py-[7px] bg-[#12161a] border border-white/[0.09] text-xs text-[#a8adb5]">
-          <div className="w-1.5 h-1.5 bg-status-green" />
+        <p className="inline-flex items-center gap-2 min-h-[34px] px-3.5 rounded-pill bg-light/[0.04] border border-light/[0.08] text-[13px] text-ink-2">
+          <Ship className="w-3.5 h-3.5 text-accent" strokeWidth={1.8} />
           {vessels.length} vessel{vessels.length !== 1 ? 's' : ''} tracked
-        </div>
+        </p>
       </div>
 
-      {/* KPI Cards */}
-      <KPIStrip
+      {/* Fleet tally */}
+      <Tally
         items={[
-          { label: 'Total Vessels', value: vessels.length || 3, sub: 'Petronas Marine Fleet' },
+          { label: 'Total vessels', value: vessels.length || 3, sub: 'Petronas Marine Fleet' },
           {
-            label: 'Fleet Fuel Efficiency',
+            label: 'Fleet fuel efficiency',
             value: (
               <>
                 {efficiencyScore}
-                <span className="text-base text-[#5c6470]">/100</span>
+                <span className="text-[0.55em] text-muted">/100</span>
               </>
             ),
             sub: trendLabel,
           },
           {
-            label: 'Active Alerts',
+            label: 'Active alerts',
             value: activeAlerts,
             sub: activeAlerts > 0 ? 'Requires attention' : 'All clear',
-            subColor: activeAlerts > 0 ? 'text-status-amber' : 'text-gray-500',
+            subColor: activeAlerts > 0 ? 'text-status-amber' : 'text-muted',
           },
-          { label: 'Monthly AI Savings', value: savingsFormatted, sub: 'Fuel + maintenance avoidance' },
+          { label: 'Monthly AI savings', value: savingsFormatted, sub: 'Fuel + maintenance avoidance' },
         ]}
       />
 
       {/* Fleet Compliance Matrix + Recent Alerts */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        {/* Compliance Matrix */}
-        <div className="xl:col-span-2 border border-navy-700 bg-navy-800">
-          <h2 className="text-[14px] font-semibold text-[#e2e4e7] px-5 py-4 border-b border-navy-700">
-            Fleet Compliance Matrix
-          </h2>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* Compliance ledger */}
+        <section className="xl:col-span-2 panel">
+          <PanelHead title="Fleet compliance" to="/compliance" linkLabel="Full compliance report" />
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-[14px]">
               <thead>
-                <tr className="border-b border-navy-700">
-                  <th className="text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470] py-[11px] pl-5 pr-4">Vessel</th>
-                  <th className="text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470] py-[11px] pr-4">CII</th>
-                  <th className="text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470] py-[11px] pr-4">ETS</th>
-                  <th className="text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470] py-[11px] pr-4">MRV</th>
-                  <th className="text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[#5c6470] py-[11px] pr-5">Certificates</th>
+                <tr className="border-y border-light/[0.06]">
+                  <th scope="col" className="text-left label py-2.5 pl-6 pr-4">Vessel</th>
+                  <th scope="col" className="text-left label py-2.5 pr-4">CII</th>
+                  <th scope="col" className="text-left label py-2.5 pr-4">ETS</th>
+                  <th scope="col" className="text-left label py-2.5 pr-4">MRV</th>
+                  <th scope="col" className="text-left label py-2.5 pr-6">Certificates</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-navy-700/60">
+              <tbody className="divide-y divide-light/[0.06]">
                 {complianceMatrix.map((row) => (
-                  <tr key={row.id}>
-                    <td className="py-[15px] pl-5 pr-4 font-medium text-[#e2e4e7]">{row.vessel}</td>
-                    <td className="py-[15px] pr-4">
-                      <Badge variant={row.ciiStatus} className="font-mono">{row.ciiRating}</Badge>
-                    </td>
-                    <td className="py-[15px] pr-4">
-                      {row.ets === 'compliant' ? (
-                        <span className="flex items-center gap-1 text-status-green text-xs">
-                          <CheckCircle className="w-3.5 h-3.5" /> Compliant
+                  <tr key={row.id} className="hover:bg-light/[0.02] transition-colors">
+                    <td className="py-4 pl-6 pr-4">
+                      <span className="flex items-center gap-3 font-medium text-ink">
+                        <span aria-hidden="true" className="w-8 h-8 rounded-full bg-light/[0.05] ring-1 ring-light/[0.08] flex items-center justify-center text-[12px] text-ink-2">
+                          {(row.vessel.split(' ')[1] ?? row.vessel).charAt(0)}
                         </span>
-                      ) : row.ets === 'warning' ? (
-                        <span className="flex items-center gap-1 text-status-amber text-xs">
-                          <AlertTriangle className="w-3.5 h-3.5" /> At Risk
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-status-red text-xs">
-                          <XCircle className="w-3.5 h-3.5" /> Non-compliant
-                        </span>
-                      )}
+                        {row.vessel}
+                      </span>
                     </td>
-                    <td className="py-[15px] pr-4">
-                      <span className="text-[#a8adb5] text-xs">{row.mrv}</span>
+                    <td className="py-4 pr-4">
+                      <Badge variant={row.ciiStatus}>{row.ciiRating}</Badge>
                     </td>
-                    <td className="py-[15px] pr-5">
+                    <td className="py-4 pr-4"><EtsCell status={row.ets} /></td>
+                    <td className="py-4 pr-4 text-[13px] text-ink-2">{row.mrv}</td>
+                    <td className="py-4 pr-6">
                       {row.certStatus === 'valid' ? (
-                        <span className="flex items-center gap-1 text-status-green text-xs">
+                        <span className="inline-flex items-center gap-1.5 text-status-green text-[13px]">
                           <CheckCircle className="w-3.5 h-3.5" /> {row.certs}
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1 text-status-red text-xs">
+                        <span className="inline-flex items-center gap-1.5 text-status-red text-[13px]">
                           <XCircle className="w-3.5 h-3.5" /> {row.certs}
                         </span>
                       )}
@@ -291,159 +308,144 @@ export default function DashboardPage() {
               </tbody>
             </table>
           </div>
-          <div className="px-5 py-3.5">
-            <Link to="/compliance" className="text-teal-400 hover:text-teal-300 text-xs flex items-center gap-1 transition-colors w-fit">
-              View full compliance report <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
-        </div>
+          <div className="h-2" />
+        </section>
 
         {/* Recent Alerts */}
-        <div className="border border-navy-700 bg-navy-800">
-          <h2 className="text-[14px] font-semibold text-[#e2e4e7] px-5 py-4 border-b border-navy-700">Recent Alerts</h2>
-          <div className="divide-y divide-navy-700/60">
+        <section className="panel flex flex-col">
+          <PanelHead title="Recent alerts" to="/maintenance" linkLabel="All alerts" />
+          <ul className="divide-y divide-light/[0.06] border-t border-light/[0.06] flex-1">
             {recentAlerts.map((alert) => (
-              <div key={alert.id} className="flex gap-2.5 px-5 py-[15px]">
+              <li key={alert.id} className="flex gap-3 px-6 py-4">
                 <SeverityIcon severity={alert.severity} />
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-[#e2e4e7] text-xs font-semibold leading-snug">{alert.title}</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-ink text-[13.5px] font-medium leading-snug">{alert.title}</p>
                     <Badge variant={severityVariant(alert.severity)} className="shrink-0">{alert.severity}</Badge>
                   </div>
-                  {alert.vesselName && (
-                    <p className="text-[#767d88] text-xs mt-0.5">{alert.vesselName}</p>
-                  )}
-                  <p className="text-[#767d88] text-xs mt-1">{timeAgo(alert.createdAt)}</p>
+                  <p className="text-muted text-[13px] mt-1">
+                    {alert.vesselName ? `${alert.vesselName}, ` : ''}{timeAgo(alert.createdAt)}
+                  </p>
                 </div>
-              </div>
+              </li>
             ))}
-          </div>
-          <div className="px-5 py-3.5">
-            <Link to="/maintenance" className="text-teal-400 hover:text-teal-300 text-xs flex items-center gap-1 transition-colors w-fit">
-              View all alerts <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
-        </div>
+          </ul>
+        </section>
       </div>
 
       {/* Fuel Consumption Trend + Upcoming Port Calls */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        {/* Fuel Consumption Trend */}
-        <div className="xl:col-span-2 border border-navy-700 bg-navy-800">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-navy-700">
-            <h2 className="text-[14px] font-semibold text-[#e2e4e7]">Fleet Fuel Consumption — 7 Day Trend</h2>
-            <p className="text-xs text-[#767d88]">
-              Fleet avg <span className="font-mono font-semibold text-teal-400">{FLEET_AVG_FUEL}</span> t/day
-            </p>
-          </div>
-          <div className="px-3 pt-5 pb-3">
-            <div className="h-56">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <section className="xl:col-span-2 panel">
+          <PanelHead
+            title="Fleet fuel consumption, last 7 days"
+            aside={
+              <p className="text-[13px] text-muted ml-auto">
+                Fleet avg <span className="font-medium text-ink tabular-nums">{FLEET_AVG_FUEL}</span> t/day
+              </p>
+            }
+          />
+          <div className="px-4 pb-5">
+            <div className="h-60">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={FUEL_TREND} margin={{ top: 5, right: 16, bottom: 5, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <CartesianGrid stroke={tok('light', 0.05)} vertical={false} />
                   <XAxis
                     dataKey="day"
-                    stroke="#454b55"
+                    stroke={tok('rule')}
                     tickLine={false}
                     axisLine={false}
-                    tick={{ fill: '#5c6470', fontSize: 11 }}
+                    tick={{ fill: tok('muted'), fontSize: 12 }}
                   />
                   <YAxis
-                    stroke="#454b55"
+                    stroke={tok('rule')}
                     tickLine={false}
                     axisLine={false}
                     domain={[0, 24]}
                     ticks={[0, 12, 24]}
-                    tick={{ fill: '#5c6470', fontSize: 11 }}
+                    tick={{ fill: tok('muted'), fontSize: 12 }}
                     tickFormatter={(v) => `${v}t`}
-                    width={34}
+                    width={36}
                   />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#12161a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '2px', fontSize: '11px' }}
-                    labelStyle={{ color: '#a8adb5' }}
+                    contentStyle={{ backgroundColor: tok('paper-2'), border: `1px solid ${tok('light', 0.08)}`, borderRadius: '10px', fontSize: '12px', boxShadow: 'var(--shadow-pop)' }}
+                    labelStyle={{ color: tok('ink-2') }}
+                    itemStyle={{ color: tok('ink') }}
+                    cursor={{ stroke: tok('light', 0.12) }}
                     formatter={(value: number, name: string) => [`${value.toFixed(1)} t`, name === 'actual' ? 'Actual consumption' : 'Baseline plan']}
                   />
                   <Line
                     type="monotone"
                     dataKey="baseline"
-                    stroke="#6b7280"
+                    stroke={tok('faint')}
                     strokeWidth={1.5}
                     strokeDasharray="4 4"
                     dot={false}
-                    activeDot={{ r: 3, fill: '#6b7280' }}
+                    activeDot={{ r: 3, fill: tok('faint') }}
                     name="baseline"
                   />
                   <Line
                     type="monotone"
                     dataKey="actual"
-                    stroke="#3a8c85"
-                    strokeWidth={2}
-                    dot={{ r: 3, fill: '#3a8c85' }}
-                    activeDot={{ r: 4, fill: '#3a8c85' }}
+                    stroke={tok('accent')}
+                    strokeWidth={2.25}
+                    dot={{ r: 3, fill: tok('paper-2'), stroke: tok('accent'), strokeWidth: 2 }}
+                    activeDot={{ r: 5, fill: tok('accent'), stroke: tok('paper-2'), strokeWidth: 2 }}
                     name="actual"
                   />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
-            <div className="flex items-center gap-5 text-xs text-[#a8adb5] px-2 pt-1">
+            <div className="flex items-center gap-6 text-[13px] text-ink-2 px-2 pt-2">
               <span className="flex items-center gap-2">
-                <span className="w-4 h-0.5 bg-teal-600 inline-block" /> Actual consumption
+                <span className="w-4 h-0.5 rounded-full bg-accent inline-block" /> Actual consumption
               </span>
               <span className="flex items-center gap-2">
-                <span className="w-4 h-0.5 inline-block" style={{ borderTop: '2px dashed #6b7280' }} /> Baseline plan
+                <span className="w-4 h-0.5 inline-block" style={{ borderTop: `2px dashed ${tok('faint')}` }} /> Baseline plan
               </span>
             </div>
           </div>
-        </div>
+        </section>
 
         {/* Upcoming Port Calls */}
-        <div className="border border-navy-700 bg-navy-800 flex flex-col">
-          <h2 className="text-[14px] font-semibold text-[#e2e4e7] px-5 py-4 border-b border-navy-700">Upcoming Port Calls</h2>
-          <div className="divide-y divide-navy-700/60 flex-1">
+        <section className="panel flex flex-col">
+          <PanelHead title="Upcoming port calls" to="/ports" linkLabel="Port schedule" />
+          <ul className="divide-y divide-light/[0.06] border-t border-light/[0.06] flex-1">
             {PORT_CALLS.map((call) => (
-              <div key={call.vessel} className="px-5 py-[15px]">
+              <li key={call.vessel} className="px-6 py-4">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[#e2e4e7] text-[13px] font-semibold">{call.vessel}</p>
+                  <p className="text-ink text-[14px] font-medium">{call.vessel}</p>
                   {call.status === 'on_time' ? (
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-status-green border border-status-green/50 px-1.5 py-0.5">
-                      On Time
-                    </span>
+                    <Badge variant="healthy">On time</Badge>
                   ) : (
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-status-amber border border-status-amber/50 px-1.5 py-0.5">
-                      Delayed
-                    </span>
+                    <Badge variant="warning">Delayed</Badge>
                   )}
                 </div>
                 <div className="flex items-center justify-between gap-2 mt-1.5">
-                  <p className="text-[#767d88] text-xs">{call.port}</p>
-                  <p className="text-[#a8adb5] text-xs font-mono">{call.eta}</p>
+                  <p className="text-muted text-[13px]">{call.port}</p>
+                  <p className="text-ink-2 text-[13px] tabular-nums">{call.eta}</p>
                 </div>
-              </div>
+              </li>
             ))}
-          </div>
-          <div className="px-5 py-3.5 border-t border-navy-700">
-            <Link to="/ports" className="text-teal-400 hover:text-teal-300 text-xs flex items-center gap-1 transition-colors w-fit">
-              View port schedule <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
-        </div>
+          </ul>
+        </section>
       </div>
 
-      {/* Fleet Operations KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-px bg-navy-700 border border-navy-700">
-        {OPS_KPIS.map((kpi) => (
-          <div key={kpi.label} className="bg-navy-800 p-5">
-            <p className="text-[10.5px] font-semibold uppercase tracking-[0.09em] text-[#5c6470] mb-3.5">
-              {kpi.label}
-            </p>
-            <p className="font-mono text-[26px] font-semibold text-[#f0f1f3] leading-none">
-              {kpi.value}
-              {kpi.unit && <span className="text-[13px] text-[#5c6470] ml-1.5">{kpi.unit}</span>}
-            </p>
-            <p className={cn('text-xs mt-2', kpi.subColor)}>{kpi.sub}</p>
-          </div>
-        ))}
-      </div>
+      {/* Fleet operations ledger: figures live in rows */}
+      <section className="panel">
+        <PanelHead title="Fleet operations" />
+        <ul className="divide-y divide-light/[0.06] border-t border-light/[0.06]">
+          {OPS_KPIS.map((kpi) => (
+            <li key={kpi.label} className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-x-6 gap-y-1 px-6 py-4">
+              <p className="text-[14px] text-ink-2">{kpi.label}</p>
+              <p className="text-right sm:text-left font-display text-[22px] font-medium text-ink tabular-nums leading-none">
+                {kpi.value}
+                {kpi.unit && <span className="text-[13px] font-sans text-muted ml-1.5">{kpi.unit}</span>}
+              </p>
+              <p className={cn('col-span-2 sm:col-span-1 sm:text-right text-[13px]', kpi.subColor)}>{kpi.sub}</p>
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   )
 }

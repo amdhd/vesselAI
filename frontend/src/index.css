@@ -1,33 +1,91 @@
+/* Hallmark · shape: app screen · genre: modern-minimal · theme: Dusk (by request) · redesign: restyle · stamp and waivers in ./styles/tokens.css */
+@import './styles/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  html, body { overflow-x: clip; }
+  html { scrollbar-color: var(--color-rule) var(--color-paper); }
   body {
-    @apply bg-navy-900 text-white font-sans;
+    @apply bg-paper text-ink font-sans antialiased;
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    caret-color: var(--color-accent);
   }
-  * {
-    @apply border-navy-800;
+  * { @apply border-rule; }
+  ::selection { background: oklch(var(--c-accent) / 0.25); color: var(--color-ink); }
+  :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    font-weight: var(--display-weight);
+    letter-spacing: var(--tracking-display);
+    overflow-wrap: break-word;
+    min-width: 0;
   }
+  /* Figures: the body face with tabular numerals, never mono. */
+  .num, td, input[type='number'] { font-variant-numeric: tabular-nums; }
+  input::placeholder, textarea::placeholder { color: oklch(var(--c-faint-2)); }
+  select option { background: var(--color-paper-2); color: var(--color-ink); }
 }
 
 @layer components {
+  /* A panel on slate: one surface per nesting level, never a card in a card. */
   .card {
-    @apply bg-navy-800 border border-navy-700 rounded-[2px] p-5;
+    @apply bg-paper-2 border border-rule/70 rounded-card p-5 shadow-card;
   }
+  .panel {
+    @apply bg-paper-2 border border-rule/70 rounded-card shadow-card;
+  }
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
+    backdrop-filter: blur(var(--glass-blur)) saturate(1.35);
+    box-shadow: var(--glass-hi), var(--shadow-card);
+    border-radius: var(--radius-card);
+  }
+  .label {
+    @apply text-[12px] font-medium text-muted;
+  }
+
+  /* Controls: one periwinkle pill, one ghost pill. */
   .btn-primary {
-    @apply bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-[2px] font-medium transition-colors;
+    @apply inline-flex items-center justify-center gap-2 min-h-[38px] bg-accent text-accent-ink px-4 py-2 rounded-pill text-[13.5px] font-semibold;
+    box-shadow: inset 0 1px 0 oklch(var(--c-light) / 0.35);
+    transition: background-color var(--dur-micro) var(--ease-out), box-shadow var(--dur-micro) var(--ease-out), opacity var(--dur-micro);
   }
+  .btn-primary:hover:not(:disabled) {
+    @apply bg-accent-hi;
+    box-shadow: inset 0 1px 0 oklch(var(--c-light) / 0.35), 0 0 0 4px oklch(var(--c-accent) / 0.18);
+  }
+  .btn-primary:active:not(:disabled) { transform: translateY(1px); }
+  .btn-primary:disabled { @apply opacity-50 cursor-not-allowed; }
+
   .btn-secondary {
-    @apply bg-navy-700 hover:bg-navy-600 text-white px-4 py-2 rounded-[2px] font-medium transition-colors;
+    @apply inline-flex items-center justify-center gap-2 min-h-[38px] bg-light/[0.05] text-ink-2 border border-light/10 px-4 py-2 rounded-pill text-[13.5px] font-medium;
+    transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out), opacity var(--dur-micro);
   }
-  .badge-healthy { @apply border border-status-green text-status-green bg-transparent text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-[2px]; }
-  .badge-warning { @apply border border-status-amber text-status-amber bg-transparent text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-[2px]; }
-  .badge-critical { @apply border border-status-red text-status-red bg-transparent text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-[2px]; }
-  .badge-info { @apply border border-teal-600 text-teal-400 bg-transparent text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-[2px]; }
+  .btn-secondary:hover:not(:disabled) { @apply bg-light/10 text-ink; }
+  .btn-secondary:disabled { @apply opacity-50 cursor-not-allowed; }
+
+  .input {
+    @apply w-full bg-paper border border-rule rounded-inner px-3.5 py-2 text-[14px] text-ink outline-none;
+    transition: border-color var(--dur-micro) var(--ease-out), box-shadow var(--dur-micro) var(--ease-out);
+  }
+  .input:focus { @apply border-accent/70; box-shadow: 0 0 0 3px oklch(var(--c-accent) / 0.16); }
+
+  /* Status words: sentence case, a dot, never a filled tile. */
+  .badge-healthy, .badge-warning, .badge-critical, .badge-info {
+    @apply inline-flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-0.5 rounded-pill border whitespace-nowrap;
+  }
+  .badge-healthy { @apply text-accent border-accent/35 bg-accent/[0.08]; }
+  .badge-warning { @apply text-apricot border-apricot/35 bg-apricot/[0.08]; }
+  .badge-critical { @apply text-critical border-critical/40 bg-critical/[0.08]; }
+  .badge-info { @apply text-ink-2 border-light/15 bg-light/[0.04]; }
 }
 
-/* Range slider — teal fill + round thumb */
+/* Range slider: periwinkle fill + round thumb */
 .slider-teal {
   -webkit-appearance: none;
   appearance: none;
@@ -38,67 +96,74 @@
 .slider-teal::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background: #57a89f;
-  border: 2px solid #0b0d10;
+  background: var(--color-accent);
+  border: 3px solid var(--color-paper);
+  box-shadow: 0 0 0 1px oklch(var(--c-accent) / 0.5);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background-color var(--dur-micro);
 }
-.slider-teal::-webkit-slider-thumb:hover {
-  background: #6bc0b6;
-}
+.slider-teal::-webkit-slider-thumb:hover { background: var(--color-accent-hi); }
 .slider-teal::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background: #57a89f;
-  border: 2px solid #0b0d10;
+  background: var(--color-accent);
+  border: 3px solid var(--color-paper);
   cursor: pointer;
 }
-.slider-teal::-moz-range-track {
-  height: 6px;
-  border-radius: 9999px;
-}
+.slider-teal::-moz-range-track { height: 6px; border-radius: 9999px; }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: #0d1013;
-}
-::-webkit-scrollbar-thumb {
-  background: #23282f;
-  border-radius: 0;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #33383f;
-}
+/* Scrollbars */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-rule); border-radius: 999px; border: 2px solid var(--color-paper); }
+::-webkit-scrollbar-thumb:hover { background: oklch(var(--c-rule-2)); }
 
-/* Leaflet dark mode overrides */
-.leaflet-container {
-  background: #0b0d10 !important;
-}
+/* Leaflet on slate */
+.leaflet-container { background: var(--color-shade) !important; font-family: var(--font-body) !important; border-radius: inherit; }
+.leaflet-control-zoom { border: 0 !important; box-shadow: var(--glass-hi), var(--shadow-card) !important; border-radius: var(--radius-inner) !important; overflow: hidden; }
 .leaflet-control-zoom a {
-  background-color: #12161a !important;
-  color: #fff !important;
-  border-color: rgba(255, 255, 255, 0.12) !important;
+  background-color: var(--color-paper-2) !important;
+  color: var(--color-ink) !important;
+  border-color: oklch(var(--c-light) / 0.08) !important;
 }
-.leaflet-control-zoom a:hover {
-  background-color: #1f2227 !important;
-}
+.leaflet-control-zoom a:hover { background-color: var(--color-paper-3) !important; }
 .leaflet-control-attribution {
-  background-color: rgba(10, 12, 15, 0.7) !important;
-  color: #767d88 !important;
+  background-color: oklch(var(--c-paper) / 0.75) !important;
+  color: var(--color-muted) !important;
 }
+.leaflet-control-attribution a { color: var(--color-ink-2) !important; }
 .leaflet-popup-content-wrapper {
-  background-color: #12161a !important;
-  color: #fff !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background-color: var(--color-paper-2) !important;
+  color: var(--color-ink) !important;
+  border: 1px solid oklch(var(--c-light) / 0.08) !important;
+  border-radius: var(--radius-inner) !important;
+  box-shadow: var(--shadow-pop) !important;
 }
-.leaflet-popup-tip {
-  background-color: #12161a !important;
+.leaflet-popup-tip { background-color: var(--color-paper-2) !important; }
+
+/* Login: the hour behind the sign-in */
+.dusk-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 40%; filter: contrast(1.04) saturate(1.03); }
+@media (prefers-reduced-motion: no-preference) {
+  .dusk-photo { animation: dusk-drift 48s var(--ease-out) infinite alternate; }
+}
+@keyframes dusk-drift { from { transform: scale(1.06) translateX(0); } to { transform: scale(1.06) translateX(-3%); } }
+.dusk-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 48% 52% at 22% 34%, oklch(var(--c-fog) / 0.62), transparent 74%),
+    linear-gradient(to bottom, transparent 55%, oklch(var(--c-paper) / 0.92));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

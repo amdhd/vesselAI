@@ -15,22 +15,32 @@ interface TabsProps<T extends string = string> {
 }
 
 export default function Tabs<T extends string = string>({ tabs, activeId, onChange, className }: TabsProps<T>) {
+  // Dusk tabs: a ruled list with a dot on the chosen one, never boxed segments.
   return (
-    <div className={cn('flex items-center gap-0.5 border-b border-navy-700', className)}>
+    <div role="tablist" className={cn('flex items-center gap-1 border-b border-light/[0.07] overflow-x-auto', className)}>
       {tabs.map((tab) => {
         const Icon = tab.icon
         const active = tab.id === activeId
         return (
           <button
             key={tab.id}
+            role="tab"
+            aria-selected={active}
             onClick={() => onChange(tab.id)}
             className={cn(
-              'flex items-center gap-2 px-[18px] py-[11px] text-[13px] font-medium border-b-2 -mb-px transition-colors',
-              active ? 'border-teal-600 text-teal-400' : 'border-transparent text-gray-500 hover:text-gray-300',
+              'relative flex items-center gap-2 px-4 min-h-[44px] text-[14px] font-medium whitespace-nowrap transition-colors duration-micro',
+              active ? 'text-ink' : 'text-muted hover:text-ink-2',
             )}
           >
-            {Icon && <Icon className="w-3.5 h-3.5" />}
+            {Icon && <Icon className={cn('w-4 h-4', active ? 'text-accent' : 'text-faint')} strokeWidth={1.7} />}
             {tab.label}
+            <span
+              aria-hidden="true"
+              className={cn(
+                'absolute left-4 right-4 -bottom-px h-[2px] rounded-full bg-accent transition-opacity duration-short',
+                active ? 'opacity-100' : 'opacity-0',
+              )}
+            />
           </button>
         )
       })}

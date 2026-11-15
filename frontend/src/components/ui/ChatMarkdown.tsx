@@ -19,12 +19,12 @@ export default function ChatMarkdown({ content }: { content: string }) {
           h1: ({ children }) => <h1 className="text-base font-bold mb-2 mt-1">{children}</h1>,
           h2: ({ children }) => <h2 className="text-sm font-bold mb-2 mt-1">{children}</h2>,
           h3: ({ children }) => <h3 className="text-sm font-semibold mb-1.5 mt-1">{children}</h3>,
-          strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+          strong: ({ children }) => <strong className="font-semibold text-ink">{children}</strong>,
           code: ({ children }) => (
-            <code className="bg-black/30 rounded px-1 py-0.5 text-xs font-mono">{children}</code>
+            <code className="bg-shade/30 rounded px-1 py-0.5 text-xs font-code">{children}</code>
           ),
           a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noreferrer" className="text-teal-400 underline">
+            <a href={href} target="_blank" rel="noreferrer" className="text-accent underline">
               {children}
             </a>
           ),
@@ -34,17 +34,17 @@ export default function ChatMarkdown({ content }: { content: string }) {
             </div>
           ),
           th: ({ children }) => (
-            <th className="border border-navy-600 px-2 py-1 text-left bg-navy-700/60 font-semibold">
+            <th className="border border-rule-2 px-2 py-1 text-left bg-paper-3/60 font-semibold">
               {children}
             </th>
           ),
-          td: ({ children }) => <td className="border border-navy-600 px-2 py-1 align-top">{children}</td>,
+          td: ({ children }) => <td className="border border-rule-2 px-2 py-1 align-top">{children}</td>,
           blockquote: ({ children }) => (
-            <blockquote className="border-l-2 border-teal-600 pl-3 italic text-gray-400 mb-2">
+            <blockquote className="border-l-2 border-accent pl-3 italic text-muted mb-2">
               {children}
             </blockquote>
           ),
-          hr: () => <hr className="border-navy-600 my-2" />,
+          hr: () => <hr className="border-rule-2 my-2" />,
         }}
       >
         {content}

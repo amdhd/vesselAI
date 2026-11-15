@@ -5,6 +5,8 @@ import { useFleet } from '@/context/FleetContext'
 import { MOCK_VESSELS } from '@/lib/mockData'
 import { aisApi, type AisPosition } from '@/lib/api'
 import type { Vessel } from '@/lib/types'
+import { tok } from '@/lib/theme'
+import { Anchor } from 'lucide-react'
 
 // Fix leaflet default icon
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
@@ -21,15 +23,15 @@ function createVesselIcon(color: string) {
       width: 32px;
       height: 32px;
       background: ${color};
-      border: 3px solid white;
+      border: 3px solid ${tok('paper')};
       border-radius: 50% 50% 50% 0;
       transform: rotate(-45deg);
-      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      box-shadow: 0 6px 16px -6px ${tok('shade', 0.8)};
       display: flex;
       align-items: center;
       justify-content: center;
     ">
-      <div style="transform: rotate(45deg); font-size: 14px; margin-top: 2px;">&#9875;</div>
+      <svg style="transform: rotate(45deg)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${tok('accent-ink')}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="3"/><line x1="12" y1="22" x2="12" y2="8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></svg>
     </div>`,
     iconSize: [32, 32],
     iconAnchor: [16, 32],
@@ -40,9 +42,9 @@ function createVesselIcon(color: string) {
 // Vessel marker colors by status
 function getVesselColor(vessel: Vessel): string {
   // OSV Tenaga Satu at risk (approaching demurrage)
-  if (vessel.id === 'v3') return '#c99a54'
+  if (vessel.id === 'v3') return tok('apricot')
   // Others green
-  return '#4a9d6f'
+  return tok('accent')
 }
 
 // Mock destination coordinates
@@ -87,12 +89,12 @@ export default function LiveFleetMap() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-white">Live Fleet Map</h2>
-          <p className="text-gray-400 text-sm mt-0.5">Fleet vessels + live AIS traffic (aisstream)</p>
+          <h2 className="text-lg font-semibold text-ink">Live Fleet Map</h2>
+          <p className="text-muted text-sm mt-0.5">Fleet vessels + live AIS traffic (aisstream)</p>
         </div>
         <div className="flex items-center gap-2">
           <div className={`w-1.5 h-1.5 ${aisLive ? 'bg-status-green animate-pulse' : 'bg-status-amber'}`} />
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-muted">
             {aisLive ? `Live AIS · ${aisVessels.length} vessels` : 'Demo mode (AIS stream off)'}
           </span>
         </div>
@@ -102,19 +104,19 @@ export default function LiveFleetMap() {
       <div className="flex items-center gap-6 flex-wrap">
         <div className="flex items-center gap-2">
           <div className="w-[7px] h-[7px] bg-status-green" />
-          <span className="text-xs text-gray-400">Fleet — On Schedule</span>
+          <span className="text-xs text-muted">Fleet, on schedule</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-[7px] h-[7px] bg-status-amber" />
-          <span className="text-xs text-gray-400">Fleet — At Risk / Demurrage</span>
+          <span className="text-xs text-muted">Fleet, at risk of demurrage</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-[7px] h-[7px] rounded-full" style={{ backgroundColor: '#3a8c85' }} />
-          <span className="text-xs text-gray-400">Live AIS vessel</span>
+          <div className="w-[7px] h-[7px] rounded-full" style={{ backgroundColor: tok('accent') }} />
+          <span className="text-xs text-muted">Live AIS vessel</span>
         </div>
       </div>
 
-      <div className="rounded-[2px] overflow-hidden border border-navy-700" style={{ height: '550px' }}>
+      <div className="rounded-inner overflow-hidden border border-rule" style={{ height: '550px' }}>
         <MapContainer
           center={center}
           zoom={5}
@@ -132,16 +134,16 @@ export default function LiveFleetMap() {
               key={v.mmsi}
               center={[v.latitude, v.longitude]}
               radius={4}
-              pathOptions={{ color: '#57a89f', fillColor: '#3a8c85', fillOpacity: 0.85, weight: 1 }}
+              pathOptions={{ color: tok('accent-hi'), fillColor: tok('accent'), fillOpacity: 0.85, weight: 1 }}
             >
               <Popup>
-                <div className="text-white min-w-[180px]">
+                <div className="text-ink min-w-[180px]">
                   <p className="font-bold text-sm mb-1">{v.shipName || `MMSI ${v.mmsi}`}</p>
                   <div className="space-y-0.5 text-xs">
-                    <div className="flex justify-between"><span className="text-gray-300">MMSI</span><span>{v.mmsi}</span></div>
-                    <div className="flex justify-between"><span className="text-gray-300">Speed</span><span>{v.sog != null ? `${v.sog.toFixed(1)} kn` : '—'}</span></div>
-                    <div className="flex justify-between"><span className="text-gray-300">Course</span><span>{v.cog != null ? `${Math.round(v.cog)}°` : '—'}</span></div>
-                    <div className="flex justify-between"><span className="text-gray-300">Source</span><span className="text-teal-400">Live AIS</span></div>
+                    <div className="flex justify-between"><span className="text-ink-2">MMSI</span><span>{v.mmsi}</span></div>
+                    <div className="flex justify-between"><span className="text-ink-2">Speed</span><span>{v.sog != null ? `${v.sog.toFixed(1)} kn` : '—'}</span></div>
+                    <div className="flex justify-between"><span className="text-ink-2">Course</span><span>{v.cog != null ? `${Math.round(v.cog)}°` : '—'}</span></div>
+                    <div className="flex justify-between"><span className="text-ink-2">Source</span><span className="text-accent">Live AIS</span></div>
                   </div>
                 </div>
               </Popup>
@@ -161,19 +163,19 @@ export default function LiveFleetMap() {
                   icon={icon}
                 >
                   <Popup>
-                    <div className="text-white min-w-[200px]">
+                    <div className="text-ink min-w-[200px]">
                       <p className="font-bold text-base mb-2">{vessel.name}</p>
                       <div className="space-y-1 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-gray-300">Speed:</span>
+                          <span className="text-ink-2">Speed:</span>
                           <span className="font-medium">{info?.speed ?? `${vessel.position.speed} kn`}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-300">ETA:</span>
+                          <span className="text-ink-2">ETA:</span>
                           <span className="font-medium">{info?.eta ?? 'N/A'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-300">Status:</span>
+                          <span className="text-ink-2">Status:</span>
                           <span className={`font-medium ${
                             info?.status.includes('Risk') ? 'text-status-amber' : 'text-status-green'
                           }`}>
@@ -181,11 +183,11 @@ export default function LiveFleetMap() {
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-300">Voyage:</span>
+                          <span className="text-ink-2">Voyage:</span>
                           <span className="font-medium text-right ml-2">{info?.voyage ?? 'N/A'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-300">CII:</span>
+                          <span className="text-ink-2">CII:</span>
                           <span className="font-medium">{vessel.ciiRating}</span>
                         </div>
                       </div>
@@ -221,13 +223,13 @@ export default function LiveFleetMap() {
             <div key={v.id} className="card flex items-center gap-3">
               <div
                 className="w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0"
-                style={{ backgroundColor: color + '33', border: `2px solid ${color}` }}
+                style={{ backgroundColor: `color-mix(in oklab, ${color} 18%, transparent)`, border: `1.5px solid ${color}` }}
               >
-                ⚓
+                <Anchor className="w-4 h-4" style={{ color }} strokeWidth={1.8} aria-hidden="true" />
               </div>
               <div className="min-w-0">
-                <p className="font-medium text-white text-sm truncate">{v.name}</p>
-                <p className="text-xs text-gray-400 truncate">{info?.voyage}</p>
+                <p className="font-medium text-ink text-sm truncate">{v.name}</p>
+                <p className="text-xs text-muted truncate">{info?.voyage}</p>
                 <p className="text-xs mt-0.5" style={{ color }}>
                   {info?.status}
                 </p>

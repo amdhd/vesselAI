@@ -119,21 +119,21 @@ export default function KnowledgeChat() {
   return (
     <div className="flex flex-col h-full" style={{ height: 'calc(100vh - 200px)' }}>
       {/* Context banner */}
-      <div className="bg-navy-800 border border-teal-600/50 rounded-[2px] p-3 mb-4 flex items-center gap-2">
-        <Anchor size={16} className="text-teal-400 shrink-0" />
-        <span className="text-sm text-teal-400">
+      <div className="bg-accent/[0.06] border border-accent/30 rounded-inner p-3 mb-4 flex items-center gap-2">
+        <Anchor size={16} className="text-accent shrink-0" />
+        <span className="text-sm text-accent">
           Vessel context loaded:{' '}
-          <span className="font-semibold text-white">
+          <span className="font-semibold text-ink">
             {selectedVessel?.name || 'MV Merdeka Spirit'}
-          </span>{' '}
-          — machinery manuals, defect history, and equipment specs available
+          </span>
+          : machinery manuals, defect history, and equipment specs available
         </span>
         {messages.length > 0 && (
           <button
             onClick={clearChat}
             disabled={isStreaming}
             title="Clear this vessel's saved chat history"
-            className="ml-auto shrink-0 flex items-center gap-1.5 text-xs text-gray-400 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="ml-auto shrink-0 flex items-center gap-1.5 text-xs text-muted hover:text-critical disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Trash2 size={14} />
             Clear
@@ -145,11 +145,11 @@ export default function KnowledgeChat() {
       <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full py-12">
-            <div className="w-16 h-16 bg-teal-900/50 rounded-full flex items-center justify-center mb-4 border border-teal-700">
-              <Bot size={32} className="text-teal-400" />
+            <div className="w-16 h-16 bg-accent/[0.06] rounded-full flex items-center justify-center mb-4 border border-accent/30">
+              <Bot size={32} className="text-accent" />
             </div>
-            <h3 className="text-xl font-semibold text-white mb-2">VesselMind AI Assistant</h3>
-            <p className="text-gray-400 text-center max-w-md mb-8">
+            <h3 className="text-xl font-semibold text-ink mb-2">VesselMind AI Assistant</h3>
+            <p className="text-muted text-center max-w-md mb-8">
               Ask any technical question about your vessel. I have access to equipment manuals,
               defect history, and maritime regulations.
             </p>
@@ -158,7 +158,7 @@ export default function KnowledgeChat() {
                 <button
                   key={i}
                   onClick={() => sendMessage(prompt)}
-                  className="text-left p-3 bg-navy-800 border border-navy-700 rounded-[2px] hover:border-teal-600 hover:bg-navy-700 transition-colors text-sm text-gray-300"
+                  className="text-left p-3 bg-paper-2 border border-rule rounded-inner hover:border-accent hover:bg-paper-3 transition-colors text-sm text-ink-2"
                 >
                   {prompt}
                 </button>
@@ -169,14 +169,14 @@ export default function KnowledgeChat() {
           messages.map(msg => (
             <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
               <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                msg.role === 'user' ? 'bg-teal-700' : 'bg-navy-700 border border-navy-600'
+                msg.role === 'user' ? 'bg-accent/15 ring-1 ring-accent/30' : 'bg-paper-3 border border-rule-2'
               }`}>
-                {msg.role === 'user' ? <User size={16} className="text-white" /> : <Bot size={16} className="text-teal-400" />}
+                {msg.role === 'user' ? <User size={16} className="text-accent" /> : <Bot size={16} className="text-accent" />}
               </div>
-              <div className={`max-w-[80%] rounded-[2px] px-4 py-3 text-sm leading-relaxed ${
+              <div className={`max-w-[80%] rounded-inner px-4 py-3 text-sm leading-relaxed ${
                 msg.role === 'user'
-                  ? 'bg-teal-700 text-white'
-                  : 'bg-navy-800 border border-navy-700 text-gray-200'
+                  ? 'bg-accent/[0.12] border border-accent/25 text-ink'
+                  : 'bg-paper-2 border border-rule text-ink'
               }`}>
                 {msg.fallback && <AiFallbackNotice {...msg.fallback} />}
                 {msg.content ? (
@@ -185,12 +185,12 @@ export default function KnowledgeChat() {
                   isStreaming && msg.role === 'assistant' && (
                     <span className="flex items-center gap-2">
                       <LoadingSpinner size="sm" />
-                      <span className="text-gray-400">VesselMind AI is thinking...</span>
+                      <span className="text-muted">VesselMind AI is thinking...</span>
                     </span>
                   )
                 )}
                 {msg.role === 'assistant' && msg.content && isStreaming && messages[messages.length - 1].id === msg.id && (
-                  <span className="inline-block w-1 h-4 bg-teal-400 animate-pulse ml-1 align-middle" />
+                  <span className="inline-block w-1 h-4 bg-accent animate-pulse ml-1 align-middle" />
                 )}
               </div>
             </div>
@@ -200,7 +200,7 @@ export default function KnowledgeChat() {
       </div>
 
       {/* Input area */}
-      <div className="border-t border-navy-700 pt-4">
+      <div className="border-t border-rule pt-4">
         <div className="flex gap-3 items-end">
           <textarea
             ref={inputRef}
@@ -210,13 +210,13 @@ export default function KnowledgeChat() {
             placeholder="Ask about engine procedures, troubleshooting, safety protocols..."
             rows={2}
             disabled={isStreaming}
-            className="flex-1 bg-navy-800 border border-navy-700 rounded-[2px] px-4 py-3 text-white placeholder-gray-500 resize-none focus:outline-none focus:border-teal-600 text-sm disabled:opacity-60"
+            className="flex-1 bg-paper border border-light/[0.08] rounded-inner px-4 py-3 text-ink placeholder-faint resize-none focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15 text-sm disabled:opacity-60"
           />
           {isStreaming ? (
             <button
               onClick={stopStreaming}
               title="Stop generating"
-              className="p-3 rounded-[2px] border border-navy-600 text-gray-400 hover:border-status-red hover:text-status-red transition-colors"
+              className="p-3 rounded-inner border border-rule-2 text-muted hover:border-status-red hover:text-status-red transition-colors"
             >
               <Square size={18} className="fill-current" />
             </button>
@@ -224,13 +224,13 @@ export default function KnowledgeChat() {
             <button
               onClick={() => sendMessage(input)}
               disabled={!input.trim()}
-              className="btn-primary p-3 rounded-[2px] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary p-3 rounded-inner disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send size={18} />
             </button>
           )}
         </div>
-        <p className="text-xs text-gray-600 mt-2">Press Enter to send · Shift+Enter for new line</p>
+        <p className="text-xs text-faint-2 mt-2">Press Enter to send · Shift+Enter for new line</p>
       </div>
     </div>
   )

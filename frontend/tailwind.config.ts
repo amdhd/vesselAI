@@ -1,43 +1,57 @@
 import type { Config } from 'tailwindcss'
 
+// Every colour resolves to a Dusk token in src/styles/tokens.css. Channels are
+// stored bare so opacity modifiers (`bg-accent/20`) keep working.
+const c = (name: string) => `oklch(var(--c-${name}) / <alpha-value>)`
+
 const config: Config = {
   darkMode: 'class',
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        navy: {
-          50: '#e8edf5',
-          100: '#c5d0e6',
-          200: '#9fb1d4',
-          300: '#7892c2',
-          400: '#5a7ab4',
-          500: '#3d62a6',
-          600: '#2d4f8a',
-          700: '#1f2227',
-          800: '#0d0f12',
-          900: '#0a0c0f',
-          950: '#0b0d10',
+        shade: c('shade'),
+        paper: { DEFAULT: c('paper'), 2: c('paper-2'), 3: c('paper-3') },
+        rule: { DEFAULT: c('rule'), 2: c('rule-2') },
+        ink: { DEFAULT: c('ink'), 2: c('ink-2') },
+        muted: c('muted'),
+        faint: { DEFAULT: c('faint'), 2: c('faint-2') },
+        light: c('light'),
+        accent: {
+          DEFAULT: c('accent'),
+          hi: c('accent-hi'),
+          deep: c('accent-deep'),
+          soft: c('accent-soft'),
+          ink: c('accent-ink'),
         },
-        teal: {
-          900: 'rgba(58,140,133,0.12)',
-          600: '#3a8c85',
-          700: '#33796f',
-          400: '#57a89f',
-        },
-        amber: {
-          600: '#c99a54',
-        },
+        apricot: { DEFAULT: c('apricot'), deep: c('apricot-deep') },
+        critical: { DEFAULT: c('critical'), deep: c('critical-deep') },
+        day: { ink: c('day-ink'), muted: c('day-muted') },
+        fog: c('fog'),
+        // Status names stay (tests and utils read them); values are Dusk's signals.
         status: {
-          green: '#4a9d6f',
-          amber: '#c99a54',
-          red: '#a8443b',
+          green: c('accent'),
+          amber: c('apricot'),
+          red: c('critical'),
         },
       },
       fontFamily: {
-        sans: ['IBM Plex Sans', 'sans-serif'],
-        mono: ['IBM Plex Mono', 'monospace'],
+        sans: ['Wix Madefor Text', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        display: ['Wix Madefor Display', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        code: ['ui-monospace', 'SF Mono', 'Menlo', 'monospace'],
       },
+      borderRadius: {
+        card: 'var(--radius-card)',
+        inner: 'var(--radius-inner)',
+        pill: 'var(--radius-pill)',
+      },
+      boxShadow: {
+        card: 'var(--shadow-card)',
+        pop: 'var(--shadow-pop)',
+        glass: 'var(--glass-hi), var(--shadow-card)',
+      },
+      transitionTimingFunction: { out: 'var(--ease-out)' },
+      transitionDuration: { micro: '120ms', short: '220ms' },
     },
   },
   plugins: [],

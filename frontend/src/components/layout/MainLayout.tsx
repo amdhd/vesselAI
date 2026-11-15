@@ -10,11 +10,11 @@ interface MainLayoutProps {
 export default function MainLayout({ children }: MainLayoutProps) {
   return (
     <ToastProvider>
-      <div className="min-h-screen bg-navy-900">
+      <div className="min-h-screen bg-paper">
         <Sidebar />
         <Topbar />
-        <main className="ml-[236px] pt-14 min-h-screen">
-          <div className="pt-[30px] px-[34px] pb-[60px]">
+        <main className="ml-[248px] pt-16 min-h-screen">
+          <div className="max-w-[1600px] mx-auto pt-8 px-10 pb-16">
             {children}
           </div>
         </main>

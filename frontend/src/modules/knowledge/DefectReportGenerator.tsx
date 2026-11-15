@@ -79,18 +79,18 @@ export default function DefectReportGenerator() {
       {/* Form */}
       <div className="space-y-4">
         <div className="card">
-          <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-            <FileText size={16} className="text-teal-400" />
+          <h3 className="font-semibold text-ink mb-4 flex items-center gap-2">
+            <FileText size={16} className="text-accent" />
             Defect Information
           </h3>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Equipment *</label>
+              <label className="block text-sm text-muted mb-1">Equipment *</label>
               <select
                 value={form.equipment}
                 onChange={e => setForm(f => ({ ...f, equipment: e.target.value }))}
-                className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600"
+                className="w-full bg-paper border border-rule-2 rounded-inner px-3 py-2 text-ink text-sm focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15"
               >
                 <option value="">Select equipment...</option>
                 {EQUIPMENT_LIST.map(e => <option key={e} value={e}>{e}</option>)}
@@ -98,51 +98,51 @@ export default function DefectReportGenerator() {
             </div>
 
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Defect Description *</label>
+              <label className="block text-sm text-muted mb-1">Defect Description *</label>
               <textarea
                 value={form.description}
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                 rows={3}
                 placeholder="Describe the defect or failure observed..."
-                className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 resize-none placeholder-gray-600"
+                className="w-full bg-paper border border-rule-2 rounded-inner px-3 py-2 text-ink text-sm focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15 resize-none placeholder-faint-2"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Symptoms Observed *</label>
+              <label className="block text-sm text-muted mb-1">Symptoms Observed *</label>
               <textarea
                 value={form.symptoms}
                 onChange={e => setForm(f => ({ ...f, symptoms: e.target.value }))}
                 rows={3}
                 placeholder="What symptoms are present? (vibration, noise, temperature, pressure, etc.)"
-                className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 resize-none placeholder-gray-600"
+                className="w-full bg-paper border border-rule-2 rounded-inner px-3 py-2 text-ink text-sm focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15 resize-none placeholder-faint-2"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Conditions When Occurred</label>
+              <label className="block text-sm text-muted mb-1">Conditions When Occurred</label>
               <textarea
                 value={form.conditions}
                 onChange={e => setForm(f => ({ ...f, conditions: e.target.value }))}
                 rows={2}
                 placeholder="Load conditions, time of occurrence, recent work done..."
-                className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600 resize-none placeholder-gray-600"
+                className="w-full bg-paper border border-rule-2 rounded-inner px-3 py-2 text-ink text-sm focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15 resize-none placeholder-faint-2"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Estimated Severity</label>
+              <label className="block text-sm text-muted mb-1">Estimated Severity</label>
               <select
                 value={form.severity}
                 onChange={e => setForm(f => ({ ...f, severity: e.target.value as DefectSeverity }))}
-                className="w-full bg-navy-900 border border-navy-600 rounded-[2px] px-3 py-2 text-white text-sm focus:outline-none focus:border-teal-600"
+                className="w-full bg-paper border border-rule-2 rounded-inner px-3 py-2 text-ink text-sm focus:outline-none focus:border-accent/60 focus:ring-[3px] focus:ring-accent/15"
               >
                 {SEVERITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
 
             {error && (
-              <div className="flex items-center gap-2 text-status-red text-sm bg-navy-800 border border-status-red rounded-[2px] px-3 py-2">
+              <div className="flex items-center gap-2 text-status-red text-sm bg-status-red/[0.06] border border-status-red/35 rounded-inner px-3 py-2">
                 <AlertTriangle size={14} /> {error}
               </div>
             )}
@@ -166,14 +166,14 @@ export default function DefectReportGenerator() {
       <div>
         {!result ? (
           <div className="card flex flex-col items-center justify-center h-full min-h-[400px] text-center">
-            <FileText size={48} className="text-navy-600 mb-4" />
-            <p className="text-gray-500">Fill in the form and click "Generate" to create a formal maritime defect report</p>
+            <FileText size={48} className="text-rule-2 mb-4" />
+            <p className="text-faint">Fill in the form and click "Generate" to create a formal maritime defect report</p>
           </div>
         ) : (
           <div className="space-y-4">
             <div className="card">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-white">Generated Defect Report</h3>
+                <h3 className="font-semibold text-ink">Generated Defect Report</h3>
                 <div className="flex gap-2">
                   <button onClick={copyReport} className="btn-secondary text-xs flex items-center gap-1.5 py-1.5">
                     <Copy size={12} /> Copy
@@ -189,29 +189,29 @@ export default function DefectReportGenerator() {
                   </button>
                 </div>
               </div>
-              <pre className="text-gray-300 text-xs whitespace-pre-wrap font-mono bg-navy-900 rounded-[2px] p-4 max-h-64 overflow-y-auto">
+              <pre className="text-ink-2 text-xs whitespace-pre-wrap tabular-nums bg-paper rounded-inner p-4 max-h-64 overflow-y-auto">
                 {result.reportText}
               </pre>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="card">
-                <h4 className="text-sm font-medium text-gray-400 mb-2">Probable Cause</h4>
-                <p className="text-white text-sm">{result.probableCause}</p>
+                <h4 className="text-sm font-medium text-muted mb-2">Probable Cause</h4>
+                <p className="text-ink text-sm">{result.probableCause}</p>
               </div>
               <div className="card">
-                <h4 className="text-sm font-medium text-gray-400 mb-2">Urgency</h4>
+                <h4 className="text-sm font-medium text-muted mb-2">Urgency</h4>
                 <span className={`badge-${result.urgency === 'critical' ? 'critical' : result.urgency === 'high' ? 'warning' : 'info'}`}>
                   {result.urgency?.toUpperCase()}
                 </span>
               </div>
               <div className="card">
-                <h4 className="text-sm font-medium text-gray-400 mb-2">Recommended Action</h4>
-                <p className="text-white text-sm">{result.recommendedAction}</p>
+                <h4 className="text-sm font-medium text-muted mb-2">Recommended Action</h4>
+                <p className="text-ink text-sm">{result.recommendedAction}</p>
               </div>
               <div className="card">
-                <h4 className="text-sm font-medium text-gray-400 mb-2">Parts Required</h4>
-                <p className="text-white text-sm">{result.partsRequired}</p>
+                <h4 className="text-sm font-medium text-muted mb-2">Parts Required</h4>
+                <p className="text-ink text-sm">{result.partsRequired}</p>
               </div>
             </div>
           </div>
