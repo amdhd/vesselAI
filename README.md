@@ -2,23 +2,23 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A full-stack, AI-powered SaaS platform for oil & gas vessel fleet operators — six modules covering voyage optimization, predictive maintenance, emissions compliance, port scheduling, a technical-knowledge chat assistant, and SIRE inspection prep, all backed by the Anthropic Claude API.
+**VesselMind is a multi-agent AI platform for maritime fleet operations: Claude tool-use agents reason over live weather, AIS and ERP data to plan voyages, predict equipment failures, and keep vessels compliant across six operational modules. Underneath sits a production-style data stack — three real ingestion pipelines into PostgreSQL and a DuckDB + dbt bronze/silver/gold warehouse that processes over a million AIS rows in seconds. The whole system runs as Kubernetes microservices on a local k3d cluster and on AWS EKS built from an empty account with Terraform, deployed by Argo CD GitOps, secured with tenant isolation, enforced Pod Security Standards and CI-gated AI agents, and load-tested at 470+ req/s with autoscaling from 3 to 8 replicas.**
 
-I built and hardened this solo as a demo-day portfolio piece for Forward Deployed Engineering roles. The parts of the FDE job that matter most — wiring agentic AI into real data, defending trust boundaries, and debugging integrations end-to-end rather than trusting that they work — are exactly what this project is set up to show, not just describe.
+The six modules cover voyage optimization, predictive maintenance, emissions compliance, port scheduling, a technical-knowledge chat assistant, and SIRE inspection prep, all backed by the Anthropic Claude API. Every external arrow is a trust boundary and every AI path has a non-AI fallback, so a provider outage degrades the app instead of breaking it.
 
-**It also runs on Kubernetes, twice.** The same manifests deploy to a local k3d cluster and to a real **AWS EKS** cluster built from an empty account by Terraform — VPC, ECR, IRSA, an ALB with an ACM certificate, KMS-encrypted Secrets, GitOps reconciliation by Argo CD, and a measured load test on both. The EKS run is where the interesting failures were: nine bugs that a laptop cluster could not have surfaced, each one written up in [Running on Kubernetes](#running-on-kubernetes) rather than quietly fixed.
+**The same manifests deploy to two clusters.** A local k3d cluster and a real **AWS EKS** cluster — VPC, ECR, IRSA, an ALB with an ACM certificate, KMS-encrypted Secrets, GitOps reconciliation by Argo CD, and a measured load test on both. The EKS run is where the interesting failures were: nine bugs that a laptop cluster could not have surfaced, each one written up in [Running on Kubernetes](#running-on-kubernetes) rather than quietly fixed.
 
 [![VesselMind AWS architecture — EKS cluster built by Terraform: Route 53, ACM, an ALB in public subnets, a managed node group in private subnets, ECR, KMS and GitHub OIDC](docs/architecture/aws-architecture.png)](docs/architecture/aws-architecture.png)
 
 <sub>Drawn from the actual resources in [`terraform/`](terraform/) and [`k8s/`](k8s/) — so the ALB shows as controller-created rather than Terraform-created, which is the distinction the teardown ordering turns on. [Editable source + notes](docs/architecture/).</sub>
 
-**[The FDE headline features](#the-three-features-that-matter-for-an-fde) · [Data warehouse](#3-an-analytics-warehouse-duckdb--dbt-medallion) · [Kubernetes & EKS](#running-on-kubernetes) · [Demo credentials](#demo-mode) · [What's real vs. mocked](#whats-real-vs-mocked) · [Engineering notes](#engineering-notes) · [How this maps to an FDE role](#how-this-maps-to-an-fde-role)**
+**[Headline features](#headline-features) · [Data warehouse](#3-an-analytics-warehouse-duckdb--dbt-medallion) · [Kubernetes & EKS](#running-on-kubernetes) · [Demo credentials](#demo-mode) · [What's real vs. mocked](#whats-real-vs-mocked) · [Engineering notes](#engineering-notes)**
 
 ---
 
-## The three features that matter for an FDE
+## Headline features
 
-Everything else in this repo is context. These three are the point, because they are the parts of an FDE's job — *integrate a customer's data sources*, *configure agentic workflows*, and *model that data into something a decision can be made from* — that you can't fake.
+Three pieces carry the platform: *real data ingestion*, *a genuine agentic workflow*, and *a warehouse that models that data into something a decision can be made from*.
 
 ### 1. A real data-ingestion pipeline
 
@@ -30,7 +30,7 @@ Three genuine ingestion paths land external data in Postgres, not fixtures dress
 | **aisstream.io** (`services/aisStream.ts`) | Live WebSocket firehose | Streams AIS vessel positions, upserted one-row-per-vessel by MMSI — bounded storage for a live map rather than an unbounded append log. |
 | **ERP bunker CSV** (`services/bunkerImport.ts`) | Uploaded file | ERP-style bunker-procurement CSV: header validation, **per-row** Zod validation, bad rows collected and reported (not silently dropped), IMO→vessel resolution scoped to the caller's fleet. |
 
-This is the FDE line "reliable data pipelines for ingestion, transformation, and validation" made concrete: bad rows, retries-friendly idempotency, and partial-failure handling are all present, not hand-waved.
+Reliable ingestion, transformation, and validation, made concrete: bad rows, retry-friendly idempotency, and partial-failure handling are all present, not hand-waved.
 
 ### 2. A genuine agentic workflow
 
@@ -149,17 +149,17 @@ A demo is only useful if you're honest about where the edges are. Here's the act
 | Bunker procurement | **Real — ERP-style CSV import** with per-row validation (`services/bunkerImport.ts`) |
 | Equipment sensor telemetry, SIRE findings, port congestion, voyage history | Fixture data, generated with real-ish statistical variation (trends, noise, seeded anomalies) |
 
-In a real engagement, swapping the remaining fixtures for a customer's SCADA feed or class-society data is exactly the data-integration work an FDE does. The three pipelines above show the pattern already working end-to-end; the rest is scoped, not faked.
+Swapping the remaining fixtures for a customer's SCADA feed or class-society data is the same data-integration pattern. The three pipelines above show it already working end-to-end; the rest is scoped, not faked.
 
 ---
 
 ## Engineering Notes
 
-Three pieces of this codebase's history are worth walking through in an interview more than the feature list is.
+Three pieces of this codebase's history are worth walking through more than the feature list is.
 
 **Security hardening arc.** An early version had a `demo_token_*` bearer-token prefix that bypassed real JWT verification and granted `fleet_manager` access to anyone who guessed it — added to make demo mode frictionless, and a real vulnerability. I found it, removed it, and followed up with IDOR fixes (a fleet-scoped tenant-isolation helper — `backend/src/lib/tenant.ts` — enforced consistently across every vessel/fleet/equipment route), prompt-injection guardrails on every AI chat surface, and per-user AI rate limiting. The commit history (`a7fc00b` → `5b62621`) is a legible before/after if you want to see the reasoning, not just the diff.
 
-**The contract audit.** After the auth work, I went module-by-module through the live app — not reading code, actually clicking through every tab — and found that roughly a third of the app was silently broken: frontend and backend had drifted apart on API paths, response shapes (arrays wrapped in objects, `camelCase` vs different field names entirely, nested vs flat), and even units (an uppercase `'CRITICAL'` congestion enum on one side, lowercase `'congested'` on the other). Some of it 404'd. Most of it didn't — it just silently rendered `NaN`, blank charts, or crashed the whole React tree with no error boundary to catch it. I fixed each one at its root — reshaping API responses to match real consumer contracts rather than patching around them in the UI — and verified every fix live in a browser, not just by reading the diff. That's the muscle this role actually needs: not "does the code compile," but "does the demo you're about to show a customer actually work."
+**The contract audit.** After the auth work, I went module-by-module through the live app — not reading code, actually clicking through every tab — and found that roughly a third of the app was silently broken: frontend and backend had drifted apart on API paths, response shapes (arrays wrapped in objects, `camelCase` vs different field names entirely, nested vs flat), and even units (an uppercase `'CRITICAL'` congestion enum on one side, lowercase `'congested'` on the other). Some of it 404'd. Most of it didn't — it just silently rendered `NaN`, blank charts, or crashed the whole React tree with no error boundary to catch it. I fixed each one at its root — reshaping API responses to match real consumer contracts rather than patching around them in the UI — and verified every fix live in a browser, not just by reading the diff. The question that matters is not "does the code compile," but "does the demo you're about to show a customer actually work."
 
 **Review-driven hardening.** I ran a security-and-quality review over the merged code and fixed what it surfaced, each as its own reviewed PR: a **single shared PrismaClient** (six modules each constructed their own — six connection pools that would exhaust Postgres `max_connections` under load); **JWT auth + a CORS allowlist on the analytics service** (the FastAPI/DuckDB layer was reachable unauthenticated — it now verifies the *same* app-issued token via a shared `JWT_SECRET`); and a **fleet-membership gate on the live AIS map** (a self-service registrant with no fleet could read the operational map even though they see zero vessels everywhere else). Notably, I did **not** strictly per-fleet-scope AIS — it's public broadcast data about every vessel in the operating area, so faking ownership would blank the map; the right fix was to gate the *surface*, not fake the *data*, and to be able to say so.
 
@@ -947,30 +947,13 @@ The gate is **binding**: `enforce_admins` is on, so a red check stops the merge 
 
 The uncomfortable property that buys is real and worth naming: an `infra` verdict — a throttled model, a tunnel that never came up — also blocks, including the PR that would fix the outage. The escape hatch is to lower the protection deliberately, merge, and restore it, which is an audited act rather than a button that looks like an ordinary merge. That trade is documented rather than discovered.
 
-## How this maps to an FDE role
-
-The Forward Deployed Engineer JD asks for specific things. Here's where each one lives in this repo:
-
-| What the role asks for | Where it is here |
-|---|---|
-| *Integrate customer data sources* | Three real pipelines — Open-Meteo (HTTP), aisstream.io (WebSocket), ERP CSV (upload) — each landing validated data in Postgres (`services/weatherPipeline.ts`, `aisStream.ts`, `bunkerImport.ts`) |
-| *Reliable pipelines for ingestion, transformation, validation* | Zod validation at every boundary, idempotent upserts, per-row / per-point failure isolation, bad-row reporting |
-| *Model data so customers can act on it* | DuckDB + dbt medallion warehouse — bronze/silver/gold, star schema, 21 dbt data tests, served to the app through a JWT-secured FastAPI layer (`data-platform/`) |
-| *Configure agentic workflows; adapt agents* | Multi-step Claude tool-use loop with 4 tools and a deterministic fallback (`services/voyageAgent.ts`) |
-| *Defend trust boundaries* | Fleet-scoped tenant isolation (`lib/tenant.ts`), IDOR fixes, prompt-injection guardrails on every AI surface, per-user AI rate limiting |
-| *Move a POC toward production* | Prisma migrations, Docker Compose, graceful DB/AI fallbacks, `X-AI-Fallback` observability, seeded demo scenarios |
-| *Communicate* | This README, honest "real vs. mocked" accounting, and commit messages that explain *why* |
-| *Run it where the customer runs it* | The same manifests deploy to k3d and to EKS built from an empty AWS account by Terraform — IRSA for per-pod IAM, an ALB with an ACM certificate, KMS-encrypted Secrets, GitOps reconciliation, and a teardown that removes what Terraform does not own ([Running on Kubernetes](#running-on-kubernetes)) |
-| *Make agent output trustworthy* | Two agents (browser QA, auto-fix) gated so a wrong fix cannot merge silently — a required re-test check that distinguishes "the code is wrong" from "the pipeline broke", repo-declared API contracts fed to the fixer read-only, and a tripwire that stops an agent targeting an unprotected branch ([Agentic QA](#agentic-qa-and-the-guardrails-it-needed)) |
-| *Debug what you deployed* | Nine bugs the EKS rebuild surfaced that a laptop cluster could not — including a GitOps deadlock that meant the repo could not deploy itself from empty, and a NetworkPolicy that was only *proven* enforced when it returned 504 with every pod healthy |
-
 ## Roadmap (honest gaps)
 
 Scoped, understood, and not yet built — I'd rather name these than imply they're done:
 
 - **Cloud infrastructure as code — done, and it carried the app.** `terraform/` builds the cluster from an empty AWS account; `make destroy` tears it down in the order that actually works (namespaces first, so the controller-created ALB and PVC volumes are really deleted rather than orphaned and billing). The full stack ran on it behind an ACM certificate with Argo CD reconciling from git, and the nine bugs that surfaced are written up in [Running on Kubernetes](#running-on-kubernetes). What remains is closing the manual digest bump and adding alerting.
 - **Pipeline orchestration.** The medallion build is run on demand (`load_bronze.py` → `dbt build`). Production would want a scheduler (Dagster or Airflow), incremental models instead of full refreshes, and freshness alerting on the gold tables.
-- **Onboarding playbook.** A one-pager on how a new customer fleet gets connected, configured, and scoped for success — the deployment-motion half of the FDE job, not the code half.
+- **Onboarding playbook.** A one-pager on how a new customer fleet gets connected, configured, and scoped for success — the deployment-motion half of the work, not the code half.
 - **Remaining fixtures.** Equipment telemetry, SIRE findings, port congestion, and voyage history are still generated data. Swapping them for a customer's SCADA feed or class-society exports is the same ingestion pattern the three live pipelines already prove.
 
 Already shipped and covered above: CI on every PR (`.github/workflows/ci.yml` — backend, frontend, Angular, data platform, and build/scan/publish for all three runtime images), Trivy scanning that gates on fixable HIGH/CRITICAL, frontend component tests, backend route-integration tests, deployable production images, and the full Kubernetes deployment with autoscaling, observability, tested backups, enforced Pod Security Standards and GitOps reconciliation.
