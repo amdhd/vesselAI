@@ -182,6 +182,12 @@ router.post('/register', validate(RegisterSchema), async (req: Request, res: Res
 
     sendSession(req, res, token, userWithoutPassword, 201);
   } catch (error) {
+    // Two concurrent signups for one email both pass the findUnique check above;
+    // the loser hits the unique index. That is a 409, not a server error.
+    if ((error as { code?: string })?.code === 'P2002') {
+      res.status(409).json({ error: 'User with this email already exists' });
+      return;
+    }
     logger.error({ err: error }, 'Register error');
     res.status(500).json({ error: 'Registration failed' });
   }

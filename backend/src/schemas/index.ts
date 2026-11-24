@@ -13,7 +13,7 @@ const conversationHistory = z
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 export const LoginSchema = z.object({
-  email: z.string().email().max(254),
+  email: z.string().trim().toLowerCase().email().max(254),
   password: z.string().min(1).max(100),
 });
 
@@ -23,7 +23,7 @@ export const LoginSchema = z.object({
 // escalation — anyone could join an existing tenant's fleet. Fleet assignment
 // must happen through a trusted admin/invite flow, never from the signup body.
 export const RegisterSchema = z.object({
-  email: z.string().email().max(254),
+  email: z.string().trim().toLowerCase().email().max(254),
   password: z.string().min(6).max(100),
   name: z.string().min(1).max(100),
   role: z.string().max(50).optional(),
